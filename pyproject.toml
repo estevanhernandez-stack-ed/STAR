@@ -1,0 +1,27 @@
+[project]
+name = "star"
+version = "0.1.0"
+description = "STAR - Story & Treatment Agentic Research. A multi-agent research department for screenwriters: Google ADK + Gemini + Parallel Search API."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "Estevan Hernandez" }]
+dependencies = [
+    "google-adk>=1.0",
+    "google-genai>=1.0",
+    "parallel-web>=0.1",
+    "pydantic>=2.7",
+    "python-dotenv>=1.0",
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.30",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.5"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["star", "star.agents", "star.tools", "research_dept"]

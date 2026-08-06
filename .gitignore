@@ -1,0 +1,23 @@
+# Environment
+.env
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+
+# ADK / tooling
+.adk/
+.pytest_cache/
+
+# Frontend (week 2)
+node_modules/
+web/dist/
+
+# OS / editor
+.DS_Store
+Thumbs.db
