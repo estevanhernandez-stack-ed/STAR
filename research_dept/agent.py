@@ -7,6 +7,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from star import config  # noqa: E402
+
+config.validate_env()
+
 from star.agents.pipelines import build_room  # noqa: E402
 
 root_agent = build_room

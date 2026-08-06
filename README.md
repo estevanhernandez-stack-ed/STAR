@@ -50,6 +50,9 @@ python scripts/try_search.py
 
 # 4. Run the agent in the ADK dev UI
 adk web                          # open the URL it prints, pick "research_dept"
+
+# 5. Or run the full web app (FastAPI + live progress UI)
+uvicorn star.server:app --reload # then open http://127.0.0.1:8000
 ```
 
 In the ADK web UI, paste a short treatment (era, place, genre, premise) and

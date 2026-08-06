@@ -1,14 +1,13 @@
 """IntakeAgent: treatment text -> StoryProfile."""
 
-import os
-
 from google.adk.agents import Agent
 
+from star import config
 from star.models import StoryProfile
 
 intake_agent = Agent(
     name="intake",
-    model=os.environ.get("STAR_FAST_MODEL", "gemini-flash-latest"),
+    model=config.fast_model(),
     description="Parses a writer's treatment or logline into a structured story profile.",
     instruction=(
         "You are the intake desk of a film studio research department. The user "

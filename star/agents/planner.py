@@ -1,14 +1,13 @@
 """PlannerAgent: StoryProfile -> ResearchPlan (the fan-out work order)."""
 
-import os
-
 from google.adk.agents import Agent
 
+from star import config
 from star.models import ResearchPlan
 
 planner_agent = Agent(
     name="planner",
-    model=os.environ.get("STAR_SMART_MODEL", "gemini-flash-latest"),
+    model=config.smart_model(),
     description="Turns a story profile into a concrete research plan across four categories.",
     instruction=(
         "You are the head of research at a film studio. Given this story profile:\n\n"
@@ -24,8 +23,9 @@ planner_agent = Agent(
         "schedules, procedures\n"
         "- forces_conflicts: what opposes the characters — institutions, rivals, "
         "laws, dangers, and how they actually operated\n\n"
-        "Every question must name the era and place explicitly (a researcher sees "
-        "one question at a time, with no other context). Prioritize questions "
+        "Every question must be self-contained — name the era and place "
+        "explicitly, since researchers work from the plan text alone and "
+        "answer questions without further context from you. Prioritize questions "
         "whose answers a writer would touch in more than one scene."
     ),
     output_schema=ResearchPlan,
