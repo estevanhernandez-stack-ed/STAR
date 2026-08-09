@@ -240,6 +240,28 @@ def test_an_in_memory_run_is_not_readable_by_a_different_uid():
     del server._runs["owned"]
 
 
+def test_get_room_404s_when_the_document_vanishes_between_read_and_mark_interrupted():
+    """Task 1's creation-time write made this race genuinely reachable: the
+    document existed for _store.get(), but is gone by the time
+    mark_interrupted's update() runs. get_room must treat that False as
+    "this room is gone" and 404, not report a status it never actually set."""
+    client = TestClient(server.app)
+    fake_store = mock.Mock()
+    fake_store.get.return_value = {
+        "run_id": "vanished", "status": "running", "story_profile": {},
+        "research_bible": "", "search_count": 0, "categories": {},
+    }
+    fake_store.mark_interrupted.return_value = False
+
+    with (
+        mock.patch("star.server.verify_token", return_value="uid-one"),
+        mock.patch("star.server._store", fake_store),
+    ):
+        response = client.get("/api/rooms/vanished", headers=AUTH)
+
+    assert response.status_code == 404
+
+
 def test_a_run_stored_as_running_but_absent_from_memory_becomes_interrupted():
     """The asyncio task did not survive a restart; the UI must stop spinning."""
     client = TestClient(server.app)
@@ -652,6 +674,16 @@ def test_every_api_route_requires_auth_except_the_explicitly_open_sse_stream():
 # --- Test-shape gap: /config.js must serve only the public keys ------------
 
 
+def test_api_schema_routes_are_disabled_on_a_public_endpoint():
+    """/docs, /redoc, and /openapi.json expose no secrets, but they hand an
+    attacker a map of every route and shape. Not worth it on a public,
+    unauthenticated surface."""
+    client = TestClient(server.app)
+    assert client.get("/docs").status_code == 404
+    assert client.get("/redoc").status_code == 404
+    assert client.get("/openapi.json").status_code == 404
+
+
 def test_config_js_exposes_only_the_public_firebase_keys_and_no_secrets():
     client = TestClient(server.app)
     secret_google = "sk-google-should-never-leave-the-server"
@@ -762,3 +794,186 @@ async def test_a_pipeline_failure_does_not_leak_exception_detail_to_the_client(c
     assert "password" in logged
 
     del server._runs["leaky"]
+
+
+# --- Task 2: SSE reconnect must not replay the whole history ---------------
+
+
+def _sse_ids(response) -> list[int]:
+    """Parse `id: N` lines out of a raw SSE response body, in event order."""
+    ids = []
+    for block in response.text.strip("\n").split("\n\n"):
+        if not block:
+            continue
+        for line in block.split("\n"):
+            if line.startswith("id: "):
+                ids.append(int(line.removeprefix("id: ")))
+    return ids
+
+
+def test_push_assigns_each_event_a_monotonic_id():
+    run = {"events": [], "status": "running", "search_count": 0}
+    server._push(run, "started")
+    server._push(run, "search", agent="x", objective="q", category=None)
+    server._push(run, "agent_done", agent="x")
+
+    assert [e["id"] for e in run["events"]] == [0, 1, 2]
+
+
+def test_stream_events_replays_everything_with_no_last_event_id():
+    client = TestClient(server.app)
+    run = server._runs["sse-fresh"] = {
+        "events": [], "status": "complete", "search_count": 0,
+        "ledger": SourceLedger(), "result": None, "uid": "uid-one",
+    }
+    for i in range(5):
+        server._push(run, "search", agent="x", objective=f"q{i}", category=None)
+
+    response = client.get("/api/rooms/sse-fresh/events")
+
+    assert _sse_ids(response) == [0, 1, 2, 3, 4]
+
+    del server._runs["sse-fresh"]
+
+
+def test_stream_events_honours_last_event_id_and_skips_replayed_events():
+    """EventSource sends Last-Event-ID automatically on reconnect. Without a
+    cursor computed from it, every reconnect re-sends the run's entire
+    history and web/app.js double-counts every search."""
+    client = TestClient(server.app)
+    run = server._runs["sse-reconnect"] = {
+        "events": [], "status": "complete", "search_count": 0,
+        "ledger": SourceLedger(), "result": None, "uid": "uid-one",
+    }
+    for i in range(5):
+        server._push(run, "search", agent="x", objective=f"q{i}", category=None)
+
+    response = client.get(
+        "/api/rooms/sse-reconnect/events", headers={"Last-Event-ID": "1"}
+    )
+
+    # Event 1 was already delivered before the (simulated) reconnect; only
+    # 2, 3, 4 are new.
+    assert _sse_ids(response) == [2, 3, 4]
+
+    del server._runs["sse-reconnect"]
+
+
+def test_stream_events_treats_a_malformed_last_event_id_as_no_cursor():
+    client = TestClient(server.app)
+    run = server._runs["sse-malformed"] = {
+        "events": [], "status": "complete", "search_count": 0,
+        "ledger": SourceLedger(), "result": None, "uid": "uid-one",
+    }
+    for i in range(3):
+        server._push(run, "search", agent="x", objective=f"q{i}", category=None)
+
+    response = client.get(
+        "/api/rooms/sse-malformed/events", headers={"Last-Event-ID": "not-a-number"}
+    )
+
+    assert _sse_ids(response) == [0, 1, 2]
+
+    del server._runs["sse-malformed"]
+
+
+# --- Task 2: unbounded _runs must evict finished runs, never a live one ----
+
+
+def _bare_run(status: str) -> dict:
+    return {
+        "events": [], "status": status, "search_count": 0,
+        "ledger": SourceLedger(), "result": None, "uid": "uid-one",
+    }
+
+
+def test_evict_old_runs_drops_the_oldest_terminal_entries_beyond_the_bound():
+    fake_runs = {
+        "oldest": _bare_run("complete"),
+        "middle": _bare_run("error"),
+        "newest": _bare_run("partial"),
+    }
+
+    with (
+        mock.patch.object(server, "_runs", fake_runs),
+        mock.patch("star.server.config.max_runs_in_memory", return_value=2),
+    ):
+        server._evict_old_runs()
+        remaining = set(server._runs)
+
+    assert remaining == {"middle", "newest"}
+
+
+def test_evict_old_runs_never_evicts_a_running_entry_regardless_of_age():
+    """A running entry is the oldest thing in the dict here — eviction must
+    still skip it, or a live build gets orphaned and its SSE stream breaks."""
+    fake_runs = {
+        "running-oldest": _bare_run("running"),
+        "t1": _bare_run("complete"),
+        "t2": _bare_run("complete"),
+        "t3": _bare_run("complete"),
+    }
+
+    with (
+        mock.patch.object(server, "_runs", fake_runs),
+        mock.patch("star.server.config.max_runs_in_memory", return_value=1),
+    ):
+        server._evict_old_runs()
+        remaining = set(server._runs)
+
+    assert remaining == {"running-oldest"}
+
+
+def test_evict_old_runs_never_evicts_the_excluded_run_even_if_it_is_oldest():
+    """_execute pushes this run's own terminal event and then evicts in the
+    same synchronous call, with no `await` in between — so this run can be
+    the oldest terminal entry in `_runs` at the exact moment it finishes (a
+    slow build often is). Without excluding it, eviction could drop it
+    before its own SSE stream's next poll ever sees the terminal event."""
+    fake_runs = {
+        "just-finished": _bare_run("complete"),
+        "t2": _bare_run("complete"),
+        "t3": _bare_run("complete"),
+    }
+
+    with (
+        mock.patch.object(server, "_runs", fake_runs),
+        mock.patch("star.server.config.max_runs_in_memory", return_value=1),
+    ):
+        server._evict_old_runs(exclude="just-finished")
+        remaining = set(server._runs)
+
+    assert "just-finished" in remaining
+
+
+def test_evict_old_runs_is_a_noop_under_the_bound():
+    fake_runs = {"a": _bare_run("complete"), "b": _bare_run("running")}
+
+    with (
+        mock.patch.object(server, "_runs", fake_runs),
+        mock.patch("star.server.config.max_runs_in_memory", return_value=20),
+    ):
+        server._evict_old_runs()
+        remaining = set(server._runs)
+
+    assert remaining == {"a", "b"}
+
+
+@pytest.mark.asyncio
+async def test_execute_evicts_old_runs_once_it_reaches_a_terminal_status():
+    server._runs["evict-trigger"] = _bare_run("running")
+
+    async def _finishes(run_id, treatment):
+        return None
+
+    with (
+        mock.patch("star.server._run_pipeline", _finishes),
+        mock.patch("star.server.config.run_timeout_seconds", return_value=60),
+        mock.patch("star.server._store", mock.Mock()),
+        mock.patch("star.server._evict_old_runs") as fake_evict,
+    ):
+        await server._execute("evict-trigger", "a treatment")
+
+    fake_evict.assert_called_once_with(exclude="evict-trigger")
+
+    del server._runs["evict-trigger"]

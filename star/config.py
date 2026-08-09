@@ -72,6 +72,18 @@ def max_sources_per_category() -> int:
     return int(os.environ.get("STAR_MAX_SOURCES_PER_CATEGORY", "60"))
 
 
+def max_runs_in_memory() -> int:
+    """Cap on live entries in `star.server._runs`.
+
+    Each entry holds a `SourceLedger` carrying every excerpt from up to
+    `max_searches_per_build()` searches, plus a task reference — nothing
+    ever shrinks it on its own. Persistence (star/store.py) is what makes
+    eviction safe: a run dropped from memory once it reaches a terminal
+    status is still readable back from Firestore via get_room's fallback.
+    """
+    return int(os.environ.get("STAR_MAX_RUNS_IN_MEMORY", "20"))
+
+
 def run_timeout_seconds() -> int:
     """Wall-clock ceiling on one room build.
 

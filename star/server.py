@@ -41,7 +41,14 @@ from star.store import RoomStore, document_to_room, room_to_document  # noqa: E4
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="STAR — Story & Treatment Agentic Research")
+app = FastAPI(
+    title="STAR — Story & Treatment Agentic Research",
+    # Public, unauthenticated endpoint. The schema exposes no secrets, but it
+    # hands an attacker a map of every route and shape for free.
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
 
 _runner = InMemoryRunner(agent=build_room, app_name="star")
 _runs: dict[str, dict] = {}
@@ -114,7 +121,12 @@ class RoomRequest(BaseModel):
 
 
 def _push(run: dict, event_type: str, **data) -> None:
-    run["events"].append({"type": event_type, **data})
+    # The id is the event's position in `run["events"]`, which is append-only
+    # for the life of a run — so it doubles as the SSE `id:` line stream_events
+    # emits, letting a reconnecting EventSource resume from Last-Event-ID
+    # instead of replaying the whole history.
+    event_id = len(run["events"])
+    run["events"].append({"id": event_id, "type": event_type, **data})
 
 
 def _maybe_warn_empty_ledger(run: dict) -> None:
@@ -298,6 +310,44 @@ def _partial_message(cause: str) -> str:
     )
 
 
+def _evict_old_runs(exclude: str | None = None) -> None:
+    """Cap `_runs` at config.max_runs_in_memory() once it grows past that.
+
+    Each entry carries a SourceLedger holding every excerpt from up to 30
+    searches, plus a task reference — nothing else ever shrinks `_runs`, so
+    left alone it grows for the life of the instance. Persistence makes
+    dropping a finished run from memory safe: get_room's Firestore fallback
+    can still read it back.
+
+    A `running` entry is never a candidate, no matter how old: evicting one
+    would orphan its in-flight asyncio task and break its SSE stream, which
+    reads the run out of this same dict. `_runs` preserves insertion order
+    (plain dict, Python 3.7+), so walking it front-to-back visits oldest
+    first; only terminal entries are removed, oldest first, until the count
+    is back at the bound or no terminal entries remain.
+
+    `exclude` protects one more case: `_execute` pushes a run's own terminal
+    event and calls this in the same synchronous stretch, with no `await` in
+    between, so that run can be the *oldest* terminal entry in `_runs` at the
+    exact moment it finishes — a slow build often is. Evicting it here, before
+    its own SSE stream's next poll has had a chance to observe it, would drop
+    the terminal event the client is waiting on. `_execute` passes its own
+    run_id so this pass can never take that run, no matter how old.
+    """
+    excess = len(_runs) - config.max_runs_in_memory()
+    if excess <= 0:
+        return
+    for run_id in list(_runs):
+        if excess <= 0:
+            break
+        if run_id == exclude:
+            continue
+        if _runs[run_id]["status"] not in _TERMINAL_RUN_STATUSES:
+            continue
+        del _runs[run_id]
+        excess -= 1
+
+
 async def _execute(run_id: str, treatment: str) -> None:
     """Own the run's outcome: bound it, decide its status, tell the client.
 
@@ -381,6 +431,12 @@ async def _execute(run_id: str, treatment: str) -> None:
                 ),
             )
 
+    # Every branch above lands on a terminal status; this is the one place
+    # in the run's lifecycle where eviction can never orphan a live build.
+    # Excluding this run's own id keeps this exact call from evicting the
+    # run whose terminal event it just pushed — see _evict_old_runs.
+    _evict_old_runs(exclude=run_id)
+
 
 @app.post("/api/rooms")
 async def create_room(
@@ -438,18 +494,32 @@ async def create_room(
 
 
 @app.get("/api/rooms/{run_id}/events")
-async def stream_events(run_id: str) -> StreamingResponse:
+async def stream_events(
+    run_id: str, last_event_id: str | None = Header(None, alias="Last-Event-ID")
+) -> StreamingResponse:
     if run_id not in _runs:
         raise HTTPException(404, "Unknown run")
 
     async def generate():
+        # EventSource sets Last-Event-ID automatically on every reconnect, to
+        # the `id:` line of the last event it actually received. Event ids
+        # are 0-based and match their index in run["events"] (see _push), so
+        # the next unseen event is simply one past it. A missing or
+        # malformed header (first connection, or some other client) falls
+        # back to replaying from the start.
         cursor = 0
+        if last_event_id is not None:
+            try:
+                cursor = max(0, int(last_event_id) + 1)
+            except ValueError:
+                cursor = 0
         while True:
             run = _runs.get(run_id)
             if run is None:
                 break
             while cursor < len(run["events"]):
-                yield f"data: {json.dumps(run['events'][cursor], default=str)}\n\n"
+                event = run["events"][cursor]
+                yield f"id: {event['id']}\ndata: {json.dumps(event, default=str)}\n\n"
                 cursor += 1
             if run["status"] in _TERMINAL_RUN_STATUSES:
                 break
@@ -461,7 +531,12 @@ async def stream_events(run_id: str) -> StreamingResponse:
 @app.get("/api/rooms")
 async def list_rooms(authorization: str | None = Header(None)) -> dict:
     uid = _require_uid(authorization)
-    return {"rooms": _store.list_rooms(uid)}
+    # Off the event loop: the Firestore client is blocking, and this handler
+    # runs on the same single-threaded loop as every other request and every
+    # open SSE stream on the instance. Left inline, a slow list call stalls
+    # all of them, not just this caller.
+    rooms = await asyncio.to_thread(_store.list_rooms, uid)
+    return {"rooms": rooms}
 
 
 @app.get("/api/rooms/{run_id}")
@@ -472,7 +547,8 @@ async def get_room(run_id: str, authorization: str | None = Header(None)) -> dic
     if run is not None and run.get("uid") == uid:
         return {"status": run["status"], "result": run["result"]}
 
-    document = _store.get(uid, run_id)
+    # Off the event loop; see list_rooms above for why.
+    document = await asyncio.to_thread(_store.get, uid, run_id)
     if document is None:
         raise HTTPException(404, "Unknown run")
 
@@ -480,7 +556,12 @@ async def get_room(run_id: str, authorization: str | None = Header(None)) -> dic
     # not survive a restart, and nothing will ever finish it. Say so once
     # rather than letting the UI spin forever.
     if document.get("status") == "running":
-        _store.mark_interrupted(uid, run_id)
+        # False means the document was deleted between the _store.get() call
+        # above and this update — a race Task 1's creation-time write made
+        # reachable. Report the room as gone rather than a status this
+        # request never actually managed to set.
+        if not await asyncio.to_thread(_store.mark_interrupted, uid, run_id):
+            raise HTTPException(404, "Unknown run")
         document["status"] = "interrupted"
 
     return {"status": document.get("status", "complete"), "result": document_to_room(document)}

@@ -1,3 +1,5 @@
+from google.api_core.exceptions import NotFound
+
 from star.store import (
     RoomStore,
     document_to_room,
@@ -32,7 +34,14 @@ class _FakeDoc:
         self._store.data[self._path] = data
 
     def update(self, patch):
-        self._store.data.setdefault(self._path, {}).update(patch)
+        # Real Firestore raises NotFound from .update() on a missing
+        # document rather than creating a partial one — verified against the
+        # live database. This fake used to silently `setdefault` a partial
+        # document instead, which let mark_interrupted's missing-document
+        # path pass tests without ever exercising real behavior.
+        if self._path not in self._store.data:
+            raise NotFound(f"No document to update: {self._path}")
+        self._store.data[self._path].update(patch)
 
     def get(self):
         return _FakeSnapshot(self._store.data.get(self._path))
@@ -167,6 +176,20 @@ def test_mark_interrupted_moves_a_stuck_run_off_running():
     store = RoomStore(client=_FakeClient())
     store.save("uid-one", "abc123", room_to_document("abc123", RESULT, "running", "2026-08-09T12:00:00Z"))
 
-    store.mark_interrupted("uid-one", "abc123")
+    assert store.mark_interrupted("uid-one", "abc123") is True
 
     assert store.get("uid-one", "abc123")["status"] == "interrupted"
+
+
+# --- Task 2: a delete-between-read-and-update race must 404, not 500 -------
+
+
+def test_mark_interrupted_returns_false_when_the_document_is_gone():
+    """Real Firestore's .update() raises NotFound on a missing document — a
+    race genuinely reachable now that create_room writes a document at
+    creation time and get_room calls mark_interrupted after its own read.
+    The fake must agree with real Firestore here, or this test would pass
+    for the wrong reason."""
+    store = RoomStore(client=_FakeClient())
+
+    assert store.mark_interrupted("uid-one", "does-not-exist") is False
