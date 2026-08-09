@@ -126,71 +126,104 @@ def _persist(run: dict, run_id: str, status: str) -> None:
         logger.exception("Failed to persist %s run %s", status, run_id)
 
 
-async def _execute(run_id: str, treatment: str) -> None:
+async def _run_pipeline(run_id: str, treatment: str) -> None:
+    """Run the build and populate run["result"].
+
+    Raises on failure and owns no outcome state — `_execute` decides status,
+    persistence, and what the client is told. Kept separate so the whole build
+    can be wrapped in a single wall-clock ceiling.
+    """
     run = _runs[run_id]
+
+    # Budget is per-run: it lives in the ADK session state (see
+    # star/tools/parallel_search.py), and every run gets a fresh session.
+    session = await _runner.session_service.create_session(
+        app_name="star", user_id="web"
+    )
+    message = types.Content(role="user", parts=[types.Part(text=treatment)])
+    _push(run, "started")
+
+    async for event in _runner.run_async(
+        user_id="web", session_id=session.id, new_message=message
+    ):
+        author = getattr(event, "author", None) or "system"
+        label = _FRIENDLY.get(author, author)
+
+        category = _CATEGORY_BY_AUTHOR.get(author)
+
+        for call in event.get_function_calls() or []:
+            objective = (call.args or {}).get("objective", "")
+            run["search_count"] += 1
+            _push(
+                run,
+                "search",
+                agent=label,
+                objective=objective,
+                category=category.value if category else None,
+            )
+
+        for response in event.get_function_responses() or []:
+            # Key by the raw author, not the friendly label, so found_by
+            # joins cleanly against _CATEGORY_BY_AUTHOR (which is also
+            # keyed by raw author). The friendly label stays user-facing,
+            # in the SSE "search" event above.
+            run["ledger"].record(author, getattr(response, "response", None))
+
+        content = getattr(event, "content", None)
+        if content and getattr(content, "parts", None):
+            text = "".join(
+                p.text or "" for p in content.parts if getattr(p, "text", None)
+            )
+            is_final = getattr(event, "is_final_response", lambda: True)()
+            if text.strip() and is_final:
+                _push(run, "agent_done", agent=label)
+
+    _maybe_warn_empty_ledger(run)
+
+    final = await _runner.session_service.get_session(
+        app_name="star", user_id="web", session_id=session.id
+    )
+    state = final.state if final else {}
+    run["result"] = jsonable_encoder(
+        {
+            "story_profile": state.get("story_profile"),
+            "research_plan": state.get("research_plan"),
+            "research_bible": state.get("research_bible"),
+            "search_count": run["search_count"],
+            "categories": _build_categories(state, run["ledger"]),
+            "source_count": len(run["ledger"]),
+        }
+    )
+
+
+async def _execute(run_id: str, treatment: str) -> None:
+    """Own the run's outcome: bound it, decide its status, tell the client.
+
+    The timeout is not optional. On 2026-08-09 a build sat for nine minutes
+    with the UI spinning and no error, because synthesis was generating toward
+    the model's output ceiling and nothing bounded it. A cap on that one agent
+    fixes that one cause; this bounds every cause, including the next one.
+    """
+    run = _runs[run_id]
+    timeout = config.run_timeout_seconds()
     try:
-        # Budget is per-run: it lives in the ADK session state (see
-        # star/tools/parallel_search.py), and every run gets a fresh session.
-        session = await _runner.session_service.create_session(
-            app_name="star", user_id="web"
-        )
-        message = types.Content(role="user", parts=[types.Part(text=treatment)])
-        _push(run, "started")
-
-        async for event in _runner.run_async(
-            user_id="web", session_id=session.id, new_message=message
-        ):
-            author = getattr(event, "author", None) or "system"
-            label = _FRIENDLY.get(author, author)
-
-            category = _CATEGORY_BY_AUTHOR.get(author)
-
-            for call in event.get_function_calls() or []:
-                objective = (call.args or {}).get("objective", "")
-                run["search_count"] += 1
-                _push(
-                    run,
-                    "search",
-                    agent=label,
-                    objective=objective,
-                    category=category.value if category else None,
-                )
-
-            for response in event.get_function_responses() or []:
-                # Key by the raw author, not the friendly label, so found_by
-                # joins cleanly against _CATEGORY_BY_AUTHOR (which is also
-                # keyed by raw author). The friendly label stays user-facing,
-                # in the SSE "search" event above.
-                run["ledger"].record(author, getattr(response, "response", None))
-
-            content = getattr(event, "content", None)
-            if content and getattr(content, "parts", None):
-                text = "".join(
-                    p.text or "" for p in content.parts if getattr(p, "text", None)
-                )
-                is_final = getattr(event, "is_final_response", lambda: True)()
-                if text.strip() and is_final:
-                    _push(run, "agent_done", agent=label)
-
-        _maybe_warn_empty_ledger(run)
-
-        final = await _runner.session_service.get_session(
-            app_name="star", user_id="web", session_id=session.id
-        )
-        state = final.state if final else {}
-        run["result"] = jsonable_encoder(
-            {
-                "story_profile": state.get("story_profile"),
-                "research_plan": state.get("research_plan"),
-                "research_bible": state.get("research_bible"),
-                "search_count": run["search_count"],
-                "categories": _build_categories(state, run["ledger"]),
-                "source_count": len(run["ledger"]),
-            }
-        )
+        await asyncio.wait_for(_run_pipeline(run_id, treatment), timeout=timeout)
         run["status"] = "complete"
         _persist(run, run_id, "complete")
         _push(run, "complete", search_count=run["search_count"])
+    except TimeoutError:
+        logger.warning("Run %s exceeded its %ss ceiling", run_id, timeout)
+        run["status"] = "error"
+        _persist(run, run_id, "error")
+        _push(
+            run,
+            "error",
+            message=(
+                f"The department ran past its {timeout // 60}-minute limit and was "
+                "stopped. Nothing was lost on your end — try again, and a shorter "
+                "treatment usually finishes faster."
+            ),
+        )
     except Exception as exc:  # surface real errors to the UI during dev
         run["status"] = "error"
         _persist(run, run_id, "error")

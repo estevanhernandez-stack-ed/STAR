@@ -1,6 +1,7 @@
 """SynthesisAgent: raw category findings -> the cited research bible."""
 
 from google.adk.agents import Agent
+from google.genai import types
 
 from star import config
 
@@ -8,6 +9,14 @@ synthesis_agent = Agent(
     name="synthesis",
     model=config.smart_model(),
     description="Assembles researcher findings into a cited, writer-ready research bible.",
+    # Without a ceiling this call runs away. Observed 2026-08-09: a build sat
+    # for nine minutes generating toward the model's 65,536-token limit at
+    # ~115 tokens/sec while the UI spun with no error. The <sources> block
+    # below is the accelerant — every title fed in is a title synthesis may
+    # enumerate back out. See config.max_synthesis_output_tokens.
+    generate_content_config=types.GenerateContentConfig(
+        max_output_tokens=config.max_synthesis_output_tokens(),
+    ),
     instruction=(
         "You are the editor of a film-studio research department. Assemble the "
         "researchers' findings into a research bible for the writer.\n\n"

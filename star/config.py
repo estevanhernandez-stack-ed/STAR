@@ -32,6 +32,39 @@ def max_treatment_chars() -> int:
     return int(os.environ.get("STAR_MAX_TREATMENT_CHARS", "8000"))
 
 
+def max_synthesis_output_tokens() -> int:
+    """Hard ceiling on the bible, because generation runs away without one.
+
+    Measured 2026-08-09: gemini-3.6-flash generates at roughly 115 tokens/sec
+    and permits 65,536 output tokens, so an unbounded synthesis call can spend
+    9.5 minutes before it stops on its own. One did. Good bibles have run
+    11,000-17,000 characters, comfortably under 6,000 tokens; 16,000 leaves
+    generous headroom while capping the worst case near two minutes.
+    """
+    return int(os.environ.get("STAR_MAX_SYNTHESIS_TOKENS", "16000"))
+
+
+def max_sources_per_category() -> int:
+    """Cap the source list handed to synthesis.
+
+    Every title fed in is a title synthesis may enumerate back out, so an
+    uncapped list is the main driver of runaway output. Researchers rarely
+    cite more than a dozen sources per category usefully.
+    """
+    return int(os.environ.get("STAR_MAX_SOURCES_PER_CATEGORY", "25"))
+
+
+def run_timeout_seconds() -> int:
+    """Wall-clock ceiling on one room build.
+
+    Independent of any model-level cap: a hung network call, a retry storm, or
+    a future agent with its own limits should still surface as a visible error
+    rather than a UI that spins forever and a container that never frees the
+    connection.
+    """
+    return int(os.environ.get("STAR_RUN_TIMEOUT_SECONDS", "420"))
+
+
 def validate_env() -> None:
     """Fail fast on missing keys (review fix M5) instead of mid-pipeline."""
     missing = []

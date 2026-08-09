@@ -1,5 +1,7 @@
+import asyncio
 from unittest import mock
 
+import pytest
 from fastapi.encoders import jsonable_encoder
 from fastapi.testclient import TestClient
 
@@ -269,3 +271,59 @@ def test_post_rooms_rejects_a_request_with_no_token():
     client = TestClient(server.app)
     response = client.post("/api/rooms", json={"treatment": "x" * 60})
     assert response.status_code == 401
+
+
+# --- run bounding (added 2026-08-09 after a nine-minute runaway build) ---
+
+
+@pytest.mark.asyncio
+async def test_a_run_that_overruns_its_ceiling_ends_as_a_visible_error():
+    """The failure this exists to prevent: a build that never finishes and
+    never says so, leaving the UI spinning and the connection held open."""
+    server._runs["slow"] = {
+        "events": [], "status": "running", "search_count": 0,
+        "ledger": SourceLedger(), "result": None, "uid": "uid-one",
+    }
+
+    async def _never_finishes(run_id, treatment):
+        await asyncio.sleep(5)
+
+    with (
+        mock.patch("star.server._run_pipeline", _never_finishes),
+        mock.patch("star.server.config.run_timeout_seconds", return_value=1),
+        mock.patch("star.server._store", mock.Mock()),
+    ):
+        await server._execute("slow", "a treatment")
+
+    run = server._runs["slow"]
+    assert run["status"] == "error"
+    errors = [e for e in run["events"] if e["type"] == "error"]
+    assert len(errors) == 1
+    assert "limit" in errors[0]["message"]
+    assert "try again" in errors[0]["message"].lower()
+
+    del server._runs["slow"]
+
+
+@pytest.mark.asyncio
+async def test_a_run_inside_its_ceiling_completes_normally():
+    server._runs["quick"] = {
+        "events": [], "status": "running", "search_count": 3,
+        "ledger": SourceLedger(), "result": {"research_bible": "# Bible"}, "uid": "uid-one",
+    }
+
+    async def _finishes(run_id, treatment):
+        return None
+
+    with (
+        mock.patch("star.server._run_pipeline", _finishes),
+        mock.patch("star.server.config.run_timeout_seconds", return_value=60),
+        mock.patch("star.server._store", mock.Mock()),
+    ):
+        await server._execute("quick", "a treatment")
+
+    run = server._runs["quick"]
+    assert run["status"] == "complete"
+    assert [e["type"] for e in run["events"]] == ["complete"]
+
+    del server._runs["quick"]
