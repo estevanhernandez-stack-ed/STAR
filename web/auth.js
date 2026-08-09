@@ -63,23 +63,49 @@ function remember(token, refreshToken, expiresIn) {
   }
 }
 
-async function acquireToken() {
+function safeGetStored() {
   try {
-    const stored = localStorage.getItem(STORE_KEY);
-    if (stored) {
-      const r = await refresh(stored);
-      remember(r.idToken, r.refreshToken, r.expiresIn);
-      return idToken;
-    }
+    return localStorage.getItem(STORE_KEY);
   } catch {
-    // A stale or revoked refresh token: fall through and start fresh.
-    localStorage.removeItem(STORE_KEY);
+    return null;
   }
+}
 
+function safeRemoveStored() {
   try {
-    const fresh = await signUpAnonymously();
-    remember(fresh.idToken, fresh.refreshToken, fresh.expiresIn);
-    return idToken;
+    localStorage.removeItem(STORE_KEY);
+  } catch {
+    // Storage is already unavailable; nothing to clean up.
+  }
+}
+
+async function acquireToken() {
+  // getIdToken awaits this unguarded, so this function's contract is that
+  // it never throws — every path returns a token or null. Without the
+  // outer try/catch, a second storage failure inside the stale-token
+  // cleanup (removeItem after getItem already threw) would escape both
+  // inner catches and leave the caller with an unhandled rejection instead
+  // of a null it can react to.
+  try {
+    const stored = safeGetStored();
+    if (stored) {
+      try {
+        const r = await refresh(stored);
+        remember(r.idToken, r.refreshToken, r.expiresIn);
+        return idToken;
+      } catch {
+        // A stale or revoked refresh token: fall through and start fresh.
+        safeRemoveStored();
+      }
+    }
+
+    try {
+      const fresh = await signUpAnonymously();
+      remember(fresh.idToken, fresh.refreshToken, fresh.expiresIn);
+      return idToken;
+    } catch {
+      return null;
+    }
   } catch {
     return null;
   }

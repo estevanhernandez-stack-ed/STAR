@@ -44,12 +44,21 @@ async function buildRoom() {
   // Firebase Auth is a hard dependency: with no token, POST /api/rooms is a
   // 401 by construction. Check before spending a doomed round trip, and say
   // why rather than surfacing the generic error that request would produce.
-  const token = await getIdToken();
+  // getIdToken()'s own contract is that it never throws, but belt-and-
+  // braces here too: a stuck disabled button with no message would be worse
+  // than treating an unexpected throw the same as a null.
+  let token;
+  try {
+    token = await getIdToken();
+  } catch {
+    token = null;
+  }
   if (!token) {
     $("auth-error").classList.remove("hidden");
     $("build-btn").disabled = false;
     return;
   }
+  $("auth-error").classList.add("hidden");
 
   let runId;
   try {
