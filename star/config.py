@@ -7,15 +7,21 @@ change behavior under a rehearsed demo.
 
 import os
 
+# Pinned, not floating. `gemini-flash-latest` is an alias that resolved to
+# gemini-3.6-flash on 2026-08-09 — the model both verified room builds ran on.
+# Leaving the alias in place means Google can move the model out from under a
+# rehearsed demo. Revisit after the 2026-09-07 deadline.
+_PINNED_FLASH = "gemini-3.6-flash"
+
 
 def fast_model() -> str:
     """Extraction/verification steps."""
-    return os.environ.get("STAR_FAST_MODEL", "gemini-flash-latest")
+    return os.environ.get("STAR_FAST_MODEL", _PINNED_FLASH)
 
 
 def smart_model() -> str:
     """Planning and synthesis steps."""
-    return os.environ.get("STAR_SMART_MODEL", "gemini-flash-latest")
+    return os.environ.get("STAR_SMART_MODEL", _PINNED_FLASH)
 
 
 def max_searches_per_build() -> int:
