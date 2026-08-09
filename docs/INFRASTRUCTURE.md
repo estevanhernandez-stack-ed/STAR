@@ -87,3 +87,93 @@ read access to every user's rooms and silently void the boundary the server
 was built to be. If rules are ever deployed, they must be deny-by-default with
 ownership checks, and this probe should be re-run to confirm the posture did
 not invert.
+
+## Cloud Run deployment
+
+Deployed 2026-08-09.
+
+| | |
+| --- | --- |
+| Service URL | `https://star-390753828501.us-central1.run.app` |
+| Region | `us-central1` |
+| Service name | `star` |
+| Revision | `star-00001-6r6` |
+
+Deploy command (also `scripts/deploy.sh`, run from repo root):
+
+```bash
+FIREBASE_API_KEY=$(grep '^FIREBASE_API_KEY=' .env | cut -d= -f2-) bash scripts/deploy.sh
+```
+
+The script builds from source via Cloud Build (no local Docker needed),
+deploys to Cloud Run, and prints the service URL.
+
+### `--max-instances=1` is load-bearing, not tuning
+
+`_runs` is per-process in-memory state: a live build's SSE stream and its
+in-memory room read both have to hit the same instance, or the reader gets
+"room not found" against an instance that never ran the build. A second
+instance silently breaks runs in flight — no error, just a client stuck on a
+stream that another instance knows nothing about. The abuse guards in
+`star/guards.py` (the 5-per-IP-per-hour and 100-per-day counters) are
+in-memory for the same reason, and they become per-instance — and therefore
+bypassable by hitting a different instance — the moment instance count rises
+above one.
+
+**If this ever needs to scale past one instance, both of these must move
+together, in the same change:**
+
+- `_runs` (or whatever replaces it) to a shared store — Firestore or Redis —
+  keyed so any instance can serve any in-flight run's SSE stream.
+- The abuse-guard counters in `star/guards.py` to that same shared store, or
+  the per-IP/per-day limits become per-instance and the real ceiling is
+  `limit * instance_count`.
+
+Shipping a `max-instances` bump without both of these is the failure mode
+this comment exists to prevent.
+
+### Secrets: where they live
+
+| Env var | Source | Why |
+| --- | --- | --- |
+| `GOOGLE_API_KEY` | Secret Manager, secret `star-google-api-key`, mounted via `--set-secrets` | Real credential — Gemini via AI Studio |
+| `PARALLEL_API_KEY` | Secret Manager, secret `star-parallel-api-key`, mounted via `--set-secrets` | Real credential — Parallel search |
+| `FIREBASE_API_KEY` | Plain `--set-env-vars`, read from the caller's shell environment | Public browser-facing project identifier, not a secret — see above |
+| `GOOGLE_CLOUD_PROJECT`, `FIREBASE_PROJECT_ID`, `GOOGLE_GENAI_USE_VERTEXAI` | Plain `--set-env-vars`, hardcoded to `star-research-dept` / `FALSE` in the script | Non-sensitive configuration |
+
+The runtime identity (`390753828501-compute@developer.gserviceaccount.com`)
+holds `roles/secretmanager.secretAccessor` on both secrets individually
+(least privilege — scoped to the two secrets it needs, not project-wide) and
+`roles/datastore.user` on the project for Firestore reads/writes through
+Application Default Credentials.
+
+Confirmed by inspecting `gcloud run services describe star --format=yaml`:
+`GOOGLE_API_KEY` and `PARALLEL_API_KEY` appear only as
+`valueFrom.secretKeyRef`, never as plaintext `value`. `FIREBASE_API_KEY`
+appears as plaintext `value` by design.
+
+### Verification run 2026-08-09
+
+All six checks passed against the live URL immediately after deploy. Full
+verbatim output lives in
+`.superpowers/sdd/2026-08-09-cloud-run-deploy-and-hardening/task-4-report.md`.
+Summary:
+
+1. `/config.js` serves `projectId` and the public `FIREBASE_API_KEY`; neither
+   `GOOGLE_API_KEY` nor `PARALLEL_API_KEY` value appears anywhere in the
+   response (checked programmatically against the real secret values, not by
+   eye).
+2. `/api/rooms` with no token: `401`.
+3. `/docs`: `404`.
+4. `/`: serves the app's `<!DOCTYPE html>` shell.
+5. Anonymous sign-in against Identity Toolkit, then `GET /api/rooms` with
+   that token: `200`, `{"rooms":[]}` for a fresh uid.
+6. Re-ran the Firestore probe from above against the deployed project with a
+   fresh anonymous token: `GET /users`, `PATCH /users/{own_uid}/rooms/...`,
+   and `GET /users/{other_uid}/rooms` all still return `403
+   PERMISSION_DENIED`. The security boundary did not move — the server, via
+   ADC, is still the only path to Firestore.
+
+**Not exercised in this pass:** building an actual research room. Each build
+spends real money on live web searches; that first production spend is the
+controller's call, not something this deploy step takes on its own.
