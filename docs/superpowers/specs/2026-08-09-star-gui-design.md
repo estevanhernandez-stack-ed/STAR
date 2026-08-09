@@ -325,8 +325,23 @@ verdict is never lost because it could not be placed.
 
 ### Auth failure
 
-Anonymous sign-in failure degrades to an ephemeral session: the run works, a
-banner says it will not be saved. The app does not die for want of an identity.
+**Corrected 2026-08-09.** This section originally promised that sign-in failure
+degrades to an ephemeral session in which the run still works and a banner says
+it will not be saved. That is impossible against the security boundary this
+same spec chose: the server owns all Firestore access and requires a token on
+`POST /api/rooms`, so with no token there is no run, and the banner is
+unreachable by construction. A Phase 2 review caught the contradiction.
+
+The resolution, decided 2026-08-09: **the server stays strict and the browser
+stops pretending otherwise.** Firebase Auth is a hard dependency. If anonymous
+sign-in fails, the browser checks for a token *before* attempting a build,
+declines to issue a request it knows will be rejected, and says plainly that
+STAR needs sign-in to run.
+
+The alternative — letting unauthenticated runs proceed without persisting —
+was rejected because it opens a public endpoint that spends roughly fifteen
+live web searches per call, which would make the per-IP rate limit a hard
+release blocker rather than a hardening step.
 
 ### Server death mid-run
 

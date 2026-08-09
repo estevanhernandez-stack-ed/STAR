@@ -9,6 +9,9 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
 </head>
 <body>
+  <div id="auth-error" class="banner hidden">
+    Could not start a session. STAR needs Google sign-in to run. Check your connection and reload.
+  </div>
   <header>
     <div class="brand">
       <span class="star-mark">✶</span>
@@ -70,6 +73,6 @@
     </p>
   </footer>
 
-  <script src="/app.js"></script>
+  <script type="module" src="/app.js"></script>
 </body>
 </html>

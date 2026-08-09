@@ -133,3 +133,17 @@ button.secondary { background: transparent; color: var(--ink-dim); border: 1px s
 
 footer { text-align: center; padding: 1.2rem; color: var(--ink-dim); font-size: 0.8rem; }
 footer a { color: var(--ink-dim); }
+
+.banner {
+  background: #3a2f16;
+  color: var(--accent);
+  border-bottom: 1px solid var(--panel-edge);
+  padding: 0.6rem 1.5rem;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+/* A run that overran the clock but still filed real research. Amber, not
+   red: nothing is broken and nothing was lost, the editor just ran late. */
+#timeline li.warn::before { background: var(--accent); }
+#timeline li.warn { color: var(--accent); }

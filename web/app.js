@@ -1,5 +1,7 @@
 /* STAR frontend — build a room, watch it happen, read the bible. */
 
+import { authedFetch, getIdToken } from "/auth.js";
+
 const $ = (id) => document.getElementById(id);
 
 const intakePanel = $("intake-panel");
@@ -39,9 +41,28 @@ async function buildRoom() {
   $("intake-error").textContent = "";
   $("build-btn").disabled = true;
 
+  // Firebase Auth is a hard dependency: with no token, POST /api/rooms is a
+  // 401 by construction. Check before spending a doomed round trip, and say
+  // why rather than surfacing the generic error that request would produce.
+  // getIdToken()'s own contract is that it never throws, but belt-and-
+  // braces here too: a stuck disabled button with no message would be worse
+  // than treating an unexpected throw the same as a null.
+  let token;
+  try {
+    token = await getIdToken();
+  } catch {
+    token = null;
+  }
+  if (!token) {
+    $("auth-error").classList.remove("hidden");
+    $("build-btn").disabled = false;
+    return;
+  }
+  $("auth-error").classList.add("hidden");
+
   let runId;
   try {
-    const res = await fetch("/api/rooms", {
+    const res = await authedFetch("/api/rooms", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ treatment }),
@@ -73,6 +94,13 @@ async function buildRoom() {
     } else if (ev.type === "complete") {
       source.close();
       showResults(runId, ev.search_count);
+    } else if (ev.type === "partial") {
+      // The editor ran out of time, but the researchers did not. Their
+      // findings and citations are real and already paid for, so show them
+      // rather than throwing away a four-minute build.
+      source.close();
+      addEntry("warn", escapeHtml(ev.message));
+      showResults(runId, ev.search_count, ev.message);
     } else if (ev.type === "error") {
       source.close();
       addEntry("error", `Something broke: ${escapeHtml(ev.message)}`);
@@ -84,8 +112,25 @@ async function buildRoom() {
   };
 }
 
-async function showResults(runId, count) {
-  const res = await fetch(`/api/rooms/${runId}`);
+async function showResults(runId, count, partialNote) {
+  const res = await authedFetch(`/api/rooms/${runId}`);
+  if (!res.ok) {
+    // Without this check, `result` below is undefined and the story_profile
+    // read throws — but only after the results panel is already revealed,
+    // leaving an empty panel with no explanation. Fail back to intake with
+    // a real message instead.
+    let detail = res.statusText;
+    try {
+      detail = (await res.json()).detail || detail;
+    } catch {
+      /* body wasn't JSON; fall back to statusText */
+    }
+    progressPanel.classList.add("hidden");
+    intakePanel.classList.remove("hidden");
+    $("intake-error").textContent = `Could not load your results: ${detail}`;
+    $("build-btn").disabled = false;
+    return;
+  }
   const { result } = await res.json();
 
   progressPanel.classList.add("hidden");
@@ -99,7 +144,11 @@ async function showResults(runId, count) {
   // The bible is synthesized from live web content — an adversarial data
   // path. Render it only through DOMPurify; if either library failed to
   // load, fall back to escaped plain text rather than raw HTML.
-  const bibleMd = result.research_bible || "_No bible produced._";
+  const bibleMd =
+    result.research_bible ||
+    (partialNote
+      ? `_${partialNote}_`
+      : "_No bible produced._");
   if (window.marked && window.DOMPurify) {
     $("tab-bible").innerHTML = DOMPurify.sanitize(marked.parse(bibleMd));
   } else {

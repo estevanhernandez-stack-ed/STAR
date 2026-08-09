@@ -64,12 +64,23 @@ def _publish_sources(tool_context: ToolContext | None, results: list[dict]) -> N
         return
 
     recorded = tool_context.state.get(key) or ""
+    cap = config.max_sources_per_category()
+
     for result in results:
+        # Capped deliberately. Every title published here is a title synthesis
+        # may enumerate back out, and an uncapped list drove a nine-minute
+        # runaway generation on 2026-08-09. A researcher rarely cites more
+        # than a dozen sources usefully; the rest are noise that costs output
+        # tokens. The ledger still holds every source for the API payload —
+        # only synthesis's view is trimmed.
+        if recorded.count("\n") >= cap:
+            break
         url = str(result.get("url") or "").strip()
         if not url or url in recorded:
             continue
-        title = str(result.get("title") or "").strip()
+        title = " ".join(str(result.get("title") or "").split())[:120]
         recorded += f"- {title or url} :: {url}\n"
+
     tool_context.state[key] = recorded
 
 
