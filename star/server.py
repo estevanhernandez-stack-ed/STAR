@@ -364,7 +364,14 @@ async def create_room(req: RoomRequest, authorization: str | None = Header(None)
     # can recover it as "interrupted" instead of 404ing a room out of
     # existence. Same durability-only contract as _persist elsewhere — a
     # Firestore hiccup here must never stop a build from starting.
-    _persist(_runs[run_id], run_id, "running")
+    #
+    # Off the event loop deliberately. The Firestore client is blocking, and
+    # this is the only persistence call sitting in front of a response rather
+    # than inside a background task — left inline, a *slow* Firestore (not a
+    # failing one, which the try/except already covers) would stall the whole
+    # single-threaded loop and delay every other request and SSE stream on the
+    # instance before this caller even learns its run_id.
+    await asyncio.to_thread(_persist, _runs[run_id], run_id, "running")
     # Hold a strong reference so the event loop can't garbage-collect the
     # in-flight pipeline (asyncio keeps only weak refs to bare tasks).
     _runs[run_id]["task"] = asyncio.create_task(_execute(run_id, treatment))
