@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import FastAPI, Header, HTTPException  # noqa: E402
+from fastapi import FastAPI, Header, HTTPException, Request  # noqa: E402
 from fastapi.encoders import jsonable_encoder  # noqa: E402
 from fastapi.responses import Response, StreamingResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
@@ -34,6 +34,7 @@ config.validate_env()
 from star.agents.pipelines import build_room  # noqa: E402
 from star.auth import verify_token  # noqa: E402
 from star.findings import parse_findings  # noqa: E402
+from star.guards import DailyCap, RateLimiter  # noqa: E402
 from star.ledger import SourceLedger  # noqa: E402
 from star.models import Category  # noqa: E402
 from star.store import RoomStore, document_to_room, room_to_document  # noqa: E402
@@ -65,6 +66,14 @@ _TERMINAL_RUN_STATUSES = ("complete", "partial", "error")
 
 _store = RoomStore()
 
+# Abuse guards. In-memory is correct, not a compromise — see star/guards.py's
+# module docstring for why, and what breaks if this ever runs on more than
+# one instance.
+_ip_limiter = RateLimiter(
+    max_per_window=config.max_rooms_per_ip_per_hour(), window_seconds=3600
+)
+_daily_cap = DailyCap(max_per_day=config.max_rooms_per_day())
+
 
 def _require_uid(authorization: str | None) -> str:
     """Every /api route is scoped to a caller. No token, no data."""
@@ -72,6 +81,24 @@ def _require_uid(authorization: str | None) -> str:
     if uid is None:
         raise HTTPException(401, "Sign-in required.")
     return uid
+
+
+def _caller_key(request: Request) -> str:
+    """Identify the caller for rate limiting.
+
+    Cloud Run sits behind a load balancer, so `request.client.host` is the
+    load balancer's address, not the caller's. `X-Forwarded-For` is a
+    left-to-right chain: each proxy the request passes through appends its
+    own address to the end, so the *first* entry is the one the load
+    balancer itself put there — the original client — and every entry after
+    it is a proxy, not a caller. Take the first entry when the header is
+    present; fall back to `request.client.host` for direct/local traffic
+    that never passed through a proxy.
+    """
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
 
 
 def _build_categories(state: dict, ledger: SourceLedger) -> dict:
@@ -318,6 +345,13 @@ async def _execute(run_id: str, treatment: str) -> None:
         # used to discard the same filed research the timeout path goes out
         # of its way to preserve. Salvage here too before falling back to a
         # bare error.
+        #
+        # The client only ever sees a generic message below — this endpoint
+        # is public now, and `f"{type(exc).__name__}: {exc}"` used to hand a
+        # stranger our stack vocabulary (library names, table names, even a
+        # stray credential in an error string). The real detail still needs
+        # to exist somewhere, so it goes to the server log instead.
+        logger.exception("Run %s failed", run_id)
         salvaged = await _salvage(run, run_id)
         if salvaged:
             run["status"] = "partial"
@@ -334,11 +368,20 @@ async def _execute(run_id: str, treatment: str) -> None:
         else:
             run["status"] = "error"
             _persist(run, run_id, "error")
-            _push(run, "error", message=f"{type(exc).__name__}: {exc}")
+            _push(
+                run,
+                "error",
+                message=(
+                    "The department hit an unexpected problem and stopped. "
+                    "The details are in the server log."
+                ),
+            )
 
 
 @app.post("/api/rooms")
-async def create_room(req: RoomRequest, authorization: str | None = Header(None)) -> dict:
+async def create_room(
+    req: RoomRequest, request: Request, authorization: str | None = Header(None)
+) -> dict:
     uid = _require_uid(authorization)
     treatment = req.treatment.strip()
     if len(treatment) < 40:
@@ -348,6 +391,18 @@ async def create_room(req: RoomRequest, authorization: str | None = Header(None)
             400,
             f"Treatments are capped at {config.max_treatment_chars()} characters — "
             "send the department a treatment, not the novel.",
+        )
+    # One room build spends real money — a dozen or more live web searches
+    # plus several Gemini calls. Refuse before any of that runs, not after.
+    if not _daily_cap.check():
+        raise HTTPException(
+            429, "STAR has hit its daily research limit. Try again tomorrow."
+        )
+    if not _ip_limiter.check(_caller_key(request)):
+        raise HTTPException(
+            429,
+            "That is a lot of rooms in one hour. Give the department a moment "
+            "and try again shortly.",
         )
     run_id = uuid.uuid4().hex[:12]
     _runs[run_id] = {

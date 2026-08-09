@@ -32,6 +32,17 @@ def max_treatment_chars() -> int:
     return int(os.environ.get("STAR_MAX_TREATMENT_CHARS", "8000"))
 
 
+def max_rooms_per_ip_per_hour() -> int:
+    """Per-caller ceiling on a public endpoint that spends money to answer."""
+    return int(os.environ.get("STAR_MAX_ROOMS_PER_IP_PER_HOUR", "5"))
+
+
+def max_rooms_per_day() -> int:
+    """Global kill switch. One build is roughly 15 searches; 100 builds a day
+    is a generous demo allowance and a cheap disaster ceiling."""
+    return int(os.environ.get("STAR_MAX_ROOMS_PER_DAY", "100"))
+
+
 def max_synthesis_output_tokens() -> int:
     """Hard ceiling on the bible, because generation runs away without one.
 

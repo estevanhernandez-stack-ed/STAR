@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import os
 import re
 from unittest import mock
@@ -19,6 +20,16 @@ STAX = {
     "url": "https://staxmuseum.example/history",
     "excerpts": ["The old Capitol Theatre floor still raked downward."],
 }
+
+
+class _FakeRequest:
+    """Stand-in for FastAPI's `Request` when calling `create_room` directly
+    instead of through `TestClient` — direct calls bypass ASGI, so nothing
+    builds a real `Request` for us. Only what `_caller_key` reads."""
+
+    def __init__(self, host="127.0.0.1", headers=None):
+        self.client = mock.Mock(host=host)
+        self.headers = headers or {}
 
 
 def test_category_map_covers_every_researcher_author():
@@ -532,6 +543,7 @@ async def test_create_room_persists_a_running_placeholder_before_the_task_starts
     ):
         response = await server.create_room(
             server.RoomRequest(treatment="x" * 60),
+            request=_FakeRequest(),
             authorization=AUTH["Authorization"],
         )
     run_id = response["run_id"]
@@ -572,6 +584,7 @@ async def test_a_run_that_recycles_mid_build_recovers_as_interrupted_end_to_end(
     ):
         response = await server.create_room(
             server.RoomRequest(treatment="x" * 60),
+            request=_FakeRequest(),
             authorization=AUTH["Authorization"],
         )
         run_id = response["run_id"]
@@ -662,3 +675,85 @@ def test_config_js_exposes_only_the_public_firebase_keys_and_no_secrets():
 
     assert secret_google not in body
     assert secret_parallel not in body
+
+
+# --- Task 1: abuse guards on a publicly reachable endpoint ------------------
+
+
+def test_a_caller_past_the_hourly_limit_is_refused():
+    client = TestClient(server.app)
+    treatment = {"treatment": "x" * 60}
+
+    async def _noop(run_id, treatment):
+        return None
+
+    with (
+        mock.patch("star.server.verify_token", return_value="uid-one"),
+        mock.patch("star.server._store", mock.Mock()),
+        mock.patch("star.server._execute", _noop),
+        mock.patch("star.server._ip_limiter", server.RateLimiter(max_per_window=1, window_seconds=3600)),
+        mock.patch("star.server._daily_cap", server.DailyCap(max_per_day=1000)),
+    ):
+        first = client.post("/api/rooms", json=treatment, headers=AUTH)
+        second = client.post("/api/rooms", json=treatment, headers=AUTH)
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+
+    for run_id in (first.json()["run_id"],):
+        server._runs.pop(run_id, None)
+
+
+def test_the_daily_cap_refuses_everyone_once_it_trips():
+    client = TestClient(server.app)
+    treatment = {"treatment": "x" * 60}
+
+    with (
+        mock.patch("star.server.verify_token", return_value="uid-one"),
+        mock.patch("star.server._store", mock.Mock()),
+        mock.patch("star.server._ip_limiter", server.RateLimiter(max_per_window=99, window_seconds=3600)),
+        mock.patch("star.server._daily_cap", server.DailyCap(max_per_day=0)),
+    ):
+        response = client.post("/api/rooms", json=treatment, headers=AUTH)
+
+    assert response.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_a_pipeline_failure_does_not_leak_exception_detail_to_the_client(caplog):
+    """The message a stranger sees must not describe our internals — but the
+    real detail must still reach the server log, or losing it there would be
+    just as bad as leaking it to the client."""
+    server._runs["leaky"] = {
+        "events": [], "status": "running", "search_count": 0,
+        "ledger": SourceLedger(), "result": None, "uid": "uid-one",
+        "session_id": None,
+    }
+
+    async def _explode(run_id, treatment):
+        raise RuntimeError(
+            "psycopg2.OperationalError: password authentication failed for user 'star'"
+        )
+
+    with (
+        mock.patch("star.server._run_pipeline", _explode),
+        mock.patch("star.server._store", mock.Mock()),
+        caplog.at_level(logging.ERROR, logger="star.server"),
+    ):
+        await server._execute("leaky", "a treatment")
+
+    run = server._runs["leaky"]
+    errors = [e for e in run["events"] if e["type"] == "error"]
+    assert len(errors) == 1
+    message = errors[0]["message"]
+
+    assert "psycopg2" not in message
+    assert "password" not in message
+    assert "RuntimeError" not in message
+    assert "unexpected problem" in message
+
+    logged = "\n".join(record.getMessage() for record in caplog.records) + caplog.text
+    assert "psycopg2" in logged
+    assert "password" in logged
+
+    del server._runs["leaky"]
