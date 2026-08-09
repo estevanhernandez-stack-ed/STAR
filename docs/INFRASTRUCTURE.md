@@ -63,3 +63,27 @@ token audience `star-research-dept`, issuer
 ship in client code. Security comes from Auth and Firestore rules, not from
 hiding it. Do not treat it like `GOOGLE_API_KEY` or `PARALLEL_API_KEY`, which
 are secrets and stay in the gitignored `.env`.
+
+## Firestore security rules: none deployed, and that is correct
+
+Verified empirically 2026-08-09 with a real anonymous ID token against the
+Firestore REST API:
+
+| Probe | Result |
+| --- | --- |
+| `GET /users` (enumerate all users) | 403 `PERMISSION_DENIED` |
+| `PATCH /users/{own_uid}/rooms/...` | 403 `PERMISSION_DENIED` |
+| `GET /users/{other_uid}/rooms` | 403 `PERMISSION_DENIED` |
+
+**No ruleset is deployed, and with none deployed Firestore denies all
+client-side access.** That is the desired posture here: the server owns every
+read and write through Application Default Credentials, which bypass rules
+entirely, and the browser holds a token that is useful only against STAR's own
+API. One security boundary, not two.
+
+**Do not "fix" this by deploying permissive test-mode rules.** A ruleset of the
+`allow read, write: if true` shape would hand every browser token direct
+read access to every user's rooms and silently void the boundary the server
+was built to be. If rules are ever deployed, they must be deny-by-default with
+ownership checks, and this probe should be re-run to confirm the posture did
+not invert.
