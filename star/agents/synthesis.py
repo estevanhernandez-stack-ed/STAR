@@ -28,12 +28,24 @@ synthesis_agent = Agent(
         "<findings_objects_props>\n{findings_objects_props?}\n</findings_objects_props>\n\n"
         "<findings_logistics>\n{findings_logistics?}\n</findings_logistics>\n\n"
         "<findings_forces_conflicts>\n{findings_forces_conflicts?}\n</findings_forces_conflicts>\n\n"
+        # Real source titles, published by parallel_search from what the
+        # search API actually returned. Without these, synthesis is asked for
+        # titles it was never given and invents every one.
+        "<sources>\n"
+        "{sources_setting?}"
+        "{sources_objects_props?}"
+        "{sources_logistics?}"
+        "{sources_forces_conflicts?}"
+        "</sources>\n\n"
         "Produce a single markdown document with four sections:\n"
         "1. Setting & Atmosphere  2. Objects & Props  3. Logistics  "
         "4. Forces & Conflicts\n\n"
         "Rules: keep every fact tied to its source with inline numbered "
         "markers like [1], and end each section with its numbered source list "
-        "(title — URL). Preserve researchers' uncertainty flags verbatim in a "
+        "(title — URL). Take every title VERBATIM from the <sources> block "
+        "above; never write a title of your own. If a cited URL has no entry "
+        "there, list the bare URL with no title rather than inventing one. "
+        "Preserve researchers' uncertainty flags verbatim in a "
         "'Verify before writing' note per section. Write for a working writer: "
         "concrete, sensory, scene-usable detail over encyclopedia summary."
     ),

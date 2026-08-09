@@ -34,6 +34,45 @@ def reset_search_budget() -> None:
     _fallback_count = 0
 
 
+def _sources_key(agent_name: str) -> str | None:
+    """State key a researcher publishes its sources under, or None.
+
+    One key per researcher, never a shared list. The four researchers run
+    concurrently under ParallelAgent and share session state, so a single
+    accumulating key would carry the same lost-update race the search counter
+    already documents. Per-category keys mean no two writers ever touch the
+    same key.
+    """
+    if not agent_name or not agent_name.startswith("researcher_"):
+        return None
+    return "sources_" + agent_name.removeprefix("researcher_")
+
+
+def _publish_sources(tool_context: ToolContext | None, results: list[dict]) -> None:
+    """Record real titles into session state so synthesis can cite them.
+
+    The server's SourceLedger is the authority for the API payload, but it
+    lives outside the ADK run and synthesis can only see session state. Without
+    this, synthesis is asked for source titles it was never given and invents
+    every one. Failure here is silent by design: the categories payload is
+    unaffected, and the bible simply falls back to bare URLs.
+    """
+    if tool_context is None:
+        return
+    key = _sources_key(getattr(tool_context, "agent_name", "") or "")
+    if key is None:
+        return
+
+    recorded = tool_context.state.get(key) or ""
+    for result in results:
+        url = str(result.get("url") or "").strip()
+        if not url or url in recorded:
+            continue
+        title = str(result.get("title") or "").strip()
+        recorded += f"- {title or url} :: {url}\n"
+    tool_context.state[key] = recorded
+
+
 def _spend_budget(tool_context: ToolContext | None) -> bool:
     """Returns True if a search may proceed; counts the spend."""
     global _fallback_count
@@ -85,7 +124,9 @@ def parallel_search(
         objective=objective,
         search_queries=search_queries,
     )
-    return [
+    results = [
         {"title": r.title, "url": r.url, "excerpts": list(r.excerpts)}
         for r in search.results
     ]
+    _publish_sources(tool_context, results)
+    return results
