@@ -29,6 +29,9 @@ from star import config  # noqa: E402
 config.validate_env()
 
 from star.agents.pipelines import build_room  # noqa: E402
+from star.findings import parse_findings  # noqa: E402
+from star.ledger import SourceLedger  # noqa: E402
+from star.models import Category  # noqa: E402
 
 app = FastAPI(title="STAR — Story & Treatment Agentic Research")
 
@@ -44,6 +47,16 @@ _FRIENDLY = {
     "researcher_forces_conflicts": "Forces & conflicts researcher",
     "synthesis": "Editor",
 }
+
+_CATEGORY_BY_AUTHOR = {f"researcher_{c.value}": c for c in Category}
+
+
+def _build_categories(state: dict, ledger: SourceLedger) -> dict:
+    """Parse every category's researcher prose against the run's ledger."""
+    return {
+        c.value: parse_findings(state.get(f"findings_{c.value}"), c, ledger)
+        for c in Category
+    }
 
 
 class RoomRequest(BaseModel):
@@ -71,10 +84,21 @@ async def _execute(run_id: str, treatment: str) -> None:
             author = getattr(event, "author", None) or "system"
             label = _FRIENDLY.get(author, author)
 
+            category = _CATEGORY_BY_AUTHOR.get(author)
+
             for call in event.get_function_calls() or []:
                 objective = (call.args or {}).get("objective", "")
                 run["search_count"] += 1
-                _push(run, "search", agent=label, objective=objective)
+                _push(
+                    run,
+                    "search",
+                    agent=label,
+                    objective=objective,
+                    category=category.value if category else None,
+                )
+
+            for response in event.get_function_responses() or []:
+                run["ledger"].record(label, getattr(response, "response", None))
 
             content = getattr(event, "content", None)
             if content and getattr(content, "parts", None):
@@ -95,6 +119,8 @@ async def _execute(run_id: str, treatment: str) -> None:
                 "research_plan": state.get("research_plan"),
                 "research_bible": state.get("research_bible"),
                 "search_count": run["search_count"],
+                "categories": _build_categories(state, run["ledger"]),
+                "source_count": len(run["ledger"]),
             }
         )
         run["status"] = "complete"
@@ -121,6 +147,7 @@ async def create_room(req: RoomRequest) -> dict:
         "status": "running",
         "result": None,
         "search_count": 0,
+        "ledger": SourceLedger(),
     }
     # Hold a strong reference so the event loop can't garbage-collect the
     # in-flight pipeline (asyncio keeps only weak refs to bare tasks).
