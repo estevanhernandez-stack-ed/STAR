@@ -517,7 +517,12 @@ async def test_a_synthesis_failure_also_salvages_filed_research():
     assert run["result"]["categories"]["setting"]["findings"][0]["fact"]
     events = [e for e in run["events"] if e["type"] == "partial"]
     assert len(events) == 1
-    assert "RuntimeError" in events[0]["message"]
+    # The client message must not name the exception class. That is thinner
+    # than leaking a full message, but it is still our vocabulary in a
+    # stranger's browser on a public endpoint. The type belongs in the log.
+    assert "RuntimeError" not in events[0]["message"]
+    assert "Gemini" not in events[0]["message"]
+    assert "findings" in events[0]["message"]
     assert not [e for e in run["events"] if e["type"] == "error"]
 
     del server._runs["synth-fails"]

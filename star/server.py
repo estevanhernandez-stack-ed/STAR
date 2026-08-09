@@ -360,9 +360,13 @@ async def _execute(run_id: str, treatment: str) -> None:
                 run,
                 "partial",
                 search_count=run["search_count"],
+                # No exception class name here either. It is a thinner leak
+                # than a full message, but it is still our vocabulary in a
+                # stranger's browser, and it reads worse to a human than
+                # plain language does. The type is in the log line above.
                 message=_partial_message(
-                    f"The editor hit an error ({type(exc).__name__}) before it "
-                    "could finish writing the bible."
+                    "The editor hit a problem before it could finish writing "
+                    "the bible."
                 ),
             )
         else:
