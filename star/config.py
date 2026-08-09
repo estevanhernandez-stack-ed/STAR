@@ -47,11 +47,18 @@ def max_synthesis_output_tokens() -> int:
 def max_sources_per_category() -> int:
     """Cap the source list handed to synthesis.
 
-    Every title fed in is a title synthesis may enumerate back out, so an
-    uncapped list is the main driver of runaway output. Researchers rarely
-    cite more than a dozen sources per category usefully.
+    Deliberately generous. This started at 25 on the theory that a long source
+    list was inflating synthesis output, but measurement did not support it:
+    bibles came in at 6.2k, 16.5k, and 16.5k characters across runs whose
+    caps differed, and the spread within a single cap was as wide as the
+    spread between caps. Run-to-run variance swamps this knob.
+
+    The real runaway guard is max_synthesis_output_tokens, which bounds the
+    output directly rather than guessing at an input that correlates with it.
+    This cap stays only to keep a pathological source list from bloating the
+    prompt, and 60 is well above what any observed run produced per category.
     """
-    return int(os.environ.get("STAR_MAX_SOURCES_PER_CATEGORY", "25"))
+    return int(os.environ.get("STAR_MAX_SOURCES_PER_CATEGORY", "60"))
 
 
 def run_timeout_seconds() -> int:
@@ -61,8 +68,14 @@ def run_timeout_seconds() -> int:
     a future agent with its own limits should still surface as a visible error
     rather than a UI that spins forever and a container that never frees the
     connection.
+
+    Raised from 420 to 600 after a legitimate, non-pathological run tripped the
+    420s ceiling. Observed durations for one fixed treatment ranged from 146s
+    to over 420s, so a ceiling that normal runs hit is a ceiling that turns
+    slowness into failure. This is a backstop, not a performance budget: the
+    pipeline's duration variance is a separate problem and a real demo risk.
     """
-    return int(os.environ.get("STAR_RUN_TIMEOUT_SECONDS", "420"))
+    return int(os.environ.get("STAR_RUN_TIMEOUT_SECONDS", "600"))
 
 
 def validate_env() -> None:
