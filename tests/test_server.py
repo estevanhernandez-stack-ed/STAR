@@ -241,3 +241,31 @@ def test_a_run_stored_as_running_but_absent_from_memory_becomes_interrupted():
 
     assert response.json()["status"] == "interrupted"
     fake_store.mark_interrupted.assert_called_once_with("uid-one", "stuck")
+
+
+# -- Task 3 review round 1: persistence must never rewrite the outcome ------
+
+
+def test_a_persistence_failure_does_not_relabel_a_successful_run():
+    """The pipeline succeeded. Losing durability must not become an error."""
+    run = {
+        "status": "complete",
+        "events": [],
+        "result": {"research_bible": "x"},
+        "uid": "uid-one",
+    }
+    fake_store = mock.Mock()
+    fake_store.save.side_effect = RuntimeError("Firestore unavailable")
+
+    with mock.patch("star.server._store", fake_store):
+        server._persist(run, "some-run-id", "complete")  # must not raise
+
+    assert run["status"] == "complete"
+    assert run["events"] == []
+    fake_store.save.assert_called_once()
+
+
+def test_post_rooms_rejects_a_request_with_no_token():
+    client = TestClient(server.app)
+    response = client.post("/api/rooms", json={"treatment": "x" * 60})
+    assert response.status_code == 401

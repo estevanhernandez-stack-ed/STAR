@@ -9,6 +9,7 @@ Run from the repo root:
 
 import asyncio
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -35,6 +36,8 @@ from star.findings import parse_findings  # noqa: E402
 from star.ledger import SourceLedger  # noqa: E402
 from star.models import Category  # noqa: E402
 from star.store import RoomStore, document_to_room, room_to_document  # noqa: E402
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="STAR — Story & Treatment Agentic Research")
 
@@ -102,6 +105,26 @@ def _maybe_warn_empty_ledger(run: dict) -> None:
         )
 
 
+def _persist(run: dict, run_id: str, status: str) -> None:
+    """Best-effort persistence. Must never affect the in-memory run state:
+    the outcome was already decided by the caller before this runs, and a
+    Firestore hiccup here should cost only durability, never correctness.
+    """
+    try:
+        _store.save(
+            run["uid"],
+            run_id,
+            room_to_document(
+                run_id,
+                run.get("result"),
+                status,
+                datetime.now(timezone.utc).isoformat(),  # noqa: UP017
+            ),
+        )
+    except Exception:
+        logger.exception("Failed to persist %s run %s", status, run_id)
+
+
 async def _execute(run_id: str, treatment: str) -> None:
     run = _runs[run_id]
     try:
@@ -165,32 +188,11 @@ async def _execute(run_id: str, treatment: str) -> None:
             }
         )
         run["status"] = "complete"
-        _store.save(
-            run["uid"],
-            run_id,
-            room_to_document(
-                run_id,
-                run["result"],
-                "complete",
-                datetime.now(timezone.utc).isoformat(),  # noqa: UP017
-            ),
-        )
+        _persist(run, run_id, "complete")
         _push(run, "complete", search_count=run["search_count"])
     except Exception as exc:  # surface real errors to the UI during dev
         run["status"] = "error"
-        try:
-            _store.save(
-                run["uid"],
-                run_id,
-                room_to_document(
-                    run_id,
-                    run.get("result"),
-                    "error",
-                    datetime.now(timezone.utc).isoformat(),  # noqa: UP017
-                ),
-            )
-        except Exception:  # noqa: BLE001, S110
-            pass  # a failed run that also fails to persist is still a failed run
+        _persist(run, run_id, "error")
         _push(run, "error", message=f"{type(exc).__name__}: {exc}")
 
 
