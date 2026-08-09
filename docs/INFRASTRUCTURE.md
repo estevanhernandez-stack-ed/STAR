@@ -177,3 +177,27 @@ Summary:
 **Not exercised in this pass:** building an actual research room. Each build
 spends real money on live web searches; that first production spend is the
 controller's call, not something this deploy step takes on its own.
+
+## Reading the Cloud Run service YAML without being fooled
+
+`gcloud run services describe star --format yaml` contains **two** `maxScale`
+keys and **two** `timeoutSeconds` keys, and in both cases the first one you
+hit is not the one that governs. This cost a false alarm on 2026-08-09.
+
+| Key | Where | Meaning |
+| --- | --- | --- |
+| `run.googleapis.com/maxScale: '20'` | service annotations, near the top | a GCP-level hint. **Not** the effective cap. |
+| `autoscaling.knative.dev/maxScale: '1'` | revision template annotations | the real instance ceiling. |
+| `timeoutSeconds: 240` | nested under `tcpSocket:` | the **startup probe** timeout. |
+| `timeoutSeconds: 900` | container spec, top level | the **request** timeout. |
+
+Ask the serving revision instead of grepping the service:
+
+```bash
+REV=$(gcloud run services describe star --project star-research-dept   --region us-central1 --format="value(status.latestReadyRevisionName)")
+gcloud run revisions describe "$REV" --project star-research-dept   --region us-central1   --format="value(metadata.annotations['autoscaling.knative.dev/maxScale'],spec.timeoutSeconds,spec.containerConcurrency)"
+```
+
+Expected: `1	900	80`. If the first value is ever not `1`, stop — `_runs`
+is per-process, so live builds break and the in-memory abuse guards silently
+become per-instance.
