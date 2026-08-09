@@ -1,6 +1,6 @@
 /* STAR frontend — build a room, watch it happen, read the bible. */
 
-import { authedFetch, isEphemeral } from "/auth.js";
+import { authedFetch, getIdToken } from "/auth.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -41,6 +41,16 @@ async function buildRoom() {
   $("intake-error").textContent = "";
   $("build-btn").disabled = true;
 
+  // Firebase Auth is a hard dependency: with no token, POST /api/rooms is a
+  // 401 by construction. Check before spending a doomed round trip, and say
+  // why rather than surfacing the generic error that request would produce.
+  const token = await getIdToken();
+  if (!token) {
+    $("auth-error").classList.remove("hidden");
+    $("build-btn").disabled = false;
+    return;
+  }
+
   let runId;
   try {
     const res = await authedFetch("/api/rooms", {
@@ -59,7 +69,6 @@ async function buildRoom() {
   intakePanel.classList.add("hidden");
   progressPanel.classList.remove("hidden");
   addEntry("done", "Treatment received. The department is assembling.");
-  if (isEphemeral()) $("ephemeral-banner").classList.remove("hidden");
 
   const source = new EventSource(`/api/rooms/${runId}/events`);
   source.onmessage = (msg) => {

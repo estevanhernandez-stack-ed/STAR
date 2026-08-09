@@ -16,11 +16,13 @@ const REFRESH = "https://securetoken.googleapis.com/v1/token";
 
 let idToken = null;
 let expiresAt = 0;
-let ephemeral = false;
-
-export function isEphemeral() {
-  return ephemeral;
-}
+// Concurrency guard: two callers arriving before the first sign-in/refresh
+// resolves must not both hit the network — that would mint two anonymous
+// Firebase accounts racing over which refresh token wins in localStorage,
+// breaking the "same uid, same rooms on reload" promise above. Every caller
+// that arrives while a request is already in flight awaits the same promise
+// instead of starting its own.
+let pending = null;
 
 async function signUpAnonymously() {
   const res = await fetch(`${SIGNUP}?key=${FIREBASE.apiKey}`, {
@@ -47,12 +49,21 @@ function remember(token, refreshToken, expiresIn) {
   idToken = token;
   // Refresh a minute early rather than racing the expiry.
   expiresAt = Date.now() + (Number(expiresIn) - 60) * 1000;
-  if (refreshToken) localStorage.setItem(STORE_KEY, refreshToken);
+  if (refreshToken) {
+    // Losing durability of the refresh token (quota exceeded, storage
+    // disabled in a privacy mode) is not the same failure as failing to
+    // sign in — the session already holds a good idToken in memory. Only
+    // cross-reload persistence is lost, so this write gets its own catch
+    // rather than letting a storage error read as a sign-in failure.
+    try {
+      localStorage.setItem(STORE_KEY, refreshToken);
+    } catch {
+      // Ignored: see comment above.
+    }
+  }
 }
 
-export async function getIdToken() {
-  if (idToken && Date.now() < expiresAt) return idToken;
-
+async function acquireToken() {
   try {
     const stored = localStorage.getItem(STORE_KEY);
     if (stored) {
@@ -68,11 +79,21 @@ export async function getIdToken() {
   try {
     const fresh = await signUpAnonymously();
     remember(fresh.idToken, fresh.refreshToken, fresh.expiresIn);
-    ephemeral = false;
     return idToken;
   } catch {
-    ephemeral = true;
     return null;
+  }
+}
+
+export async function getIdToken() {
+  if (idToken && Date.now() < expiresAt) return idToken;
+  if (pending) return pending;
+
+  pending = acquireToken();
+  try {
+    return await pending;
+  } finally {
+    pending = null;
   }
 }
 
