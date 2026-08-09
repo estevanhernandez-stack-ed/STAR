@@ -5,7 +5,7 @@ venv/
 
 # Browser-automation artifacts: screenshots, snapshots, console logs.
 .playwright-mcp/
-*-live-build.png
+star-*.png
 
 # Agent tooling — .mcp.json carries a live bearer token in an
 # Authorization header. Never commit it; the repo is public.
