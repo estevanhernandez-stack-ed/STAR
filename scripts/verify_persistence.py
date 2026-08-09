@@ -30,7 +30,7 @@ load_dotenv()
 
 from google.api_core import exceptions as gcloud_exceptions  # noqa: E402
 
-from star.store import RoomStore, room_summary, room_to_document  # noqa: E402, F401
+from star.store import RoomStore, room_to_document  # noqa: E402
 
 UID = "verify-throwaway-uid"
 RUN_ID = "verify-run"
@@ -45,10 +45,35 @@ RESULT = {
 }
 
 
+def _cleanup(store) -> None:
+    """Delete every document this script may have written.
+
+    Runs from a finally block, not the happy path. This writes to the real
+    database, so a failed assertion partway through must not leave throwaway
+    documents behind — and an assertion failing is exactly the case where
+    someone re-runs the script and needs a clean slate.
+    """
+    for doc_id in (RUN_ID, SLASH_RUN_ID, MISSING_RUN_ID):
+        try:
+            store.client.collection(f"users/{UID}/rooms").document(doc_id).delete()
+        except Exception as exc:  # noqa: BLE001
+            print(f"cleanup: could not delete {doc_id}: {type(exc).__name__}")
+
+
 def main() -> int:
     print("project:", os.environ.get("GOOGLE_CLOUD_PROJECT"))
     store = RoomStore()
+    try:
+        _verify(store)
+    finally:
+        _cleanup(store)
+        print("cleaned up")
 
+    print("\nround trip complete against real Firestore")
+    return 0
+
+
+def _verify(store) -> None:
     doc = room_to_document(RUN_ID, RESULT, "complete", "2026-08-09T12:00:00Z")
     store.save(UID, RUN_ID, doc)
     print(f"wrote /users/{UID}/rooms/{RUN_ID}")
@@ -107,14 +132,6 @@ def main() -> int:
 
     assert store.get("someone-else", RUN_ID) is None
     print("cross-user read correctly returns None")
-
-    store.client.collection("users").document(UID).collection("rooms").document(RUN_ID).delete()
-    store.client.collection(f"users/{UID}/rooms").document(SLASH_RUN_ID).delete()
-    store.client.collection(f"users/{UID}/rooms").document(MISSING_RUN_ID).delete()
-    print("cleaned up")
-
-    print("\nround trip complete against real Firestore")
-    return 0
 
 
 if __name__ == "__main__":
