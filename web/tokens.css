@@ -1,0 +1,100 @@
+/* THE MORGUE — the clipping library behind the newsroom.
+   Every value here is a decision recorded in docs/design/DIRECTION.md.
+   Two rules govern this file:
+     - Manila owns >40% of the room's pixel area in the filed state.
+     - Aniline is a flat stamp-ink solid. Never a gradient. Never a brand wash.
+
+   Font notes (verified against the vendored binaries in web/vendor/fonts/):
+     - Archivo Narrow ships as two static instances (400, 700) — no variable
+       axis, matches the brief.
+     - Newsreader ships as two variable fonts (roman + italic), each with a
+       real fvar table: wght 200-800, opsz 6-72 (default 18). The opsz range
+       below matches what's actually in the binary, not just the brief's
+       weight-only guess.
+     - Sligoil's "Regular" is the family's base style, named "Micro" upstream
+       (Sligoil Micro / MicroMedium / MicroBold). The file is vendored as
+       sligoil.woff2 for a stable local name; OFL license text for all three
+       families ships alongside the binaries in web/vendor/fonts/.
+*/
+
+@font-face {
+  font-family: "Archivo Narrow";
+  src: url("/vendor/fonts/archivo-narrow-400.woff2") format("woff2");
+  font-weight: 400; font-display: swap;
+}
+@font-face {
+  font-family: "Archivo Narrow";
+  src: url("/vendor/fonts/archivo-narrow-700.woff2") format("woff2");
+  font-weight: 700; font-display: swap;
+}
+@font-face {
+  font-family: "Newsreader";
+  src: url("/vendor/fonts/newsreader.woff2") format("woff2");
+  font-weight: 200 800;
+  font-display: swap;
+  /* opsz (6-72, default 18) has no @font-face descriptor to declare — the
+     browser reads the range straight from the font's fvar table and applies
+     it automatically per computed font-size via font-optical-sizing: auto
+     (the default; not overridden here). Confirmed present via fontTools. */
+}
+@font-face {
+  font-family: "Newsreader";
+  src: url("/vendor/fonts/newsreader-italic.woff2") format("woff2");
+  font-weight: 200 800;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Sligoil";
+  src: url("/vendor/fonts/sligoil.woff2") format("woff2");
+  font-weight: 400; font-display: swap;
+}
+
+:root {
+  /* Cabinet — the frame, never the subject */
+  --cabinet: #232B27;        /* olive-drab steel furniture, not "dark mode" */
+  --drawer-shadow: #171D1A;  /* the recessed well; one step down, never black */
+
+  /* Manila — the cards ARE the page */
+  --manila: #D2B98C;
+  --manila-edge: #B99F70;    /* folder edge, tab shadow */
+  --onionskin: #E9E2D2;      /* expanded reading surface. A COMPONENT.
+                                If this ever becomes a page ground, the
+                                direction lands in the cream-and-serif
+                                default by the side door. */
+
+  /* Stamp pads — exactly two, each meaning exactly one thing */
+  --aniline: #5C3D91;        /* FILED. Flat ink. Never a gradient. */
+  --oxide: #B3341F;          /* FLAGGED. UNSOURCED, and later anachronism. */
+
+  /* Pencil — metadata, labels, and the unstamped state */
+  --pencil: #7E8B7F;
+  --ink: #1B211D;            /* text on manila */
+
+  /* Type */
+  --label: "Archivo Narrow", "Arial Narrow", sans-serif;
+  --body: "Newsreader", Georgia, serif;
+  --slug: "Sligoil", "SFMono-Regular", ui-monospace, monospace;
+
+  /* Scale — a filing label is small and wide-tracked; body text is not */
+  --label-sm: 0.6875rem;  /* 11px drawer plates, stamp slugs */
+  --label-md: 0.8125rem;  /* 13px folder tabs */
+  --text-sm: 0.875rem;    /* 14px clip excerpts */
+  --text-md: 1.0625rem;   /* 17px findings */
+  --text-lg: 1.375rem;    /* 22px room title */
+
+  --track-label: 0.14em;  /* labels are tracked wide; body text never is */
+
+  /* Motion default. Declared BEFORE the reduced-motion override below:
+     both rules target :root at equal specificity, so with equal specificity
+     the later rule wins regardless of the @media condition. Verified in a
+     real browser with prefers-reduced-motion emulated — the brief's original
+     order (override first, default second) left the default always winning
+     and silently defeated the accessibility feature. This order was
+     inverted for that reason. */
+  --stamp-duration: 220ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --stamp-duration: 0ms; }
+}
