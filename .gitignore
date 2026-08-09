@@ -3,6 +3,12 @@
 .venv/
 venv/
 
+# Agent tooling — .mcp.json carries a live bearer token in an
+# Authorization header. Never commit it; the repo is public.
+.mcp.json
+.claude/
+.superpowers/
+
 # Python
 __pycache__/
 *.pyc
