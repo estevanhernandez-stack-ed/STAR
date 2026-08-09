@@ -1,13 +1,21 @@
 """Per-run ledger of every source the Parallel Search API actually returned.
 
-The researchers write findings as prose and cite URLs. Titles and excerpts are
-never taken from the model — they are hydrated from this ledger, which records
-only what `parallel_search` genuinely returned. A cited URL absent from the
-ledger came from nowhere, and gets flagged rather than rendered as a source.
+The researchers write findings as prose and cite URLs. Where `star/findings.py`
+builds the `categories` payload, titles and excerpts are never taken from the
+model — they are hydrated from this ledger, which records only what
+`parallel_search` genuinely returned. A cited URL absent from the ledger came
+from nowhere, and gets flagged rather than rendered as a source. (This
+guarantee does not reach `research_bible`, a separate synthesis path — see
+`star/findings.py`'s module docstring.)
 
 ADK wraps a function tool's return value before placing it on the response
-part. `unwrap_results` handles every plausible wrapping so the ledger cannot be
-broken by an ADK upgrade quietly changing the envelope.
+part. `unwrap_results` handles the four wrappings observed against a live ADK
+2.6.2 run (see `tests/test_response_shape.py`). It is not proof against every
+future envelope: a wrapping this function doesn't recognize returns `[]`
+rather than raising, so an ADK upgrade that changes the shape again empties
+the ledger silently instead of breaking loudly. `star.server._execute` guards
+that specific failure by checking for a nonzero search count against a still
+empty ledger and pushing a warning event.
 """
 
 from dataclasses import dataclass, field

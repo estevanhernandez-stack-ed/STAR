@@ -93,3 +93,35 @@ def test_room_endpoint_exposes_categories():
 def test_unknown_room_still_404s():
     client = TestClient(server.app)
     assert client.get("/api/rooms/does-not-exist").status_code == 404
+
+
+# -- Finding 6: a fifth ADK envelope must fail loud, not silently -----------
+
+
+def test_maybe_warn_empty_ledger_pushes_a_warning_when_searches_ran_dry():
+    """Simulates a hypothetical fifth envelope shape unwrap_results can't
+    recognize: searches happened but nothing landed in the ledger."""
+    run = {"events": [], "search_count": 3, "ledger": SourceLedger()}
+
+    server._maybe_warn_empty_ledger(run)
+
+    assert len(run["events"]) == 1
+    assert run["events"][0]["type"] == "warning"
+
+
+def test_maybe_warn_empty_ledger_stays_quiet_when_the_ledger_has_sources():
+    ledger = SourceLedger()
+    ledger.record("Setting researcher", [STAX])
+    run = {"events": [], "search_count": 3, "ledger": ledger}
+
+    server._maybe_warn_empty_ledger(run)
+
+    assert run["events"] == []
+
+
+def test_maybe_warn_empty_ledger_stays_quiet_when_no_searches_ran():
+    run = {"events": [], "search_count": 0, "ledger": SourceLedger()}
+
+    server._maybe_warn_empty_ledger(run)
+
+    assert run["events"] == []

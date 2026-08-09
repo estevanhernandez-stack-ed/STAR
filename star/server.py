@@ -67,6 +67,28 @@ def _push(run: dict, event_type: str, **data) -> None:
     run["events"].append({"type": event_type, **data})
 
 
+def _maybe_warn_empty_ledger(run: dict) -> None:
+    """Surface the fifth-envelope failure `unwrap_results` can't rule out.
+
+    `SourceLedger.record` skips anything without a URL, so an ADK upgrade
+    that quietly changes the function-response envelope makes every response
+    unwrap to `[]` — searches ran, nothing landed, every citation this run
+    produces reads as unverified, and nothing raises. This is the one signal
+    the ledger being pure can't self-report; push it as a visible event
+    instead of letting the run look clean.
+    """
+    if run["search_count"] > 0 and len(run["ledger"]) == 0:
+        _push(
+            run,
+            "warning",
+            message=(
+                "Searches ran but the source ledger came back empty — the ADK "
+                "response envelope may have changed shape. Every citation in "
+                "this run will show as unverified."
+            ),
+        )
+
+
 async def _execute(run_id: str, treatment: str) -> None:
     run = _runs[run_id]
     try:
@@ -98,7 +120,11 @@ async def _execute(run_id: str, treatment: str) -> None:
                 )
 
             for response in event.get_function_responses() or []:
-                run["ledger"].record(label, getattr(response, "response", None))
+                # Key by the raw author, not the friendly label, so found_by
+                # joins cleanly against _CATEGORY_BY_AUTHOR (which is also
+                # keyed by raw author). The friendly label stays user-facing,
+                # in the SSE "search" event above.
+                run["ledger"].record(author, getattr(response, "response", None))
 
             content = getattr(event, "content", None)
             if content and getattr(content, "parts", None):
@@ -108,6 +134,8 @@ async def _execute(run_id: str, treatment: str) -> None:
                 is_final = getattr(event, "is_final_response", lambda: True)()
                 if text.strip() and is_final:
                     _push(run, "agent_done", agent=label)
+
+        _maybe_warn_empty_ledger(run)
 
         final = await _runner.session_service.get_session(
             app_name="star", user_id="web", session_id=session.id

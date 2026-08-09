@@ -133,3 +133,130 @@ def test_empty_prose_yields_an_empty_doc_with_zero_parse_rate():
 def test_none_prose_is_treated_as_empty():
     doc = parse_findings(None, Category.FORCES_CONFLICTS, make_ledger())
     assert doc.findings == []
+
+
+# -- Finding 1: URL recovery ladder ------------------------------------------
+
+
+def test_findings_recover_a_parenthesized_url_via_the_ladder():
+    url = "https://en.wikipedia.org/wiki/Stax_(record_label)"
+    ledger = SourceLedger()
+    ledger.record(
+        "Setting researcher",
+        [{"title": "Stax (record label)", "url": url, "excerpts": ["A soul label."]}],
+    )
+    doc = parse_findings(f"- Stax was a label :: {url}", Category.SETTING, ledger)
+
+    assert doc.findings[0].citations[0].url == url
+    assert doc.findings[0].unverified_urls == []
+
+
+def test_findings_recover_a_url_with_trailing_exclamation():
+    url = "https://a.example/great-take"
+    ledger = SourceLedger()
+    ledger.record("Setting researcher", [{"title": "T", "url": url, "excerpts": ["e"]}])
+    doc = parse_findings(f"- Quite a take :: {url}!", Category.SETTING, ledger)
+
+    assert doc.findings[0].citations[0].url == url
+    assert doc.findings[0].unverified_urls == []
+
+
+def test_findings_recover_a_url_with_trailing_question_mark():
+    url = "https://a.example/great-take"
+    ledger = SourceLedger()
+    ledger.record("Setting researcher", [{"title": "T", "url": url, "excerpts": ["e"]}])
+    doc = parse_findings(f"- Was it though :: {url}?", Category.SETTING, ledger)
+
+    assert doc.findings[0].citations[0].url == url
+    assert doc.findings[0].unverified_urls == []
+
+
+def test_findings_keep_a_semicolon_inside_a_query_string():
+    url = "https://a.example/search?q=1;b=2"
+    ledger = SourceLedger()
+    ledger.record("Setting researcher", [{"title": "T", "url": url, "excerpts": ["e"]}])
+    doc = parse_findings(f"- Two params :: {url}", Category.SETTING, ledger)
+
+    assert doc.findings[0].citations[0].url == url
+    assert doc.findings[0].unverified_urls == []
+
+
+def test_findings_recover_an_uppercase_scheme():
+    url = "https://a.example/x"
+    ledger = SourceLedger()
+    ledger.record("Setting researcher", [{"title": "T", "url": url, "excerpts": ["e"]}])
+    doc = parse_findings("- Fact :: HTTPS://a.example/x", Category.SETTING, ledger)
+
+    assert doc.findings[0].citations[0].url == url
+    assert doc.findings[0].unverified_urls == []
+
+
+def test_findings_do_not_ladder_a_fabricated_url_into_a_similar_real_one():
+    """The ladder only tries specific, narrow rewrites verified against the
+    ledger -- it must never fuzzy-match a fabricated URL onto a real entry
+    that merely looks similar, or the anti-fabrication guarantee is dead."""
+    ledger = make_ledger()
+    fabricated = STAX["url"] + "-fake"
+    doc = parse_findings(f"- A fabricated claim :: {fabricated}", Category.SETTING, ledger)
+
+    assert doc.findings[0].citations == []
+    assert doc.findings[0].unverified_urls == [fabricated]
+    assert doc.unverified_count == 1
+
+
+# -- Finding 2: a second `::` fails loud instead of dropping a segment ------
+
+
+def test_parse_line_rejects_a_second_separator_instead_of_dropping_the_middle():
+    assert (
+        parse_finding_line("- Sam Phillips said :: it was 1950 :: https://a.example/x")
+        is None
+    )
+
+
+def test_findings_a_second_separator_falls_to_field_notes_and_lowers_parse_rate():
+    prose = (
+        f"- A good finding :: {STAX['url']}\n"
+        "- Sam Phillips said :: it was 1950 :: https://a.example/x\n"
+    )
+    doc = parse_findings(prose, Category.SETTING, make_ledger())
+
+    assert len(doc.findings) == 1
+    assert "Sam Phillips said :: it was 1950 :: https://a.example/x" in doc.field_notes
+    assert doc.parse_rate == 0.5
+
+
+# -- Finding 3: excerpt chosen by relevance, not arrival order --------------
+
+
+def test_findings_pick_the_excerpt_relevant_to_the_fact_over_arrival_order():
+    shared_url = "https://shared.example/source"
+    ledger = SourceLedger()
+    ledger.record(
+        "Props researcher",
+        [
+            {
+                "title": "Shared source",
+                "url": shared_url,
+                "excerpts": ["The trumpet case was battered leather."],
+            }
+        ],
+    )
+    ledger.record(
+        "Setting researcher",
+        [
+            {
+                "title": "Shared source",
+                "url": shared_url,
+                "excerpts": ["The theater floor sloped toward the stage."],
+            }
+        ],
+    )
+    doc = parse_findings(
+        f"- The floor sloped toward the stage :: {shared_url}", Category.SETTING, ledger
+    )
+
+    assert (
+        doc.findings[0].citations[0].excerpt
+        == "The theater floor sloped toward the stage."
+    )
