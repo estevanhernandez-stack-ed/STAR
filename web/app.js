@@ -1,5 +1,7 @@
 /* STAR frontend — build a room, watch it happen, read the bible. */
 
+import { authedFetch, isEphemeral } from "/auth.js";
+
 const $ = (id) => document.getElementById(id);
 
 const intakePanel = $("intake-panel");
@@ -41,7 +43,7 @@ async function buildRoom() {
 
   let runId;
   try {
-    const res = await fetch("/api/rooms", {
+    const res = await authedFetch("/api/rooms", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ treatment }),
@@ -57,6 +59,7 @@ async function buildRoom() {
   intakePanel.classList.add("hidden");
   progressPanel.classList.remove("hidden");
   addEntry("done", "Treatment received. The department is assembling.");
+  if (isEphemeral()) $("ephemeral-banner").classList.remove("hidden");
 
   const source = new EventSource(`/api/rooms/${runId}/events`);
   source.onmessage = (msg) => {
@@ -85,7 +88,7 @@ async function buildRoom() {
 }
 
 async function showResults(runId, count) {
-  const res = await fetch(`/api/rooms/${runId}`);
+  const res = await authedFetch(`/api/rooms/${runId}`);
   const { result } = await res.json();
 
   progressPanel.classList.add("hidden");

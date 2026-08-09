@@ -10,6 +10,7 @@ Run from the repo root:
 import asyncio
 import json
 import logging
+import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,7 +21,7 @@ load_dotenv()
 
 from fastapi import FastAPI, Header, HTTPException  # noqa: E402
 from fastapi.encoders import jsonable_encoder  # noqa: E402
-from fastapi.responses import StreamingResponse  # noqa: E402
+from fastapi.responses import Response, StreamingResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from google.adk.runners import InMemoryRunner  # noqa: E402
 from google.genai import types  # noqa: E402
@@ -270,6 +271,19 @@ async def get_room(run_id: str, authorization: str | None = Header(None)) -> dic
         document["status"] = "interrupted"
 
     return {"status": document.get("status", "complete"), "result": document_to_room(document)}
+
+
+@app.get("/config.js")
+async def browser_config() -> Response:
+    """The Firebase web key is a public project identifier, not a secret."""
+    payload = {
+        "apiKey": os.environ.get("FIREBASE_API_KEY", ""),
+        "projectId": os.environ.get("FIREBASE_PROJECT_ID", ""),
+    }
+    return Response(
+        f"export const FIREBASE = {json.dumps(payload)};",
+        media_type="application/javascript",
+    )
 
 
 _WEB_DIR = Path(__file__).resolve().parent.parent / "web"
