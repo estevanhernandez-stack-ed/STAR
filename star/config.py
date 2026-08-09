@@ -79,13 +79,28 @@ def run_timeout_seconds() -> int:
 
 
 def validate_env() -> None:
-    """Fail fast on missing keys (review fix M5) instead of mid-pipeline."""
+    """Fail fast on missing keys (review fix M5) instead of mid-pipeline.
+
+    Phase 2 made three more variables load-bearing, and all three fail
+    *closed but silently* when absent: `star/auth.py` and `star/store.py`
+    read the project id, and `/config.js` serves the API key to the browser.
+    With no project id, `firebase_admin` raises inside `_verify`,
+    `verify_token` swallows it, and every `/api/` call just 401s — a missing
+    env var and a network blip look identical to the user. Checking here
+    makes that class of misconfiguration loud at boot instead.
+    """
     missing = []
     if not os.environ.get("PARALLEL_API_KEY"):
         missing.append("PARALLEL_API_KEY")
     using_vertex = os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "").upper() in ("TRUE", "1")
     if not using_vertex and not os.environ.get("GOOGLE_API_KEY"):
         missing.append("GOOGLE_API_KEY")
+    # Either satisfies star/auth.py's _get_app and star/store.py's client
+    # property, which both accept the same fallback — see those modules.
+    if not (os.environ.get("FIREBASE_PROJECT_ID") or os.environ.get("GOOGLE_CLOUD_PROJECT")):
+        missing.append("FIREBASE_PROJECT_ID (or GOOGLE_CLOUD_PROJECT)")
+    if not os.environ.get("FIREBASE_API_KEY"):
+        missing.append("FIREBASE_API_KEY")
     if missing:
         raise RuntimeError(
             f"Missing required environment variables: {', '.join(missing)}. "

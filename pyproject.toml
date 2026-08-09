@@ -21,6 +21,11 @@ dependencies = [
     "fastapi==0.141.1",
     "uvicorn[standard]==0.52.1",
     "firebase-admin==7.5.0",
+    # star/store.py imports this directly; firebase-admin only pulls it in
+    # transitively, so without an explicit pin here a fresh Cloud Run build
+    # floats to whatever ships that morning. Pinned to the version installed
+    # in this repo's venv (`pip show google-cloud-firestore`).
+    "google-cloud-firestore==2.28.1",
 ]
 
 [project.optional-dependencies]

@@ -1,4 +1,7 @@
 import asyncio
+import json
+import os
+import re
 from unittest import mock
 
 import pytest
@@ -418,3 +421,244 @@ async def test_salvage_gives_up_quietly_when_the_session_cannot_be_read():
         assert await server._salvage(run, "unreadable") is False
 
     del server._runs["unreadable"]
+
+
+# --- Finding 1: _salvage must never raise, only its get_session call was
+# guarded; the parsing work after it (_build_categories, jsonable_encoder)
+# ran unguarded, and an exception there used to escape `except TimeoutError`
+# uncaught (a sibling `except Exception` cannot catch it), leaving the run
+# stuck at status "running" forever with no terminal SSE event. ---
+
+
+@pytest.mark.asyncio
+async def test_salvage_returns_false_rather_than_raising_when_its_internals_blow_up():
+    run = _seed_run("salvage-internals-blow-up")
+
+    async def _get_session(**kwargs):
+        return _FakeSession({})
+
+    with (
+        mock.patch.object(server._runner.session_service, "get_session", _get_session),
+        mock.patch("star.server._build_categories", side_effect=RuntimeError("boom")),
+    ):
+        assert await server._salvage(run, "salvage-internals-blow-up") is False
+
+    del server._runs["salvage-internals-blow-up"]
+
+
+@pytest.mark.asyncio
+async def test_a_run_whose_salvage_blows_up_still_ends_as_a_visible_error_not_stuck_running():
+    """The exact silent hang the timeout was added to prevent, reintroduced
+    through the recovery path. Without the Finding 1 fix, the RuntimeError
+    below escapes `except TimeoutError`, run["status"] never leaves
+    "running", and nothing is ever pushed to the client."""
+    run = _seed_run("salvage-blows-up-end-to-end")
+
+    async def _never_finishes(run_id, treatment):
+        await asyncio.sleep(5)
+
+    async def _get_session(**kwargs):
+        return _FakeSession({})
+
+    with (
+        mock.patch("star.server._run_pipeline", _never_finishes),
+        mock.patch("star.server.config.run_timeout_seconds", return_value=1),
+        mock.patch("star.server._store", mock.Mock()),
+        mock.patch.object(server._runner.session_service, "get_session", _get_session),
+        mock.patch("star.server._build_categories", side_effect=RuntimeError("boom")),
+    ):
+        await server._execute("salvage-blows-up-end-to-end", "a treatment")
+
+    assert run["status"] != "running"
+    assert run["status"] == "error"
+    assert any(e["type"] == "error" for e in run["events"])
+
+    del server._runs["salvage-blows-up-end-to-end"]
+
+
+# --- Minor: a mid-pipeline failure (e.g. a Gemini 5xx during synthesis) must
+# salvage filed research too, not just a timeout. ---
+
+
+@pytest.mark.asyncio
+async def test_a_synthesis_failure_also_salvages_filed_research():
+    run = _seed_run("synth-fails")
+    run["ledger"].record("researcher_setting", [STAX])
+    state = {
+        "story_profile": {"title": "1962 Memphis"},
+        "findings_setting": f"- Stax used a converted theater :: {STAX['url']}",
+    }
+
+    async def _boom(run_id, treatment):
+        raise RuntimeError("Gemini 503")
+
+    async def _get_session(**kwargs):
+        return _FakeSession(state)
+
+    with (
+        mock.patch("star.server._run_pipeline", _boom),
+        mock.patch("star.server._store", mock.Mock()),
+        mock.patch.object(server._runner.session_service, "get_session", _get_session),
+    ):
+        await server._execute("synth-fails", "a treatment")
+
+    assert run["status"] == "partial"
+    assert run["result"]["categories"]["setting"]["findings"][0]["fact"]
+    events = [e for e in run["events"] if e["type"] == "partial"]
+    assert len(events) == 1
+    assert "RuntimeError" in events[0]["message"]
+    assert not [e for e in run["events"] if e["type"] == "error"]
+
+    del server._runs["synth-fails"]
+
+
+# --- Finding 6: nothing was ever persisted with status "running", so a
+# Cloud Run recycle mid-build 404s the room out of existence instead of
+# reporting it interrupted. create_room must write a recoverable placeholder
+# before the background task starts. ---
+
+
+@pytest.mark.asyncio
+async def test_create_room_persists_a_running_placeholder_before_the_task_starts():
+    fake_store = mock.Mock()
+
+    async def _noop(run_id, treatment):
+        return None
+
+    with (
+        mock.patch("star.server.verify_token", return_value="uid-one"),
+        mock.patch("star.server._store", fake_store),
+        mock.patch("star.server._execute", _noop),
+    ):
+        response = await server.create_room(
+            server.RoomRequest(treatment="x" * 60),
+            authorization=AUTH["Authorization"],
+        )
+    run_id = response["run_id"]
+
+    fake_store.save.assert_called_once()
+    saved_uid, saved_run_id, saved_doc = fake_store.save.call_args[0]
+    assert saved_uid == "uid-one"
+    assert saved_run_id == run_id
+    assert saved_doc["status"] == "running"
+    # room_to_document expects a result dict; at creation there is none yet.
+    # The "no story_profile" case is already covered in test_store.py and
+    # yields this exact title.
+    assert saved_doc["title"] == "Untitled room"
+
+    del server._runs[run_id]
+
+
+@pytest.mark.asyncio
+async def test_a_run_that_recycles_mid_build_recovers_as_interrupted_end_to_end():
+    """Closes the loop the existing hand-written-fake interrupted test left
+    open: before Finding 6, create_room wrote nothing to Firestore, so this
+    recovery path was reachable only via a document nothing in production
+    ever produced. Now the placeholder create_room writes is exactly what
+    get_room needs to recover after a simulated instance recycle (the
+    in-memory run disappears, the Firestore document survives)."""
+    written = {}
+    fake_store = mock.Mock()
+    fake_store.save.side_effect = lambda uid, run_id, doc: written.__setitem__((uid, run_id), doc)
+    fake_store.get.side_effect = lambda uid, run_id: written.get((uid, run_id))
+
+    async def _noop(run_id, treatment):
+        return None
+
+    with (
+        mock.patch("star.server.verify_token", return_value="uid-one"),
+        mock.patch("star.server._store", fake_store),
+        mock.patch("star.server._execute", _noop),
+    ):
+        response = await server.create_room(
+            server.RoomRequest(treatment="x" * 60),
+            authorization=AUTH["Authorization"],
+        )
+        run_id = response["run_id"]
+
+        # Simulate the recycle: the in-memory run is gone, but the placeholder
+        # document create_room wrote survives in Firestore.
+        del server._runs[run_id]
+
+        with mock.patch("star.server.verify_token", return_value="uid-one"):
+            result = await server.get_room(run_id, authorization=AUTH["Authorization"])
+
+    assert result["status"] == "interrupted"
+    fake_store.mark_interrupted.assert_called_once_with("uid-one", run_id)
+
+
+# --- Test-shape gap: route enumeration instead of hand-named routes --------
+
+
+def test_every_api_route_requires_auth_except_the_explicitly_open_sse_stream():
+    """Every existing auth test names its route by hand, so a route added
+    later under /api/ that forgets _require_uid would pass the whole suite
+    silently. Walk the actual registered routes instead. The SSE stream is
+    the one deliberate exception — EventSource can't set a bearer header —
+    and is allow-listed here by route *name*, not by path, so the exemption
+    stays visible rather than being an unexplained gap in the loop."""
+    client = TestClient(server.app)
+    OPEN_ROUTE_NAMES = {"stream_events"}
+
+    def body_for(method: str) -> dict:
+        if method == "POST":
+            return {"json": {"treatment": "x" * 60}}
+        return {}
+
+    checked = []
+    for route in server.app.routes:
+        path = getattr(route, "path", "")
+        methods = getattr(route, "methods", None)
+        if not path.startswith("/api/") or not methods:
+            continue
+        stub_path = re.sub(r"\{[^}]+\}", "route-audit-stub", path)
+        for method in methods - {"HEAD", "OPTIONS"}:
+            checked.append((route.name, method))
+            response = client.request(method, stub_path, **body_for(method))
+            if route.name in OPEN_ROUTE_NAMES:
+                assert response.status_code != 401, (
+                    f"{method} {stub_path} ({route.name}) is allow-listed open "
+                    f"but returned 401"
+                )
+            else:
+                assert response.status_code == 401, (
+                    f"{method} {stub_path} ({route.name}) did not require auth "
+                    f"(got {response.status_code}) — missing _require_uid?"
+                )
+
+    # Guards against the walk silently matching nothing (e.g. a path-prefix typo).
+    checked_names = {name for name, _ in checked}
+    assert {"create_room", "list_rooms", "get_room", "stream_events"} <= checked_names
+
+
+# --- Test-shape gap: /config.js must serve only the public keys ------------
+
+
+def test_config_js_exposes_only_the_public_firebase_keys_and_no_secrets():
+    client = TestClient(server.app)
+    secret_google = "sk-google-should-never-leave-the-server"
+    secret_parallel = "sk-parallel-should-never-leave-the-server"
+
+    with mock.patch.dict(
+        os.environ,
+        {
+            "FIREBASE_API_KEY": "public-web-key",
+            "FIREBASE_PROJECT_ID": "star-project",
+            "GOOGLE_API_KEY": secret_google,
+            "PARALLEL_API_KEY": secret_parallel,
+        },
+    ):
+        response = client.get("/config.js")
+
+    assert response.status_code == 200
+    body = response.text
+    assert response.headers["content-type"].startswith("application/javascript")
+
+    _, _, rest = body.partition("export const FIREBASE = ")
+    payload = json.loads(rest.rstrip(";\n"))
+    assert set(payload) == {"apiKey", "projectId"}
+    assert payload["apiKey"] == "public-web-key"
+    assert payload["projectId"] == "star-project"
+
+    assert secret_google not in body
+    assert secret_parallel not in body

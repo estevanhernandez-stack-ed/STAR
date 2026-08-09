@@ -57,6 +57,12 @@ _FRIENDLY = {
 
 _CATEGORY_BY_AUTHOR = {f"researcher_{c.value}": c for c in Category}
 
+# Single source of truth for "this run will never produce another event."
+# stream_events polls until run["status"] lands in this tuple; every place
+# that assigns a terminal status must have its value listed here, or the SSE
+# generator spins forever with nothing left to send.
+_TERMINAL_RUN_STATUSES = ("complete", "partial", "error")
+
 _store = RoomStore()
 
 
@@ -133,7 +139,18 @@ async def _salvage(run: dict, run_id: str) -> bool:
     several minutes. Discarding all of that because the editor was still
     writing is the wrong trade: the findings and their citations are already
     parsed and paid for, and they are most of the value. Only the bible needs
-    synthesis.
+    synthesis — and even that may already exist if synthesis wrote its
+    output_key before the ceiling tripped, in which case this keeps it rather
+    than discarding a real bible.
+
+    Contract: never raises. Every caller (`_execute`'s `except TimeoutError`
+    and `except Exception` blocks) invokes this unguarded, and an exception
+    escaping from inside one except branch cannot be caught by a sibling
+    except branch — that would leave the run stuck at status "running"
+    forever with no terminal SSE event. The whole body below the session_id
+    guard is therefore wrapped, not just the network call. `CancelledError`
+    is a `BaseException`, not an `Exception`, so it still propagates —
+    shutdown cancellation must not be swallowed here.
 
     Returns True if anything worth showing was recovered.
     """
@@ -144,27 +161,25 @@ async def _salvage(run: dict, run_id: str) -> bool:
         session = await _runner.session_service.get_session(
             app_name="star", user_id="web", session_id=session_id
         )
+        state = session.state if session else {}
+        categories = _build_categories(state, run["ledger"])
+        if not any(doc.findings for doc in categories.values()):
+            return False
+
+        run["result"] = jsonable_encoder(
+            {
+                "story_profile": state.get("story_profile"),
+                "research_plan": state.get("research_plan"),
+                "research_bible": state.get("research_bible") or "",
+                "search_count": run["search_count"],
+                "categories": categories,
+                "source_count": len(run["ledger"]),
+            }
+        )
+        return True
     except Exception:
-        logger.exception("Could not read session state to salvage run %s", run_id)
+        logger.exception("Failed to salvage run %s", run_id)
         return False
-
-    state = session.state if session else {}
-    categories = _build_categories(state, run["ledger"])
-    if not any(doc.findings for doc in categories.values()):
-        return False
-
-    run["result"] = jsonable_encoder(
-        {
-            "story_profile": state.get("story_profile"),
-            "research_plan": state.get("research_plan"),
-            # Deliberately absent: synthesis is what did not finish.
-            "research_bible": state.get("research_bible") or "",
-            "search_count": run["search_count"],
-            "categories": categories,
-            "source_count": len(run["ledger"]),
-        }
-    )
-    return True
 
 
 async def _run_pipeline(run_id: str, treatment: str) -> None:
@@ -241,6 +256,21 @@ async def _run_pipeline(run_id: str, treatment: str) -> None:
     )
 
 
+def _partial_message(cause: str) -> str:
+    """Shared by both salvage sites so the promise stays consistent with what
+    the browser can actually show. `_salvage`'s payload does carry
+    `categories`, but web/app.js's showResults only ever renders
+    story_profile, research_plan, and research_bible — there is no tab for
+    categories yet. Claiming the findings are "here" overclaims what the
+    user can see right now; say what is true instead.
+    """
+    return (
+        f"{cause} There is no research bible to read yet, but every "
+        "researcher's findings and sources were gathered and are safely "
+        "saved — they'll be readable here once the room view for them ships."
+    )
+
+
 async def _execute(run_id: str, treatment: str) -> None:
     """Own the run's outcome: bound it, decide its status, tell the client.
 
@@ -266,10 +296,9 @@ async def _execute(run_id: str, treatment: str) -> None:
                 run,
                 "partial",
                 search_count=run["search_count"],
-                message=(
-                    "The editor ran past the time limit before finishing the bible, "
-                    "so there is no assembled document. Every researcher's findings "
-                    "and sources are here and complete."
+                message=_partial_message(
+                    "The editor ran past the time limit before it could finish "
+                    "writing the bible."
                 ),
             )
         else:
@@ -285,9 +314,27 @@ async def _execute(run_id: str, treatment: str) -> None:
                 ),
             )
     except Exception as exc:  # surface real errors to the UI during dev
-        run["status"] = "error"
-        _persist(run, run_id, "error")
-        _push(run, "error", message=f"{type(exc).__name__}: {exc}")
+        # A Gemini 5xx (or any other mid-pipeline failure) during synthesis
+        # used to discard the same filed research the timeout path goes out
+        # of its way to preserve. Salvage here too before falling back to a
+        # bare error.
+        salvaged = await _salvage(run, run_id)
+        if salvaged:
+            run["status"] = "partial"
+            _persist(run, run_id, "partial")
+            _push(
+                run,
+                "partial",
+                search_count=run["search_count"],
+                message=_partial_message(
+                    f"The editor hit an error ({type(exc).__name__}) before it "
+                    "could finish writing the bible."
+                ),
+            )
+        else:
+            run["status"] = "error"
+            _persist(run, run_id, "error")
+            _push(run, "error", message=f"{type(exc).__name__}: {exc}")
 
 
 @app.post("/api/rooms")
@@ -311,6 +358,13 @@ async def create_room(req: RoomRequest, authorization: str | None = Header(None)
         "ledger": SourceLedger(),
         "uid": uid,
     }
+    # Best-effort, written before the task starts: if this Cloud Run instance
+    # recycles mid-build, the run vanishes from memory but this document
+    # survives, and get_room's "stored running but absent from memory" branch
+    # can recover it as "interrupted" instead of 404ing a room out of
+    # existence. Same durability-only contract as _persist elsewhere — a
+    # Firestore hiccup here must never stop a build from starting.
+    _persist(_runs[run_id], run_id, "running")
     # Hold a strong reference so the event loop can't garbage-collect the
     # in-flight pipeline (asyncio keeps only weak refs to bare tasks).
     _runs[run_id]["task"] = asyncio.create_task(_execute(run_id, treatment))
@@ -331,7 +385,7 @@ async def stream_events(run_id: str) -> StreamingResponse:
             while cursor < len(run["events"]):
                 yield f"data: {json.dumps(run['events'][cursor], default=str)}\n\n"
                 cursor += 1
-            if run["status"] in ("complete", "error"):
+            if run["status"] in _TERMINAL_RUN_STATUSES:
                 break
             await asyncio.sleep(0.4)
 

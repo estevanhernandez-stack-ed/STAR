@@ -114,6 +114,23 @@ async function buildRoom() {
 
 async function showResults(runId, count, partialNote) {
   const res = await authedFetch(`/api/rooms/${runId}`);
+  if (!res.ok) {
+    // Without this check, `result` below is undefined and the story_profile
+    // read throws — but only after the results panel is already revealed,
+    // leaving an empty panel with no explanation. Fail back to intake with
+    // a real message instead.
+    let detail = res.statusText;
+    try {
+      detail = (await res.json()).detail || detail;
+    } catch {
+      /* body wasn't JSON; fall back to statusText */
+    }
+    progressPanel.classList.add("hidden");
+    intakePanel.classList.remove("hidden");
+    $("intake-error").textContent = `Could not load your results: ${detail}`;
+    $("build-btn").disabled = false;
+    return;
+  }
   const { result } = await res.json();
 
   progressPanel.classList.add("hidden");
