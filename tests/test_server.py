@@ -1,3 +1,4 @@
+from fastapi.encoders import jsonable_encoder
 from fastapi.testclient import TestClient
 
 from star import server
@@ -32,6 +33,25 @@ def test_build_categories_parses_every_category_from_state():
     assert categories["setting"].findings[0].citations[0].title == "Stax Museum — History"
     assert categories["setting"].parse_rate == 1.0
     assert categories["logistics"].findings == []
+
+
+def test_categories_serialize_to_the_api_shape():
+    """The seam the endpoint test cannot reach: real ResearchDoc -> JSON."""
+    ledger = SourceLedger()
+    ledger.record("Setting researcher", [STAX])
+    state = {"findings_setting": f"- Stax used a converted theater :: {STAX['url']}"}
+
+    payload = jsonable_encoder(server._build_categories(state, ledger))
+
+    setting = payload["setting"]
+    assert setting["category"] == "setting"
+    assert setting["parse_rate"] == 1.0
+    assert setting["unverified_count"] == 0
+    assert setting["findings"][0]["fact"] == "Stax used a converted theater"
+    assert setting["findings"][0]["citations"][0]["title"] == "Stax Museum — History"
+    assert setting["findings"][0]["citations"][0]["excerpt"]
+    assert setting["findings"][0]["unverified_urls"] == []
+    assert payload["logistics"]["findings"] == []
 
 
 def test_room_endpoint_exposes_categories():
