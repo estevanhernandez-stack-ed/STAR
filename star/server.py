@@ -29,6 +29,9 @@ from star import config  # noqa: E402
 config.validate_env()
 
 from star.agents.pipelines import build_room  # noqa: E402
+from star.findings import parse_findings  # noqa: E402
+from star.ledger import SourceLedger  # noqa: E402
+from star.models import Category  # noqa: E402
 
 app = FastAPI(title="STAR — Story & Treatment Agentic Research")
 
@@ -45,6 +48,16 @@ _FRIENDLY = {
     "synthesis": "Editor",
 }
 
+_CATEGORY_BY_AUTHOR = {f"researcher_{c.value}": c for c in Category}
+
+
+def _build_categories(state: dict, ledger: SourceLedger) -> dict:
+    """Parse every category's researcher prose against the run's ledger."""
+    return {
+        c.value: parse_findings(state.get(f"findings_{c.value}"), c, ledger)
+        for c in Category
+    }
+
 
 class RoomRequest(BaseModel):
     treatment: str
@@ -52,6 +65,28 @@ class RoomRequest(BaseModel):
 
 def _push(run: dict, event_type: str, **data) -> None:
     run["events"].append({"type": event_type, **data})
+
+
+def _maybe_warn_empty_ledger(run: dict) -> None:
+    """Surface the fifth-envelope failure `unwrap_results` can't rule out.
+
+    `SourceLedger.record` skips anything without a URL, so an ADK upgrade
+    that quietly changes the function-response envelope makes every response
+    unwrap to `[]` — searches ran, nothing landed, every citation this run
+    produces reads as unverified, and nothing raises. This is the one signal
+    the ledger being pure can't self-report; push it as a visible event
+    instead of letting the run look clean.
+    """
+    if run["search_count"] > 0 and len(run["ledger"]) == 0:
+        _push(
+            run,
+            "warning",
+            message=(
+                "Searches ran but the source ledger came back empty — the ADK "
+                "response envelope may have changed shape. Every citation in "
+                "this run will show as unverified."
+            ),
+        )
 
 
 async def _execute(run_id: str, treatment: str) -> None:
@@ -71,10 +106,25 @@ async def _execute(run_id: str, treatment: str) -> None:
             author = getattr(event, "author", None) or "system"
             label = _FRIENDLY.get(author, author)
 
+            category = _CATEGORY_BY_AUTHOR.get(author)
+
             for call in event.get_function_calls() or []:
                 objective = (call.args or {}).get("objective", "")
                 run["search_count"] += 1
-                _push(run, "search", agent=label, objective=objective)
+                _push(
+                    run,
+                    "search",
+                    agent=label,
+                    objective=objective,
+                    category=category.value if category else None,
+                )
+
+            for response in event.get_function_responses() or []:
+                # Key by the raw author, not the friendly label, so found_by
+                # joins cleanly against _CATEGORY_BY_AUTHOR (which is also
+                # keyed by raw author). The friendly label stays user-facing,
+                # in the SSE "search" event above.
+                run["ledger"].record(author, getattr(response, "response", None))
 
             content = getattr(event, "content", None)
             if content and getattr(content, "parts", None):
@@ -84,6 +134,8 @@ async def _execute(run_id: str, treatment: str) -> None:
                 is_final = getattr(event, "is_final_response", lambda: True)()
                 if text.strip() and is_final:
                     _push(run, "agent_done", agent=label)
+
+        _maybe_warn_empty_ledger(run)
 
         final = await _runner.session_service.get_session(
             app_name="star", user_id="web", session_id=session.id
@@ -95,6 +147,8 @@ async def _execute(run_id: str, treatment: str) -> None:
                 "research_plan": state.get("research_plan"),
                 "research_bible": state.get("research_bible"),
                 "search_count": run["search_count"],
+                "categories": _build_categories(state, run["ledger"]),
+                "source_count": len(run["ledger"]),
             }
         )
         run["status"] = "complete"
@@ -121,6 +175,7 @@ async def create_room(req: RoomRequest) -> dict:
         "status": "running",
         "result": None,
         "search_count": 0,
+        "ledger": SourceLedger(),
     }
     # Hold a strong reference so the event loop can't garbage-collect the
     # in-flight pipeline (asyncio keeps only weak refs to bare tasks).
