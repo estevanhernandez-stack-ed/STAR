@@ -126,6 +126,47 @@ def _persist(run: dict, run_id: str, status: str) -> None:
         logger.exception("Failed to persist %s run %s", status, run_id)
 
 
+async def _salvage(run: dict, run_id: str) -> bool:
+    """Recover whatever research survived a run that did not finish.
+
+    A build costs four researchers, a dozen or more live web searches, and
+    several minutes. Discarding all of that because the editor was still
+    writing is the wrong trade: the findings and their citations are already
+    parsed and paid for, and they are most of the value. Only the bible needs
+    synthesis.
+
+    Returns True if anything worth showing was recovered.
+    """
+    session_id = run.get("session_id")
+    if not session_id:
+        return False
+    try:
+        session = await _runner.session_service.get_session(
+            app_name="star", user_id="web", session_id=session_id
+        )
+    except Exception:
+        logger.exception("Could not read session state to salvage run %s", run_id)
+        return False
+
+    state = session.state if session else {}
+    categories = _build_categories(state, run["ledger"])
+    if not any(doc.findings for doc in categories.values()):
+        return False
+
+    run["result"] = jsonable_encoder(
+        {
+            "story_profile": state.get("story_profile"),
+            "research_plan": state.get("research_plan"),
+            # Deliberately absent: synthesis is what did not finish.
+            "research_bible": state.get("research_bible") or "",
+            "search_count": run["search_count"],
+            "categories": categories,
+            "source_count": len(run["ledger"]),
+        }
+    )
+    return True
+
+
 async def _run_pipeline(run_id: str, treatment: str) -> None:
     """Run the build and populate run["result"].
 
@@ -140,6 +181,10 @@ async def _run_pipeline(run_id: str, treatment: str) -> None:
     session = await _runner.session_service.create_session(
         app_name="star", user_id="web"
     )
+    # Remembered so a run that overruns its ceiling can still be salvaged. The
+    # researchers' findings live in this session's state the moment they file;
+    # only the bible needs synthesis to finish. See _salvage.
+    run["session_id"] = session.id
     message = types.Content(role="user", parts=[types.Part(text=treatment)])
     _push(run, "started")
 
@@ -213,17 +258,32 @@ async def _execute(run_id: str, treatment: str) -> None:
         _push(run, "complete", search_count=run["search_count"])
     except TimeoutError:
         logger.warning("Run %s exceeded its %ss ceiling", run_id, timeout)
-        run["status"] = "error"
-        _persist(run, run_id, "error")
-        _push(
-            run,
-            "error",
-            message=(
-                f"The department ran past its {timeout // 60}-minute limit and was "
-                "stopped. Nothing was lost on your end — try again, and a shorter "
-                "treatment usually finishes faster."
-            ),
-        )
+        salvaged = await _salvage(run, run_id)
+        if salvaged:
+            run["status"] = "partial"
+            _persist(run, run_id, "partial")
+            _push(
+                run,
+                "partial",
+                search_count=run["search_count"],
+                message=(
+                    "The editor ran past the time limit before finishing the bible, "
+                    "so there is no assembled document. Every researcher's findings "
+                    "and sources are here and complete."
+                ),
+            )
+        else:
+            run["status"] = "error"
+            _persist(run, run_id, "error")
+            _push(
+                run,
+                "error",
+                message=(
+                    f"The department ran past its {timeout // 60}-minute limit and "
+                    "was stopped before anything could be filed. Try again — a "
+                    "shorter treatment usually finishes faster."
+                ),
+            )
     except Exception as exc:  # surface real errors to the UI during dev
         run["status"] = "error"
         _persist(run, run_id, "error")

@@ -327,3 +327,94 @@ async def test_a_run_inside_its_ceiling_completes_normally():
     assert [e["type"] for e in run["events"]] == ["complete"]
 
     del server._runs["quick"]
+
+
+# --- partial results: an overrun must not discard filed research ---
+
+
+def _seed_run(run_id, uid="uid-one", session_id="sess-1"):
+    server._runs[run_id] = {
+        "events": [], "status": "running", "search_count": 12,
+        "ledger": SourceLedger(), "result": None, "uid": uid,
+        "session_id": session_id,
+    }
+    return server._runs[run_id]
+
+
+class _FakeSession:
+    def __init__(self, state):
+        self.state = state
+
+
+@pytest.mark.asyncio
+async def test_an_overrun_keeps_the_research_the_researchers_already_filed():
+    """A build costs a dozen live searches and several minutes. Losing all of
+    it because the editor was mid-sentence is the wrong trade."""
+    run = _seed_run("overran")
+    run["ledger"].record("researcher_setting", [STAX])
+    state = {
+        "story_profile": {"title": "1962 Memphis"},
+        "findings_setting": f"- Stax used a converted theater :: {STAX['url']}",
+    }
+
+    async def _never_finishes(run_id, treatment):
+        await asyncio.sleep(5)
+
+    async def _get_session(**kwargs):
+        return _FakeSession(state)
+
+    with (
+        mock.patch("star.server._run_pipeline", _never_finishes),
+        mock.patch("star.server.config.run_timeout_seconds", return_value=1),
+        mock.patch("star.server._store", mock.Mock()),
+        mock.patch.object(server._runner.session_service, "get_session", _get_session),
+    ):
+        await server._execute("overran", "a treatment")
+
+    assert run["status"] == "partial"
+    assert run["result"]["categories"]["setting"]["findings"][0]["fact"]
+    assert run["result"]["research_bible"] == ""
+    events = [e for e in run["events"] if e["type"] == "partial"]
+    assert len(events) == 1
+    assert "findings" in events[0]["message"]
+    assert not [e for e in run["events"] if e["type"] == "error"]
+
+    del server._runs["overran"]
+
+
+@pytest.mark.asyncio
+async def test_an_overrun_with_nothing_filed_is_still_an_error():
+    """Salvage is not an excuse to call an empty run a success."""
+    run = _seed_run("empty")
+
+    async def _never_finishes(run_id, treatment):
+        await asyncio.sleep(5)
+
+    async def _get_session(**kwargs):
+        return _FakeSession({})
+
+    with (
+        mock.patch("star.server._run_pipeline", _never_finishes),
+        mock.patch("star.server.config.run_timeout_seconds", return_value=1),
+        mock.patch("star.server._store", mock.Mock()),
+        mock.patch.object(server._runner.session_service, "get_session", _get_session),
+    ):
+        await server._execute("empty", "a treatment")
+
+    assert run["status"] == "error"
+    assert not [e for e in run["events"] if e["type"] == "partial"]
+
+    del server._runs["empty"]
+
+
+@pytest.mark.asyncio
+async def test_salvage_gives_up_quietly_when_the_session_cannot_be_read():
+    run = _seed_run("unreadable")
+
+    async def _boom(**kwargs):
+        raise RuntimeError("session service unavailable")
+
+    with mock.patch.object(server._runner.session_service, "get_session", _boom):
+        assert await server._salvage(run, "unreadable") is False
+
+    del server._runs["unreadable"]

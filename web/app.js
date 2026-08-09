@@ -94,6 +94,13 @@ async function buildRoom() {
     } else if (ev.type === "complete") {
       source.close();
       showResults(runId, ev.search_count);
+    } else if (ev.type === "partial") {
+      // The editor ran out of time, but the researchers did not. Their
+      // findings and citations are real and already paid for, so show them
+      // rather than throwing away a four-minute build.
+      source.close();
+      addEntry("warn", escapeHtml(ev.message));
+      showResults(runId, ev.search_count, ev.message);
     } else if (ev.type === "error") {
       source.close();
       addEntry("error", `Something broke: ${escapeHtml(ev.message)}`);
@@ -105,7 +112,7 @@ async function buildRoom() {
   };
 }
 
-async function showResults(runId, count) {
+async function showResults(runId, count, partialNote) {
   const res = await authedFetch(`/api/rooms/${runId}`);
   const { result } = await res.json();
 
@@ -120,7 +127,11 @@ async function showResults(runId, count) {
   // The bible is synthesized from live web content — an adversarial data
   // path. Render it only through DOMPurify; if either library failed to
   // load, fall back to escaped plain text rather than raw HTML.
-  const bibleMd = result.research_bible || "_No bible produced._";
+  const bibleMd =
+    result.research_bible ||
+    (partialNote
+      ? `_${partialNote}_`
+      : "_No bible produced._");
   if (window.marked && window.DOMPurify) {
     $("tab-bible").innerHTML = DOMPurify.sanitize(marked.parse(bibleMd));
   } else {
