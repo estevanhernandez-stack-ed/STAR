@@ -340,7 +340,7 @@ async def _execute(run_id: str, treatment: str) -> None:
                     "shorter treatment usually finishes faster."
                 ),
             )
-    except Exception as exc:  # surface real errors to the UI during dev
+    except Exception:  # nothing about this reaches the client; see below
         # A Gemini 5xx (or any other mid-pipeline failure) during synthesis
         # used to discard the same filed research the timeout path goes out
         # of its way to preserve. Salvage here too before falling back to a
