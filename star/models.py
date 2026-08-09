@@ -54,15 +54,30 @@ class Finding(BaseModel):
     """One researched fact with its receipts."""
 
     fact: str
-    citations: list[Citation]
+    citations: list[Citation] = []
+    unverified_urls: list[str] = Field(
+        default=[],
+        description="URLs the researcher cited that never appeared in a search "
+        "result. Rendered as a warning, never as a source.",
+    )
 
 
 class ResearchDoc(BaseModel):
     """A finished, cited research document for one category."""
 
     category: Category
-    markdown: str = Field(description="The research document, with inline [n] citation markers")
-    findings: list[Finding]
+    markdown: str = Field(description="Raw researcher output, preserved verbatim")
+    findings: list[Finding] = []
+    field_notes: str = Field(
+        default="",
+        description="Lines that did not parse as findings, kept rather than dropped",
+    )
+    parse_rate: float = Field(
+        default=0.0, description="Parsed findings over bullet lines seen, 0.0-1.0"
+    )
+    unverified_count: int = Field(
+        default=0, description="Total cited URLs absent from the source ledger"
+    )
 
 
 class Verdict(str, Enum):
