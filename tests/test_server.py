@@ -1,9 +1,13 @@
+from unittest import mock
+
 from fastapi.encoders import jsonable_encoder
 from fastapi.testclient import TestClient
 
 from star import server
 from star.ledger import SourceLedger
 from star.models import Category
+
+AUTH = {"Authorization": "Bearer good.token.here"}
 
 STAX = {
     "title": "Stax Museum — History",
@@ -77,9 +81,11 @@ def test_room_endpoint_exposes_categories():
                 }
             },
         },
+        "uid": "test-uid",
     }
 
-    response = client.get("/api/rooms/testrun")
+    with mock.patch("star.server.verify_token", return_value="test-uid"):
+        response = client.get("/api/rooms/testrun", headers=AUTH)
 
     assert response.status_code == 200
     body = response.json()
@@ -92,7 +98,14 @@ def test_room_endpoint_exposes_categories():
 
 def test_unknown_room_still_404s():
     client = TestClient(server.app)
-    assert client.get("/api/rooms/does-not-exist").status_code == 404
+    fake_store = mock.Mock()
+    fake_store.get.return_value = None
+
+    with (
+        mock.patch("star.server.verify_token", return_value="uid-one"),
+        mock.patch("star.server._store", fake_store),
+    ):
+        assert client.get("/api/rooms/does-not-exist", headers=AUTH).status_code == 404
 
 
 # -- Finding 6: a fifth ADK envelope must fail loud, not silently -----------
@@ -125,3 +138,106 @@ def test_maybe_warn_empty_ledger_stays_quiet_when_no_searches_ran():
     server._maybe_warn_empty_ledger(run)
 
     assert run["events"] == []
+
+
+# -- Task 3: auth and persistence --------------------------------------------
+
+
+def test_api_rejects_a_request_with_no_token():
+    client = TestClient(server.app)
+    assert client.get("/api/rooms").status_code == 401
+
+
+def test_api_rejects_a_forged_token():
+    client = TestClient(server.app)
+    with mock.patch("star.server.verify_token", return_value=None):
+        assert client.get("/api/rooms", headers=AUTH).status_code == 401
+
+
+def test_list_rooms_returns_only_the_callers_rooms():
+    client = TestClient(server.app)
+    fake_store = mock.Mock()
+    fake_store.list_rooms.return_value = [{"run_id": "abc", "title": "1962 Memphis"}]
+
+    with (
+        mock.patch("star.server.verify_token", return_value="uid-one"),
+        mock.patch("star.server._store", fake_store),
+    ):
+        response = client.get("/api/rooms", headers=AUTH)
+
+    assert response.status_code == 200
+    assert response.json()["rooms"][0]["run_id"] == "abc"
+    fake_store.list_rooms.assert_called_once_with("uid-one")
+
+
+def test_get_room_falls_back_to_firestore_when_not_in_memory():
+    client = TestClient(server.app)
+    fake_store = mock.Mock()
+    fake_store.get.return_value = {
+        "run_id": "persisted",
+        "status": "complete",
+        "story_profile": {"title": "1962 Memphis"},
+        "research_bible": "# Bible",
+        "search_count": 14,
+        "categories": {},
+    }
+
+    with (
+        mock.patch("star.server.verify_token", return_value="uid-one"),
+        mock.patch("star.server._store", fake_store),
+    ):
+        response = client.get("/api/rooms/persisted", headers=AUTH)
+
+    assert response.status_code == 200
+    assert response.json()["result"]["story_profile"]["title"] == "1962 Memphis"
+    fake_store.get.assert_called_once_with("uid-one", "persisted")
+
+
+def test_get_room_404s_when_neither_memory_nor_firestore_has_it():
+    client = TestClient(server.app)
+    fake_store = mock.Mock()
+    fake_store.get.return_value = None
+
+    with (
+        mock.patch("star.server.verify_token", return_value="uid-one"),
+        mock.patch("star.server._store", fake_store),
+    ):
+        assert client.get("/api/rooms/nope", headers=AUTH).status_code == 404
+
+
+def test_an_in_memory_run_is_not_readable_by_a_different_uid():
+    """Memory must be scoped by uid too, not just Firestore."""
+    client = TestClient(server.app)
+    server._runs["owned"] = {
+        "events": [], "status": "complete", "search_count": 1,
+        "ledger": SourceLedger(), "result": {"research_bible": "x"}, "uid": "uid-one",
+    }
+    fake_store = mock.Mock()
+    fake_store.get.return_value = None
+
+    with (
+        mock.patch("star.server.verify_token", return_value="uid-two"),
+        mock.patch("star.server._store", fake_store),
+    ):
+        assert client.get("/api/rooms/owned", headers=AUTH).status_code == 404
+
+    del server._runs["owned"]
+
+
+def test_a_run_stored_as_running_but_absent_from_memory_becomes_interrupted():
+    """The asyncio task did not survive a restart; the UI must stop spinning."""
+    client = TestClient(server.app)
+    fake_store = mock.Mock()
+    fake_store.get.return_value = {
+        "run_id": "stuck", "status": "running", "story_profile": {},
+        "research_bible": "", "search_count": 0, "categories": {},
+    }
+
+    with (
+        mock.patch("star.server.verify_token", return_value="uid-one"),
+        mock.patch("star.server._store", fake_store),
+    ):
+        response = client.get("/api/rooms/stuck", headers=AUTH)
+
+    assert response.json()["status"] == "interrupted"
+    fake_store.mark_interrupted.assert_called_once_with("uid-one", "stuck")

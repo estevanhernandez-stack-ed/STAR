@@ -10,13 +10,14 @@ Run from the repo root:
 import asyncio
 import json
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException  # noqa: E402
+from fastapi import FastAPI, Header, HTTPException  # noqa: E402
 from fastapi.encoders import jsonable_encoder  # noqa: E402
 from fastapi.responses import StreamingResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
@@ -29,9 +30,11 @@ from star import config  # noqa: E402
 config.validate_env()
 
 from star.agents.pipelines import build_room  # noqa: E402
+from star.auth import verify_token  # noqa: E402
 from star.findings import parse_findings  # noqa: E402
 from star.ledger import SourceLedger  # noqa: E402
 from star.models import Category  # noqa: E402
+from star.store import RoomStore, document_to_room, room_to_document  # noqa: E402
 
 app = FastAPI(title="STAR — Story & Treatment Agentic Research")
 
@@ -49,6 +52,16 @@ _FRIENDLY = {
 }
 
 _CATEGORY_BY_AUTHOR = {f"researcher_{c.value}": c for c in Category}
+
+_store = RoomStore()
+
+
+def _require_uid(authorization: str | None) -> str:
+    """Every /api route is scoped to a caller. No token, no data."""
+    uid = verify_token(authorization)
+    if uid is None:
+        raise HTTPException(401, "Sign-in required.")
+    return uid
 
 
 def _build_categories(state: dict, ledger: SourceLedger) -> dict:
@@ -152,14 +165,38 @@ async def _execute(run_id: str, treatment: str) -> None:
             }
         )
         run["status"] = "complete"
+        _store.save(
+            run["uid"],
+            run_id,
+            room_to_document(
+                run_id,
+                run["result"],
+                "complete",
+                datetime.now(timezone.utc).isoformat(),  # noqa: UP017
+            ),
+        )
         _push(run, "complete", search_count=run["search_count"])
     except Exception as exc:  # surface real errors to the UI during dev
         run["status"] = "error"
+        try:
+            _store.save(
+                run["uid"],
+                run_id,
+                room_to_document(
+                    run_id,
+                    run.get("result"),
+                    "error",
+                    datetime.now(timezone.utc).isoformat(),  # noqa: UP017
+                ),
+            )
+        except Exception:  # noqa: BLE001, S110
+            pass  # a failed run that also fails to persist is still a failed run
         _push(run, "error", message=f"{type(exc).__name__}: {exc}")
 
 
 @app.post("/api/rooms")
-async def create_room(req: RoomRequest) -> dict:
+async def create_room(req: RoomRequest, authorization: str | None = Header(None)) -> dict:
+    uid = _require_uid(authorization)
     treatment = req.treatment.strip()
     if len(treatment) < 40:
         raise HTTPException(400, "Give the research department a bit more to work with.")
@@ -176,6 +213,7 @@ async def create_room(req: RoomRequest) -> dict:
         "result": None,
         "search_count": 0,
         "ledger": SourceLedger(),
+        "uid": uid,
     }
     # Hold a strong reference so the event loop can't garbage-collect the
     # in-flight pipeline (asyncio keeps only weak refs to bare tasks).
@@ -204,12 +242,32 @@ async def stream_events(run_id: str) -> StreamingResponse:
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 
+@app.get("/api/rooms")
+async def list_rooms(authorization: str | None = Header(None)) -> dict:
+    uid = _require_uid(authorization)
+    return {"rooms": _store.list_rooms(uid)}
+
+
 @app.get("/api/rooms/{run_id}")
-async def get_room(run_id: str) -> dict:
+async def get_room(run_id: str, authorization: str | None = Header(None)) -> dict:
+    uid = _require_uid(authorization)
+
     run = _runs.get(run_id)
-    if run is None:
+    if run is not None and run.get("uid") == uid:
+        return {"status": run["status"], "result": run["result"]}
+
+    document = _store.get(uid, run_id)
+    if document is None:
         raise HTTPException(404, "Unknown run")
-    return {"status": run["status"], "result": run["result"]}
+
+    # Stored as running but absent from memory: the in-flight asyncio task did
+    # not survive a restart, and nothing will ever finish it. Say so once
+    # rather than letting the UI spin forever.
+    if document.get("status") == "running":
+        _store.mark_interrupted(uid, run_id)
+        document["status"] = "interrupted"
+
+    return {"status": document.get("status", "complete"), "result": document_to_room(document)}
 
 
 _WEB_DIR = Path(__file__).resolve().parent.parent / "web"
