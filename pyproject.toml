@@ -6,14 +6,20 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
 authors = [{ name = "Estevan Hernandez" }]
+# Pinned exactly, deliberately. A Cloud Run build runs a fresh install and
+# would otherwise take whatever shipped that morning. ADK 2.6.2 warns that
+# SequentialAgent and ParallelAgent are deprecated in favor of Workflow, and
+# that Workflow cannot yet be an LlmAgent sub-agent — so there is no migration
+# path today and a floating major would break Pipeline A outright.
+# Revisit after the 2026-09-07 deadline.
 dependencies = [
-    "google-adk>=1.0",
-    "google-genai>=1.0",
-    "parallel-web>=0.1",
-    "pydantic>=2.7",
-    "python-dotenv>=1.0",
-    "fastapi>=0.111",
-    "uvicorn[standard]>=0.30",
+    "google-adk==2.6.2",
+    "google-genai==2.17.0",
+    "parallel-web==1.1.0",
+    "pydantic==2.13.4",
+    "python-dotenv==1.2.2",
+    "fastapi==0.141.1",
+    "uvicorn[standard]==0.52.1",
 ]
 
 [project.optional-dependencies]
