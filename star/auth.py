@@ -58,5 +58,7 @@ def verify_token(header: str | None) -> str | None:
         # Forged, expired, malformed, or the cert fetch failed. All the same
         # answer to the caller: we do not know who this is.
         return None
+    if not isinstance(claims, dict):
+        return None
     uid = claims.get("uid")
     return uid or None

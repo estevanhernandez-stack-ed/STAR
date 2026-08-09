@@ -50,3 +50,11 @@ def test_verify_token_returns_none_without_calling_firebase_on_a_bad_header():
 def test_verify_token_returns_none_when_the_claim_set_has_no_uid():
     with mock.patch("star.auth._verify", return_value={}):
         assert verify_token("Bearer good.token.here") is None
+
+
+def test_verify_token_returns_none_when_the_claim_set_is_not_a_dict():
+    """The contract is never-raises, so a surprising return shape is a None,
+    not an AttributeError escaping to the caller."""
+    for surprising in (None, [], "claims", 42):
+        with mock.patch("star.auth._verify", return_value=surprising):
+            assert verify_token("Bearer good.token.here") is None
