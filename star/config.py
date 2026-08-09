@@ -32,6 +32,33 @@ def max_treatment_chars() -> int:
     return int(os.environ.get("STAR_MAX_TREATMENT_CHARS", "8000"))
 
 
+def max_rooms_per_ip_per_hour() -> int:
+    """Per-caller ceiling on a public endpoint that spends money to answer."""
+    return int(os.environ.get("STAR_MAX_ROOMS_PER_IP_PER_HOUR", "5"))
+
+
+def max_rooms_per_day() -> int:
+    """Global kill switch. One build is roughly 15 searches; 100 builds a day
+    is a generous demo allowance and a cheap disaster ceiling."""
+    return int(os.environ.get("STAR_MAX_ROOMS_PER_DAY", "100"))
+
+
+def max_rate_limiter_keys() -> int:
+    """Bound on distinct callers `_ip_limiter` tracks at once (Finding 3b).
+
+    Reordering the daily cap behind the per-IP check (Finding 3) removed an
+    accidental bound: the daily cap used to turn away identity-rotating
+    callers before they ever reached the per-IP limiter's dict, capping it
+    near the daily cap's own size. With the per-IP check running first, that
+    accident is gone, so RateLimiter needs an explicit bound of its own. A
+    few thousand distinct callers a day is generous for a hackathon demo and
+    still cheap for the O(n) stale-key sweep in RateLimiter.check() to walk
+    on every request, on a single-threaded loop shared with every open SSE
+    stream.
+    """
+    return int(os.environ.get("STAR_MAX_RATE_LIMITER_KEYS", "5000"))
+
+
 def max_synthesis_output_tokens() -> int:
     """Hard ceiling on the bible, because generation runs away without one.
 
@@ -59,6 +86,18 @@ def max_sources_per_category() -> int:
     prompt, and 60 is well above what any observed run produced per category.
     """
     return int(os.environ.get("STAR_MAX_SOURCES_PER_CATEGORY", "60"))
+
+
+def max_runs_in_memory() -> int:
+    """Cap on live entries in `star.server._runs`.
+
+    Each entry holds a `SourceLedger` carrying every excerpt from up to
+    `max_searches_per_build()` searches, plus a task reference — nothing
+    ever shrinks it on its own. Persistence (star/store.py) is what makes
+    eviction safe: a run dropped from memory once it reaches a terminal
+    status is still readable back from Firestore via get_room's fallback.
+    """
+    return int(os.environ.get("STAR_MAX_RUNS_IN_MEMORY", "20"))
 
 
 def run_timeout_seconds() -> int:

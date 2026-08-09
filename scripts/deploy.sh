@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Deploy STAR to Cloud Run. Runnable from anywhere — cd's to the repo root
+# itself so `--source .` always means this repo, not the caller's cwd.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+PROJECT="${PROJECT:-star-research-dept}"
+REGION=us-central1
+SERVICE=star
+
+# --max-instances=1 AND --min-instances=1 are both load-bearing, not tuning —
+# neither alone is enough. `_runs` and the abuse guards in star/guards.py
+# (_ip_limiter, _daily_cap) are per-process module-level state.
+#
+# --max-instances=1 keeps a live build's SSE stream and its in-memory room
+# read on the same instance; a second instance breaks runs in flight.
+#
+# --min-instances=1 keeps that one instance warm. Without it, Cloud Run
+# scales to zero when idle and the next request cold-starts a fresh process
+# with _ip_limiter and _daily_cap back at zero — so the "100 builds/day" cap
+# is actually "100 builds per instance lifetime," and instance lifetime has
+# no lower bound under min-instances=0. An attacker sends 100 builds, waits
+# out the idle window, and repeats; every redeploy or instance recycle also
+# resets both counters for free. min-instances=1 removes cold-start latency
+# from a live demo too, but that is the bonus, not the reason.
+#
+# If this ever needs to scale past one instance, both flags AND the abuse
+# guards need to move together to a shared store (Firestore/Redis) in the
+# same change — see star/guards.py's module docstring and
+# docs/INFRASTRUCTURE.md.
+#
+# --timeout must exceed STAR_RUN_TIMEOUT_SECONDS (600), because the SSE
+# stream is itself a request and stays open for the whole build.
+gcloud run deploy "$SERVICE" \
+  --source . \
+  --project "$PROJECT" \
+  --region "$REGION" \
+  --allow-unauthenticated \
+  --max-instances=1 \
+  --min-instances=1 \
+  --cpu=1 \
+  --memory=2Gi \
+  --timeout=900 \
+  --set-env-vars="GOOGLE_CLOUD_PROJECT=$PROJECT,FIREBASE_PROJECT_ID=$PROJECT,GOOGLE_GENAI_USE_VERTEXAI=FALSE,FIREBASE_API_KEY=${FIREBASE_API_KEY:?set FIREBASE_API_KEY in the environment before deploying}" \
+  --set-secrets="GOOGLE_API_KEY=star-google-api-key:latest,PARALLEL_API_KEY=star-parallel-api-key:latest"
+
+gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" \
+  --format='value(status.url)'

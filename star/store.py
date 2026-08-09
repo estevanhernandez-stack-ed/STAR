@@ -12,6 +12,8 @@ Schema:
 
 import os
 
+from google.api_core.exceptions import NotFound
+
 _UNTITLED = "Untitled room"
 
 
@@ -100,6 +102,18 @@ class RoomStore:
         docs.sort(key=lambda d: d.get("created_at") or "", reverse=True)
         return [room_summary(d) for d in docs]
 
-    def mark_interrupted(self, uid: str, run_id: str) -> None:
-        """A run left 'running' with no live task did not survive a restart."""
-        self._rooms(uid).document(run_id).update({"status": "interrupted"})
+    def mark_interrupted(self, uid: str, run_id: str) -> bool:
+        """A run left 'running' with no live task did not survive a restart.
+
+        Returns True when it marked the document, False when the document
+        was already gone. `.update()` raises `NotFound` in that case —
+        verified against real Firestore — and get_room only calls this after
+        its own read already succeeded, so a delete racing between that read
+        and this update is the one case this catches; any other error is a
+        genuine failure and is left to propagate.
+        """
+        try:
+            self._rooms(uid).document(run_id).update({"status": "interrupted"})
+            return True
+        except NotFound:
+            return False

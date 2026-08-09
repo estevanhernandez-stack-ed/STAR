@@ -7,15 +7,17 @@ and deletes it afterwards.
 Also covers two things only a real database can answer:
 
   - What RoomStore.mark_interrupted() does against a document that does not
-    exist. The fake's update() is setdefault().update(), which silently
-    creates a partial document on a miss. Real Firestore may not agree, and
-    the server calls mark_interrupted() on a read path (GET /api/rooms/{id}),
-    so an unhandled raise there would turn a stale room into a 500.
+    exist. ANSWERED here on 2026-08-09: Firestore's .update() raises NotFound
+    ("404 No document to update"), which the store did not catch, so a delete
+    landing between get_room's read and its update would have surfaced as an
+    unhandled 500. mark_interrupted now catches NotFound specifically and
+    returns False; get_room 404s on it. This script asserts that contract and
+    that the raise no longer escapes.
   - Whether the slash-path collection address star/store.py uses
     (client.collection(f"users/{uid}/rooms")) is really interchangeable with
     the chained .collection("users").document(uid).collection("rooms") form.
-    A reviewer proved this by reading the Firestore client source; nothing
-    has run either form against the live service before now.
+    ANSWERED: yes, confirmed against the live service — identical paths, and a
+    document written through one is readable through the other.
 
 Run from the repo root:
     .venv/Scripts/python.exe scripts/verify_persistence.py
@@ -28,7 +30,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from google.api_core import exceptions as gcloud_exceptions  # noqa: E402
 
 from star.store import RoomStore, room_to_document  # noqa: E402
 
@@ -114,19 +115,19 @@ def _verify(store) -> None:
     store.client.collection(f"users/{UID}/rooms").document(MISSING_RUN_ID).delete()
     assert store.get(UID, MISSING_RUN_ID) is None, "missing-doc fixture was not actually missing"
 
-    try:
-        store.mark_interrupted(UID, MISSING_RUN_ID)
-    except gcloud_exceptions.NotFound as exc:
-        assert store.get(UID, MISSING_RUN_ID) is None, "NotFound was raised but a document still exists"
-        print("mark_interrupted on a missing document RAISED google.api_core.exceptions.NotFound:", exc)
-    else:
-        leaked = store.get(UID, MISSING_RUN_ID)
-        assert leaked is not None and leaked.get("status") == "interrupted", (
-            f"mark_interrupted did not raise, but did not create a partial doc either: {leaked!r}"
-        )
-        print("mark_interrupted on a missing document did NOT raise; it created a partial document:", leaked)
+    # This script originally discovered that Firestore's .update() raises
+    # NotFound here, which the store did not catch — so a delete landing
+    # between get_room's read and its update would have surfaced as a 500.
+    # mark_interrupted now catches NotFound specifically and reports the miss
+    # instead, and get_room 404s on it. Assert the current contract, and
+    # assert the raise does NOT escape, since that was the original defect.
+    marked = store.mark_interrupted(UID, MISSING_RUN_ID)
+    assert marked is False, f"expected False for a missing document, got {marked!r}"
+    assert store.get(UID, MISSING_RUN_ID) is None, "a missing document was resurrected"
+    print("mark_interrupted on a missing document returned False without raising")
 
-    store.mark_interrupted(UID, RUN_ID)
+    marked = store.mark_interrupted(UID, RUN_ID)
+    assert marked is True, f"expected True for a document that exists, got {marked!r}"
     assert store.get(UID, RUN_ID)["status"] == "interrupted"
     print("mark_interrupted OK")
 

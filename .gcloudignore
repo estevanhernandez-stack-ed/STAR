@@ -1,0 +1,38 @@
+# Governs `gcloud run deploy --source .` (scripts/deploy.sh). This is the
+# file that decides what gets uploaded to Cloud Build for a source deploy —
+# .dockerignore only governs the Docker build context and is NOT read by
+# `gcloud run deploy --source`. Before this file existed, gcloud fell back to
+# .gitignore, which happened to be safe, but that was incidental: the .env
+# line in .dockerignore reads as protecting the source upload and does not.
+
+# Secrets and local credentials — never upload these.
+.env
+.mcp.json
+
+# Agent tooling and local config — not part of the deployable service.
+.claude/
+.superpowers/
+
+# Local dev environment.
+.venv/
+venv/
+node_modules/
+
+# Version control and caches — no reason to ship these to Cloud Build.
+.git/
+.gitignore
+.gcloudignore
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.playwright-mcp/
+star-*.png
+
+# Not part of the deployed service, same as .dockerignore.
+docs/
+tests/
+scripts/
