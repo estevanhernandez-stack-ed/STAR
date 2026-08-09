@@ -76,11 +76,27 @@ The H2 "check the receipts" fix falls out of this for free: a cited URL absent
 from the ledger came from nowhere.
 
 `Event.get_function_responses()` is confirmed present in ADK 2.6.2 and returns
-the parts carrying tool output. One detail to pin on the first run: ADK wraps a
-function tool's return value before placing it on the response part, so the
-exact shape wrapping `parallel_search`'s `list[dict]` should be inspected once
-and asserted in a test rather than assumed. It is a five-minute check, not a
-design risk — the data is unambiguously there.
+the parts carrying tool output. **Confirmed against the live API on 2026-08-09:**
+the envelope is a bare `dict` with a single top-level key `result`, whose value
+is exactly the `list[dict]` `parallel_search` returns. `unwrap_results` handled
+it with no modification. Pinned by `tests/test_response_shape.py` using real
+recorded data, so an ADK upgrade that changes the wrapping fails loudly instead
+of silently emptying every ledger.
+
+**Parse-rate baseline, same date, one full room build (1962 Memphis treatment):**
+
+| Category | parse_rate | findings | citations | unverified |
+| --- | --- | --- | --- | --- |
+| setting | 1.0 | 9 | 17 | 0 |
+| objects_props | 1.0 | 8 | 16 | 0 |
+| logistics | 1.0 | 6 | 9 | 0 |
+| forces_conflicts | 1.0 | 5 | 12 | 0 |
+
+15 searches against a budget of 30, 109 distinct sources, 17,141-character
+bible. Every category parsed perfectly and **zero citations failed the ledger
+check**, meaning no researcher cited a URL it had not actually seen. Approach A
+holds; the fallback to B (four schema'd structurer agents) is not needed. The
+70% trigger stays documented in case a later prompt change regresses it.
 
 ### Flow
 
