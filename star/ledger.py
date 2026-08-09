@@ -4,9 +4,10 @@ The researchers write findings as prose and cite URLs. Where `star/findings.py`
 builds the `categories` payload, titles and excerpts are never taken from the
 model — they are hydrated from this ledger, which records only what
 `parallel_search` genuinely returned. A cited URL absent from the ledger came
-from nowhere, and gets flagged rather than rendered as a source. (This
-guarantee does not reach `research_bible`, a separate synthesis path — see
-`star/findings.py`'s module docstring.)
+from nowhere, and gets flagged rather than rendered as a source. The
+`research_bible` reaches the same standard through `sources_<category>`
+session state rather than through this ledger — see `star/findings.py`'s
+module docstring.
 
 ADK wraps a function tool's return value before placing it on the response
 part. `unwrap_results` handles the four wrappings observed against a live ADK

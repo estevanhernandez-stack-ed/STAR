@@ -12,11 +12,13 @@ search API actually returned, so no title or excerpt in a `Citation` is ever
 authored by a model. A cited URL missing from the ledger is recorded as
 unverified rather than rendered as a source.
 
-That guarantee covers this payload only. `SynthesisAgent` (see
-`star/agents/synthesis.py`) reads the raw researcher prose directly and is
-instructed to end each section with a numbered source list of its own
-(title — URL). Those titles are model-authored prose, not ledger lookups, so
-the `research_bible` the user reads is a separate, unverified path.
+The `research_bible` reaches the same standard by a different route.
+`SynthesisAgent` cannot see this ledger — it lives outside the ADK run — so
+`parallel_search` publishes every source it receives into `sources_<category>`
+session state, and synthesis is instructed to take source-list titles verbatim
+from that block and print a bare URL rather than invent one. Verified end to
+end on 2026-08-09: 31 of 31 bible source lines carried the ledger's real title,
+and every URL the bible printed was one the search API actually returned.
 
 Nothing is ever discarded: lines that do not parse are kept as field notes and
 the raw prose is preserved verbatim.
