@@ -97,7 +97,7 @@ Deployed 2026-08-09.
 | Service URL | `https://star-390753828501.us-central1.run.app` |
 | Region | `us-central1` |
 | Service name | `star` |
-| Revision | `star-00001-6r6` |
+| Revision | `star-00002-rtj` |
 
 Deploy command (also `scripts/deploy.sh`, run from repo root):
 
@@ -106,9 +106,25 @@ FIREBASE_API_KEY=$(grep '^FIREBASE_API_KEY=' .env | cut -d= -f2-) bash scripts/d
 ```
 
 The script builds from source via Cloud Build (no local Docker needed),
-deploys to Cloud Run, and prints the service URL.
+deploys to Cloud Run, and prints the service URL. Now also `cd`'s to the repo
+root itself and reads `PROJECT` from the environment (defaulting to
+`star-research-dept`), so it is safe to run from any directory and against
+any project.
 
-### `--max-instances=1` is load-bearing, not tuning
+**The script does not provision Secret Manager entries or IAM bindings.** It
+assumes `star-google-api-key` and `star-parallel-api-key` already exist in
+Secret Manager and that the runtime service account already holds
+`roles/secretmanager.secretAccessor` on both — see "Secrets: where they
+live" below. On a fresh project neither exists yet, and `gcloud run deploy`
+fails at `--set-secrets` with a "secret not found" error. Create the secrets
+and grant the accessor role by hand (or script it separately) before the
+first deploy against a new project.
+
+### `--max-instances=1` AND `--min-instances=1` are both load-bearing, not tuning
+
+Two flags, not one — this section used to name only `--max-instances=1`, and
+that was one dimension short of the truth. Both are required together; either
+one alone still breaks.
 
 `_runs` is per-process in-memory state: a live build's SSE stream and its
 in-memory room read both have to hit the same instance, or the reader gets
@@ -118,7 +134,23 @@ stream that another instance knows nothing about. The abuse guards in
 `star/guards.py` (the 5-per-IP-per-hour and 100-per-day counters) are
 in-memory for the same reason, and they become per-instance — and therefore
 bypassable by hitting a different instance — the moment instance count rises
-above one.
+above one. **`--max-instances=1` is what keeps that from happening.**
+
+`_ip_limiter` and `_daily_cap` are module-level objects constructed once at
+import time. **`--min-instances=0`** — the flag `scripts/deploy.sh` used to
+pass — lets Cloud Run scale the single instance to zero when idle, and the
+next request cold-starts a fresh process with both counters back at zero. The
+100-per-day cap is then "100 builds per instance lifetime," and instance
+lifetime has no lower bound: an attacker sends 100 builds, waits out the idle
+window, and repeats. The counters also reset on every redeploy and every
+instance recycle regardless of this flag, but scale-to-zero adds "goes idle
+for a few minutes" as a third, trivially-attacker-triggerable reset path.
+**`--min-instances=1` is what keeps that process alive, and with it the
+counters.** It also removes cold-start latency from a live demo, but that is
+the bonus, not the reason it is set.
+
+Only with both flags together does one process live long enough, and stay
+the only one, for an in-memory counter to actually be the global counter.
 
 **If this ever needs to scale past one instance, both of these must move
 together, in the same change:**

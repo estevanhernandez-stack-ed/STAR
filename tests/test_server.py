@@ -756,6 +756,105 @@ def test_the_daily_cap_refuses_everyone_once_it_trips():
     assert response.status_code == 429
 
 
+# --- Finding 2: the per-IP key must not be attacker-controlled -------------
+#
+# X-Forwarded-For is a left-to-right chain and proxies APPEND to it, they do
+# not replace it. GCP's load balancer appends the connection's real address
+# as the last hop, so the rightmost entry is the one to trust; the leftmost
+# entry is whatever the client itself sent and is not even validated as an
+# IP. Demonstrated: 50 requests with a rotating leftmost header value were
+# all allowed against a 5/hour limit under the old (leftmost) key.
+
+
+def test_caller_key_takes_the_rightmost_forwarded_for_entry():
+    request = _FakeRequest(
+        headers={"x-forwarded-for": "totally-not-an-ip, 203.0.113.5"}
+    )
+    assert server._caller_key(request) == "203.0.113.5"
+
+
+def test_caller_key_ignores_a_spoofed_leftmost_entry_when_the_real_one_trails():
+    request = _FakeRequest(headers={"x-forwarded-for": "attacker-controlled"})
+    # No trusted proxy hop present at all — still take the last (only) entry
+    # rather than trusting it blindly as "the client"; this documents intent
+    # more than it changes behavior for a single-entry header.
+    assert server._caller_key(request) == "attacker-controlled"
+
+
+def test_caller_key_falls_back_to_request_client_host_without_the_header():
+    request = _FakeRequest(host="127.0.0.1")
+    assert server._caller_key(request) == "127.0.0.1"
+
+
+def test_rotating_the_leftmost_forwarded_for_entry_does_not_evade_the_ip_limiter():
+    """The exact demonstrated failure: an attacker who rotates a spoofed
+    leftmost X-Forwarded-For value while the real, trusted-proxy-appended
+    entry stays fixed must still be rate-limited as one caller."""
+    client = TestClient(server.app)
+    treatment = {"treatment": "x" * 60}
+
+    async def _noop(run_id, treatment):
+        return None
+
+    with (
+        mock.patch("star.server.verify_token", return_value="uid-one"),
+        mock.patch("star.server._store", mock.Mock()),
+        mock.patch("star.server._execute", _noop),
+        mock.patch(
+            "star.server._ip_limiter",
+            server.RateLimiter(max_per_window=1, window_seconds=3600),
+        ),
+        mock.patch("star.server._daily_cap", server.DailyCap(max_per_day=1000)),
+    ):
+        responses = []
+        for i in range(5):
+            headers = {**AUTH, "X-Forwarded-For": f"spoofed-{i}, 203.0.113.5"}
+            responses.append(client.post("/api/rooms", json=treatment, headers=headers))
+
+    assert responses[0].status_code == 200
+    assert [r.status_code for r in responses[1:]] == [429, 429, 429, 429]
+
+    server._runs.pop(responses[0].json()["run_id"], None)
+
+
+# --- Finding 3: a request the IP limiter refuses must not spend a daily
+# slot. Verified failure: 10 POSTs from one IP against a per-IP limit of 1
+# produced one build and consumed all 10 daily slots, because the daily cap
+# was checked — and DailyCap.check() increments on the allow path — before
+# the per-IP check. ---
+
+
+def test_a_request_refused_by_the_ip_limiter_does_not_consume_a_daily_slot():
+    client = TestClient(server.app)
+    treatment = {"treatment": "x" * 60}
+
+    async def _noop(run_id, treatment):
+        return None
+
+    daily_cap = server.DailyCap(max_per_day=100)
+    with (
+        mock.patch("star.server.verify_token", return_value="uid-one"),
+        mock.patch("star.server._store", mock.Mock()),
+        mock.patch("star.server._execute", _noop),
+        mock.patch(
+            "star.server._ip_limiter",
+            server.RateLimiter(max_per_window=1, window_seconds=3600),
+        ),
+        mock.patch("star.server._daily_cap", daily_cap),
+    ):
+        responses = [
+            client.post("/api/rooms", json=treatment, headers=AUTH) for _ in range(10)
+        ]
+
+    assert responses[0].status_code == 200
+    assert [r.status_code for r in responses[1:]] == [429] * 9
+    assert daily_cap.count_for() == 1, (
+        "a request the IP limiter refused still spent a daily slot"
+    )
+
+    server._runs.pop(responses[0].json()["run_id"], None)
+
+
 @pytest.mark.asyncio
 async def test_a_pipeline_failure_does_not_leak_exception_detail_to_the_client(caplog):
     """The message a stranger sees must not describe our internals — but the
@@ -875,6 +974,78 @@ def test_stream_events_treats_a_malformed_last_event_id_as_no_cursor():
     assert _sse_ids(response) == [0, 1, 2]
 
     del server._runs["sse-malformed"]
+
+
+# --- Minor: Last-Event-ID parsing was too loose. `int()` alone accepts
+# underscore-grouped digits ("1_000") and places no upper bound on the
+# result, so a large value silently starves the client of every event until
+# the run ends (the replay loop only fires once cursor < len(events)). Gate
+# on str.isdigit() and clamp to the run's current event count. ---
+
+
+def test_resume_cursor_defaults_to_zero_with_no_header():
+    assert server._resume_cursor(None, total_events=5) == 0
+
+
+def test_resume_cursor_resumes_one_past_the_last_seen_event():
+    assert server._resume_cursor("1", total_events=5) == 2
+
+
+def test_resume_cursor_rejects_non_numeric_strings():
+    assert server._resume_cursor("not-a-number", total_events=5) == 0
+
+
+def test_resume_cursor_rejects_underscore_grouped_digits():
+    """int("1_000") == 1000, but _push never emits an id with an underscore
+    in it — str.isdigit() correctly refuses what int() alone would accept."""
+    assert server._resume_cursor("1_000", total_events=5) == 0
+
+
+def test_resume_cursor_clamps_to_the_current_event_count():
+    """Verified failure: an unbounded cursor set past the run's actual event
+    count used to silently starve the client of every event until the run
+    ended. Clamping resumes at the current tip instead of going dark."""
+    assert server._resume_cursor("999999", total_events=3) == 3
+
+
+def test_stream_events_treats_an_underscore_grouped_last_event_id_as_malformed():
+    client = TestClient(server.app)
+    run = server._runs["sse-underscore"] = {
+        "events": [], "status": "complete", "search_count": 0,
+        "ledger": SourceLedger(), "result": None, "uid": "uid-one",
+    }
+    for i in range(3):
+        server._push(run, "search", agent="x", objective=f"q{i}", category=None)
+
+    response = client.get(
+        "/api/rooms/sse-underscore/events", headers={"Last-Event-ID": "1_000"}
+    )
+
+    assert _sse_ids(response) == [0, 1, 2]
+
+    del server._runs["sse-underscore"]
+
+
+def test_stream_events_with_an_out_of_range_last_event_id_does_not_error():
+    """Wiring check: a huge Last-Event-ID against a terminal run must not
+    raise or hang the stream — it clamps to the tip and yields nothing new,
+    which is correct once nothing new exists."""
+    client = TestClient(server.app)
+    run = server._runs["sse-out-of-range"] = {
+        "events": [], "status": "complete", "search_count": 0,
+        "ledger": SourceLedger(), "result": None, "uid": "uid-one",
+    }
+    for i in range(3):
+        server._push(run, "search", agent="x", objective=f"q{i}", category=None)
+
+    response = client.get(
+        "/api/rooms/sse-out-of-range/events", headers={"Last-Event-ID": "999999"}
+    )
+
+    assert response.status_code == 200
+    assert _sse_ids(response) == []
+
+    del server._runs["sse-out-of-range"]
 
 
 # --- Task 2: unbounded _runs must evict finished runs, never a live one ----

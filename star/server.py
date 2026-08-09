@@ -77,7 +77,9 @@ _store = RoomStore()
 # module docstring for why, and what breaks if this ever runs on more than
 # one instance.
 _ip_limiter = RateLimiter(
-    max_per_window=config.max_rooms_per_ip_per_hour(), window_seconds=3600
+    max_per_window=config.max_rooms_per_ip_per_hour(),
+    window_seconds=3600,
+    max_keys=config.max_rate_limiter_keys(),
 )
 _daily_cap = DailyCap(max_per_day=config.max_rooms_per_day())
 
@@ -95,17 +97,63 @@ def _caller_key(request: Request) -> str:
 
     Cloud Run sits behind a load balancer, so `request.client.host` is the
     load balancer's address, not the caller's. `X-Forwarded-For` is a
-    left-to-right chain: each proxy the request passes through appends its
-    own address to the end, so the *first* entry is the one the load
-    balancer itself put there — the original client — and every entry after
-    it is a proxy, not a caller. Take the first entry when the header is
-    present; fall back to `request.client.host` for direct/local traffic
-    that never passed through a proxy.
+    left-to-right chain, and proxies APPEND to it — they do not replace it.
+    The *leftmost* entry is whatever the incoming request already had in
+    that header, which for a direct client is nothing but for an attacker is
+    anything they feel like typing: it is not even validated as an IP.
+    Demonstrated 2026-08-09: 50 requests with a rotating leftmost value were
+    all allowed past a 5/hour limit, and `X-Forwarded-For: totally-not-an-ip`
+    was accepted verbatim as the rate-limit key. The old docstring here
+    asserted the leftmost entry was correct and cited no verification — that
+    claim is how this got shipped.
+
+    The *rightmost* entry is the one GCP's load balancer itself appended as
+    the request's last hop, which is correct whether or not Cloud Run
+    preserves or replaces whatever the client sent — no experiment needed to
+    justify it, because it holds either way. Take the last entry when the
+    header is present; fall back to `request.client.host` for direct/local
+    traffic that never passed through a proxy.
+
+    Neither key is a strong identity, and this function does not pretend
+    otherwise. Anonymous Firebase sign-in is open to anyone, and the browser
+    Firebase API key is public by design (see docs/INFRASTRUCTURE.md) — a
+    determined attacker can rotate `uid`s as freely as they can rotate
+    source addresses, and nothing here stops that. This limiter's job is to
+    make casual and semi-automated abuse expensive, not to authenticate the
+    caller. The real ceiling against a determined, identity-rotating
+    attacker is `_daily_cap` (see Finding 1 in star/guards.py and
+    scripts/deploy.sh) — that is why min-instances=1 keeping it alive
+    matters more than this key ever could.
     """
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
-        return forwarded.split(",")[0].strip()
+        return forwarded.split(",")[-1].strip()
     return request.client.host if request.client else "unknown"
+
+
+def _resume_cursor(last_event_id: str | None, total_events: int) -> int:
+    """Compute the SSE resume point from an incoming Last-Event-ID header.
+
+    EventSource sets this automatically on every reconnect, to the `id:`
+    line of the last event it actually received — but it is still a
+    client-controlled header, and `int()` alone is too permissive to trust
+    with it. `int("1_000")` succeeds (Python accepts underscore-grouped
+    digits), and `int()` also accepts non-ASCII Unicode digits — `_push`
+    never emits either shape, so both are signs of a header this endpoint
+    did not produce. `int()` places no upper bound on the result either: a
+    large value used to push `cursor` past every event that exists yet, and
+    since the replay loop below only fires once `cursor < len(events)`, that
+    silently starved the client of every event until the run ended, with no
+    error and no visible symptom besides a stuck-looking progress view.
+
+    `str.isdigit()` accepts only what `_push` actually emits: an
+    ASCII-rendered non-negative int. Clamping to `total_events` means a
+    cursor claiming to be past events that do not exist yet resumes at the
+    current tip instead of going dark.
+    """
+    if last_event_id is None or not last_event_id.isdigit():
+        return 0
+    return min(int(last_event_id) + 1, total_events)
 
 
 def _build_categories(state: dict, ledger: SourceLedger) -> dict:
@@ -454,15 +502,28 @@ async def create_room(
         )
     # One room build spends real money — a dozen or more live web searches
     # plus several Gemini calls. Refuse before any of that runs, not after.
-    if not _daily_cap.check():
-        raise HTTPException(
-            429, "STAR has hit its daily research limit. Try again tomorrow."
-        )
+    #
+    # Order matters (Finding 3): the per-IP check must run first, and
+    # DailyCap.check() must be the last thing before this request is
+    # actually allowed to run. DailyCap.check() increments on the allow
+    # path — it is a spend, not a peek — so checking it before the per-IP
+    # limiter meant every request the IP limiter went on to refuse had
+    # already spent a daily slot. Verified: 10 POSTs from one IP against a
+    # per-IP limit of 1 produced one build and consumed all 10 daily slots;
+    # at production settings (5/hour, 100/day) that is the whole day's
+    # budget gone in about two seconds, from one caller, before a single
+    # legitimate user is served. Checking the free, in-memory per-IP limiter
+    # first means only a request that is actually going to run ever touches
+    # the shared daily budget.
     if not _ip_limiter.check(_caller_key(request)):
         raise HTTPException(
             429,
             "That is a lot of rooms in one hour. Give the department a moment "
             "and try again shortly.",
+        )
+    if not _daily_cap.check():
+        raise HTTPException(
+            429, "STAR has hit its daily research limit. Try again tomorrow."
         )
     run_id = uuid.uuid4().hex[:12]
     _runs[run_id] = {
@@ -501,18 +562,13 @@ async def stream_events(
         raise HTTPException(404, "Unknown run")
 
     async def generate():
-        # EventSource sets Last-Event-ID automatically on every reconnect, to
-        # the `id:` line of the last event it actually received. Event ids
-        # are 0-based and match their index in run["events"] (see _push), so
-        # the next unseen event is simply one past it. A missing or
-        # malformed header (first connection, or some other client) falls
-        # back to replaying from the start.
-        cursor = 0
-        if last_event_id is not None:
-            try:
-                cursor = max(0, int(last_event_id) + 1)
-            except ValueError:
-                cursor = 0
+        # Event ids are 0-based and match their index in run["events"] (see
+        # _push), so the next unseen event is simply one past the last one
+        # seen. See _resume_cursor for why this is not just `int(header)`.
+        initial = _runs.get(run_id)
+        cursor = _resume_cursor(
+            last_event_id, len(initial["events"]) if initial else 0
+        )
         while True:
             run = _runs.get(run_id)
             if run is None:

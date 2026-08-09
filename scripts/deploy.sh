@@ -1,16 +1,33 @@
 #!/usr/bin/env bash
-# Deploy STAR to Cloud Run. Run from the repo root.
+# Deploy STAR to Cloud Run. Runnable from anywhere — cd's to the repo root
+# itself so `--source .` always means this repo, not the caller's cwd.
 set -euo pipefail
+cd "$(dirname "$0")/.."
 
-PROJECT=star-research-dept
+PROJECT="${PROJECT:-star-research-dept}"
 REGION=us-central1
 SERVICE=star
 
-# --max-instances=1 is load-bearing, not tuning. `_runs` is per-process: a
-# live build's SSE stream and its in-memory room read both require the same
-# instance. A second instance breaks runs in flight. The abuse guards in
-# star/guards.py are in-memory for the same reason and become per-instance
-# if this changes.
+# --max-instances=1 AND --min-instances=1 are both load-bearing, not tuning —
+# neither alone is enough. `_runs` and the abuse guards in star/guards.py
+# (_ip_limiter, _daily_cap) are per-process module-level state.
+#
+# --max-instances=1 keeps a live build's SSE stream and its in-memory room
+# read on the same instance; a second instance breaks runs in flight.
+#
+# --min-instances=1 keeps that one instance warm. Without it, Cloud Run
+# scales to zero when idle and the next request cold-starts a fresh process
+# with _ip_limiter and _daily_cap back at zero — so the "100 builds/day" cap
+# is actually "100 builds per instance lifetime," and instance lifetime has
+# no lower bound under min-instances=0. An attacker sends 100 builds, waits
+# out the idle window, and repeats; every redeploy or instance recycle also
+# resets both counters for free. min-instances=1 removes cold-start latency
+# from a live demo too, but that is the bonus, not the reason.
+#
+# If this ever needs to scale past one instance, both flags AND the abuse
+# guards need to move together to a shared store (Firestore/Redis) in the
+# same change — see star/guards.py's module docstring and
+# docs/INFRASTRUCTURE.md.
 #
 # --timeout must exceed STAR_RUN_TIMEOUT_SECONDS (600), because the SSE
 # stream is itself a request and stays open for the whole build.
@@ -20,7 +37,7 @@ gcloud run deploy "$SERVICE" \
   --region "$REGION" \
   --allow-unauthenticated \
   --max-instances=1 \
-  --min-instances=0 \
+  --min-instances=1 \
   --cpu=1 \
   --memory=2Gi \
   --timeout=900 \

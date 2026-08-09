@@ -43,6 +43,22 @@ def max_rooms_per_day() -> int:
     return int(os.environ.get("STAR_MAX_ROOMS_PER_DAY", "100"))
 
 
+def max_rate_limiter_keys() -> int:
+    """Bound on distinct callers `_ip_limiter` tracks at once (Finding 3b).
+
+    Reordering the daily cap behind the per-IP check (Finding 3) removed an
+    accidental bound: the daily cap used to turn away identity-rotating
+    callers before they ever reached the per-IP limiter's dict, capping it
+    near the daily cap's own size. With the per-IP check running first, that
+    accident is gone, so RateLimiter needs an explicit bound of its own. A
+    few thousand distinct callers a day is generous for a hackathon demo and
+    still cheap for the O(n) stale-key sweep in RateLimiter.check() to walk
+    on every request, on a single-threaded loop shared with every open SSE
+    stream.
+    """
+    return int(os.environ.get("STAR_MAX_RATE_LIMITER_KEYS", "5000"))
+
+
 def max_synthesis_output_tokens() -> int:
     """Hard ceiling on the bible, because generation runs away without one.
 

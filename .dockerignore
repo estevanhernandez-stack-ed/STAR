@@ -1,3 +1,8 @@
+# Governs a local `docker build` (context exclusion). It does NOT govern
+# `gcloud run deploy --source .` — that reads .gcloudignore, and before
+# .gcloudignore existed there was no file actually protecting the source
+# upload; gcloud silently fell back to .gitignore instead. Keep both files
+# in sync when the exclusion list changes.
 .venv/
 .env
 .mcp.json
