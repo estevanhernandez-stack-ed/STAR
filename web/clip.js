@@ -75,7 +75,12 @@ export function plural(n, word) {
  *      nothing to quote" and asserted "the excerpt above" anyway.
  *    - No title from the page. star/findings.py falls back to `entry.url` when
  *      the ledger has no title, and this file falls back to the domain; either
- *      way what is on the stamp is our derivation, not the page's own words.
+ *      way the name shown for the source is our derivation, not the page's own
+ *      words. Says "the name shown for it" rather than naming a place on the
+ *      card: the fallback renders in .receipt-title, NOT inside .receipt-stamp
+ *      (whose first line is the domain, unconditionally). Copy that points at
+ *      the wrong element is still copy that is wrong, and it breaks the moment
+ *      a later task moves the title.
  *  Copy that is true in three branches and false in the fourth is not precise
  *  copy, and precision here is the whole of obligation 3. */
 function ledgerCheckCopy({ hasExcerpt, titleFromPage }) {
@@ -95,8 +100,8 @@ function ledgerCheckCopy({ hasExcerpt, titleFromPage }) {
   } else if (hasExcerpt) {
     middle =
       "The excerpt above is the page's own words as the search returned it, " +
-      "not the researcher's. The search returned no title for it, so the line " +
-      "on the stamp is this link's own address.";
+      "not the researcher's. The search returned no title for it, so the name " +
+      "shown for it is this link's own address.";
   } else {
     middle =
       "The search returned neither a title nor an excerpt for it, so nothing " +
