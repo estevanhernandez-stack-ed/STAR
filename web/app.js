@@ -1,12 +1,25 @@
-/* STAR frontend — build a room, watch it happen, read the bible.
+/* STAR frontend — build a room, watch it happen, open the drawers.
 
    The stage's state (intake / running / room) and the rail of saved rooms
    belong to shell.js. This file owns starting a build, streaming its
-   progress, and painting a room's content once it's open — the tab-based
-   render below is the seam Task 5/6 replace with drawers and a dedicated
-   bible surface for the FILED room; the live RUNNING view is this task's
-   own seam, and it now routes into web/drawer.js's four-drawer grid
-   instead of the plain timeline that used to be the only feedback.
+   progress, and painting a room's content once it's open.
+
+   Both views are now the same four drawers (web/drawer.js). A live run
+   drives them through idle -> searching -> filed off the SSE stream; a
+   filed room mounts a second grid from GET /api/rooms/{id} and each card
+   opens into its clips (web/clip.js). That is deliberate and it is the
+   point of the phase: a room reached from the rail and a room that just
+   finished building are the same object in the same component, so nothing
+   can look different depending on how you got there.
+
+   What this file stopped doing in Task 6: the three-button tab strip over
+   Research Bible / Story Profile / Research Plan. The bible moved behind
+   the docket's own button (docs/design/DIRECTION.md — "findings lead, the
+   bible follows"); the profile moved onto the docket; the research plan is
+   not gone but distributed — every question it holds carries a category,
+   and web/clip.js's renderSceneNeeds files each one into the drawer it was
+   written for, under the scene it was asked for. A plan read as one flat
+   list behind two clicks was the single most-buried thing we produce.
 
    Research obligation 6 (never promise a duration) governs everything in
    the SSE handler below: no ETA, no progress bar implying completion.
@@ -22,21 +35,37 @@ import {
   refreshRail,
   setRoomRenderer,
 } from "/shell.js";
-import { createDrawerGrid, setDrawerState, tickDrawerClocks } from "/drawer.js";
+import {
+  DRAWER_LABELS,
+  createDrawerGrid,
+  setDrawerState,
+  tickDrawerClocks,
+} from "/drawer.js";
 
 const $ = (id) => document.getElementById(id);
 
 const timeline = $("timeline");
 const progressPanel = $("progress-panel");
 
+// The room view's fixed furniture. index.html ships all four and this file
+// only ever replaces their CONTENTS, never the nodes themselves, so a
+// reference taken once at module load cannot go stale.
+const roomGrid = $("room-grid");
+const bibleSurface = $("bible-surface");
+const bibleBtn = $("bible-btn");
+const docketBody = $("docket-body");
+
 let searchCount = 0;
 
-// SSE "agent_done" (star/server.py) carries only the friendly agent label
-// its own _FRIENDLY dict assigns each author — unlike "search" events, it
-// never carries `category`. Category has to be recovered client-side from
-// the same four labels _FRIENDLY gives the researcher authors. There is no
-// shared source of truth across the Python/JS boundary for this map; keep
-// it in sync with star/server.py's _FRIENDLY by hand if either changes.
+// Fallback only, and no longer the primary path. SSE "agent_done" once
+// carried nothing but the friendly label star/server.py's _FRIENDLY assigns
+// each author, so the client reverse-mapped display prose back to a routing
+// key — which made _FRIENDLY's exact wording a load-bearing API contract with
+// no test guarding it. The server sends `category` now (the same way "search"
+// always has) and the handler below prefers it; this map survives for an
+// event from an older server and nothing else. This comment stated the old
+// behaviour as current until Task 6; the code stopped agreeing with it at
+// star/server.py's ba4e3fe.
 const AGENT_TO_CATEGORY = {
   "Setting researcher": "setting",
   "Props researcher": "objects_props",
@@ -72,14 +101,28 @@ $("new-room-btn").addEventListener("click", () => {
   $("build-btn").disabled = false;
 });
 
-document.querySelectorAll(".tab").forEach((tab) => {
-  tab.addEventListener("click", () => {
-    document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
-    document.querySelectorAll(".tab-content").forEach((c) => c.classList.add("hidden"));
-    tab.classList.add("active");
-    $("tab-" + tab.dataset.tab).classList.remove("hidden");
-  });
+// The bible is one surface behind one control, and opening it puts the
+// drawers away rather than stacking under them: it is a second VIEW of the
+// room, not a section of the first. The button carries aria-expanded and
+// aria-controls so the state is announced, and its label changes too —
+// belt and braces, because a control whose only feedback is an ARIA
+// attribute is a control most people cannot see change.
+//
+// Replaces the three-button `.tab` strip this file used to wire with a
+// querySelectorAll snapshot taken once at module evaluation. That listener
+// is gone with the markup it was attached to; nothing else in the app
+// declares `.tab` (the drawer's cut tab is `.drawer-tab`, renamed in Task 5
+// after these two collided — see web/drawer.css).
+bibleBtn.addEventListener("click", () => {
+  setBibleOpen(bibleBtn.getAttribute("aria-expanded") !== "true");
 });
+
+function setBibleOpen(open) {
+  bibleBtn.setAttribute("aria-expanded", open ? "true" : "false");
+  bibleBtn.textContent = open ? "Back to the drawers" : "The bible";
+  bibleSurface.classList.toggle("hidden", !open);
+  roomGrid.classList.toggle("hidden", open);
+}
 
 function addEntry(cls, html) {
   const li = document.createElement("li");
@@ -94,12 +137,32 @@ function pad2(n) {
 }
 
 /** DD MON YYYY, matching the stamp's slug-face convention in
- *  docs/design/visual-directions.md's own mockup ("RET 09 AUG 2026"). Uses
- *  the browser's local clock — for a live run the retrieval genuinely just
- *  happened, so client "now" and server "now" differ by network latency
- *  only, not by anything worth reconciling. */
+ *  docs/design/visual-directions.md's own mockup ("RET 09 AUG 2026"). Called
+ *  with no argument during a live run, where the retrieval genuinely just
+ *  happened, so client "now" and server "now" differ by network latency only
+ *  and not by anything worth reconciling. */
 function stampDate(d = new Date()) {
   return `${pad2(d.getDate())} ${d.toLocaleString("en-US", { month: "short" }).toUpperCase()} ${d.getFullYear()}`;
+}
+
+/** The room's own date, in the stamp's face — or nothing.
+ *
+ *  `created_at` is the room document's ISO timestamp (star/store.py), which is
+ *  when the run happened and therefore when its searches ran. That is what the
+ *  receipt stamps as `RET`, and the reason it has to come from the payload
+ *  rather than from this browser's clock: a room built on 09 AUG and opened in
+ *  September would otherwise stamp September on sources that came back in
+ *  August — a fabricated provenance claim on the one element whose entire job
+ *  is provenance. web/drawer.js's renderExpanded refuses to substitute the
+ *  filed date for this exact reason; this is the value it was waiting for.
+ *
+ *  Missing or unparseable returns "", and every caller drops the line rather
+ *  than filling it. A document written before the field existed is the real
+ *  case; a malformed one is the defensive case. Neither is worth a guess. */
+function roomDate(createdAt) {
+  if (!createdAt) return "";
+  const parsed = new Date(createdAt);
+  return Number.isNaN(parsed.getTime()) ? "" : stampDate(parsed);
 }
 
 /** Elapsed time only — never a prediction. Research obligation 6 forbids an
@@ -315,10 +378,29 @@ async function buildRoom() {
   };
 }
 
-/** Fetches one room and paints it into the results panel. This is the seam
- *  Task 3's drawer component replaces — both the live-build "complete"
- *  handler above and shell.js's loadRoom() (a rail click) call this same
- *  function, so a saved room and a just-finished one render identically. */
+/** Clears the room view back to its resting state before a repaint.
+ *
+ *  Every one of these is a real cross-room leak, not defensive tidiness: the
+ *  rail can move between rooms without a reload, so a bible left open would
+ *  greet the next room with the previous room's prose, and a grid left mounted
+ *  would show four filed drawers for a second while the next room's fetch is
+ *  still in flight. Called before the fetch's result is read, so it also covers
+ *  the failure paths below. */
+function resetRoomView() {
+  setBibleOpen(false);
+  bibleBtn.classList.add("hidden");
+  bibleSurface.innerHTML = "";
+  roomGrid.replaceChildren();
+  docketBody.innerHTML = "";
+  $("result-stats").textContent = "";
+}
+
+/** Fetches one room and paints it into the results panel.
+ *
+ *  Both the live-build "complete" handler above and shell.js's loadRoom() (a
+ *  rail click) call this same function, so a saved room and a just-finished
+ *  one render identically — the promise this file has carried since Task 3 and
+ *  the reason the drawer component has one payload shape for both. */
 async function showResults(runId) {
   const res = await authedFetch(`/api/rooms/${runId}`);
   if (!res.ok) {
@@ -343,6 +425,7 @@ async function showResults(runId) {
   );
 
   showRoom();
+  resetRoomView();
   $("build-btn").disabled = false;
 
   // A room can be listed in the rail before it has anything to show: still
@@ -367,55 +450,252 @@ async function showResults(runId) {
       "This room has no research to show.",
     ];
     $("result-title").textContent = copy[0];
-    $("result-stats").textContent = "";
-    $("tab-bible").innerHTML = `<p>${escapeHtml(copy[1])}</p>`;
-    $("tab-profile").innerHTML = "";
-    $("tab-plan").innerHTML = "";
+    docketBody.innerHTML = `<p class="docket-note">${escapeHtml(copy[1])}</p>`;
     return;
   }
 
+  paintRoom(result, status);
+}
+
+/** The filed room: a docket, four drawers, and a bible one control away.
+ *
+ *  Drawer state is FILED for all four, every time. That is the state
+ *  docs/design/DIRECTION.md's >40% manila rule is written against, and it is
+ *  also the honest default — a room opened with one drawer already expanded
+ *  would be asserting that one researcher's category is the one you came for. */
+function paintRoom(result, status) {
   const profile = result.story_profile || {};
+  const plan = result.research_plan || {};
+  const categories = result.categories || {};
+  // One date for the whole room, read once. Both the FILED stamp and every
+  // receipt's RET line are claims about the same run, and reading created_at
+  // twice would be two chances to format it differently.
+  const filed = roomDate(result.created_at);
+
   $("result-title").textContent = profile.title || "Your research room";
-  $("result-stats").textContent = `${result.search_count ?? "?"} cited web searches`;
+  $("result-stats").textContent = statsLine(result, filed);
+  docketBody.innerHTML = renderDocket(profile, status);
 
-  // The bible is synthesized from live web content — an adversarial data
-  // path. Render it only through DOMPurify; if either library failed to
-  // load, fall back to escaped plain text rather than raw HTML.
-  const bibleMd = result.research_bible || "_No bible produced yet for this room._";
-  if (window.marked && window.DOMPurify) {
-    $("tab-bible").innerHTML = DOMPurify.sanitize(marked.parse(bibleMd));
-  } else {
-    $("tab-bible").innerHTML = `<pre>${escapeHtml(bibleMd)}</pre>`;
+  const grid = createDrawerGrid();
+  // Spread first: `children` is a LIVE HTMLCollection and mountRoomDrawer adds
+  // a node inside each drawer. Nothing it adds is a child of the grid today,
+  // so iterating the collection directly would work — and would break silently
+  // the first time a later change mounts something at grid level.
+  for (const el of [...grid.children]) {
+    mountRoomDrawer(el, categories[el.dataset.category], plan, filed);
   }
-  makeLinksSafe($("tab-bible"));
+  roomGrid.replaceChildren(grid);
 
-  $("tab-profile").innerHTML = renderProfile(profile);
-  $("tab-plan").innerHTML = renderPlan(result.research_plan || {});
+  bibleSurface.innerHTML = renderBible(result, status);
+  makeLinksSafe(bibleSurface);
+  bibleBtn.classList.remove("hidden");
 }
 
-function renderProfile(p) {
-  const chips = (arr) => (arr || []).map((x) => `<span class="chip">${escapeHtml(x)}</span>`).join("");
+/** Counts and provenance, in the slug face. Source count is the ledger's own
+ *  size (star/server.py sends `len(run["ledger"])`), so it is sources SEEN, not
+ *  sources cited — worth saying plainly rather than letting "106 sources" imply
+ *  106 footnotes. Each piece is dropped rather than defaulted when it is
+ *  missing: "? cited web searches" was a shrug printed where a number belongs. */
+function statsLine(result, filed) {
+  const parts = [];
+  // typeof, not Number(): `Number(null)` is 0, and a room whose count never
+  // reached the client would have printed a confident "0 cited web searches"
+  // for a run that ran seventeen.
+  if (typeof result.search_count === "number") {
+    parts.push(plural(result.search_count, "cited web search"));
+  }
+  if (typeof result.source_count === "number" && result.source_count > 0) {
+    parts.push(`${plural(result.source_count, "source")} returned`);
+  }
+  if (filed) parts.push(`filed ${filed}`);
+  return parts.join(" · ");
+}
+
+/** Standard English pluralization, sibilants included — "search" takes "+es".
+ *  The same rule web/clip.js exports, duplicated here rather than imported
+ *  because this file's only other reason to reach into clip.js would be
+ *  escapeHtml, which it already has its own copy of. Recorded as a known
+ *  duplication, not an oversight: see this file's escapeHtml below. */
+function plural(n, word) {
+  const suffix = /(?:[sxz]|[cs]h)$/i.test(word) ? "es" : "s";
+  return n === 1 ? `${n} ${word}` : `${n} ${word}${suffix}`;
+}
+
+/** The docket — the department's read of the treatment, on the cover sheet.
+ *
+ *  This is the old Story Profile tab, unbundled. It was the second of three
+ *  tabs and nobody who wanted their research clicked it; as a cover sheet it
+ *  costs one glance and identifies the room. `logline` leads because it is the
+ *  one line that says what this room is FOR.
+ *
+ *  Every value is server data on an adversarial path — the profile is extracted
+ *  from the treatment by a model — so all of it is escaped, chips included. */
+function renderDocket(profile, status) {
+  const chips = (values) =>
+    (Array.isArray(values) ? values : [])
+      .map((value) => String(value).trim())
+      .filter(Boolean)
+      .map((value) => `<span class="chip">${escapeHtml(value)}</span>`)
+      .join("");
+  const row = (label, html) =>
+    html ? `<div class="kv"><div class="k">${label}</div>${html}</div>` : "";
+
+  const slug = [profile.era, profile.genre]
+    .map((v) => String(v || "").trim())
+    .filter(Boolean)
+    .map((v) => escapeHtml(v))
+    .join(" &middot; ");
+
   return `
-    <div class="kv"><div class="k">Logline</div>${escapeHtml(p.logline || "—")}</div>
-    <div class="kv"><div class="k">Era</div>${escapeHtml(p.era || "—")}</div>
-    <div class="kv"><div class="k">Genre</div>${escapeHtml(p.genre || "—")}</div>
-    <div class="kv"><div class="k">Locations</div>${chips(p.locations)}</div>
-    <div class="kv"><div class="k">Needs grounding</div>${chips(p.key_entities)}</div>`;
+    ${status === "partial" ? partialDocketNote() : ""}
+    ${slug ? `<p class="docket-slug">${slug}</p>` : ""}
+    ${
+      profile.logline
+        ? `<p class="docket-logline">${escapeHtml(profile.logline)}</p>`
+        : ""
+    }
+    ${row("Locations", chips(profile.locations))}
+    ${row("Needs grounding", chips(profile.key_entities))}
+  `;
 }
 
-function renderPlan(plan) {
-  const qs = plan.questions || [];
-  if (!qs.length) return "_No plan captured._";
-  return qs
-    .map(
-      (q) => `
-      <div class="q">
-        <div class="cat">${escapeHtml(String(q.category).replace("_", " & "))}</div>
-        <div>${escapeHtml(q.question)}</div>
-        <div class="why">${escapeHtml(q.why || "")}</div>
-      </div>`
-    )
-    .join("");
+/** The partial room, on the cover sheet.
+ *
+ *  Stated up front rather than left for whoever clicks through to the bible,
+ *  because a partial room is otherwise indistinguishable from a finished one
+ *  until you go looking — and finding out by absence is how a reader concludes
+ *  something went wrong. It did not. See renderBible for the full register. */
+function partialDocketNote() {
+  return `<p class="docket-note">Filed without a bible. The research is in the drawers, with its sources.</p>`;
+}
+
+/** One drawer of a filed room, mounted with its own toggle.
+ *
+ *  The toggle is created HERE and inserted as a direct child of the card rather
+ *  than into `.drawer-body`, and that placement is load-bearing:
+ *  setDrawerState replaces the body's innerHTML on every state change, so a
+ *  control living inside it would be destroyed by the very click that used it.
+ *  As a sibling of the body it survives filed <-> expanded, keeps its focus
+ *  through the transition, and keeps its aria-controls pointing at a node that
+ *  does not get replaced.
+ *
+ *  It sits BEFORE the body for the same reason every disclosure does: the
+ *  control precedes what it controls, which is both the reading order and what
+ *  aria-controls describes. On an expanded card — 1300px of clips for a real
+ *  category — a close control only at the bottom would be a control you have to
+ *  scroll past the content to find. */
+function mountRoomDrawer(el, doc, plan, filed) {
+  const category = el.dataset.category;
+  const body = el.querySelector(".drawer-body");
+  body.id = `drawer-body-${category}`;
+
+  // A category absent from the payload is not a category with no findings.
+  // star/server.py's _build_categories always emits all four, so this is a
+  // document written by an older server — say the drawer did not file rather
+  // than stamping FILED on an object that does not exist.
+  if (!doc) {
+    setDrawerState(el, "failed", {
+      message: "This room was filed without a record for this category.",
+    });
+    return;
+  }
+
+  const payload = {
+    doc,
+    plan,
+    code: CATEGORY_CODE[category],
+    // `date` and `retrieved` are the same value here and that is a claim, not
+    // a shortcut. web/drawer.js refuses to default one from the other because
+    // a live render's "today" is not a retrieval date for a stored room. Both
+    // of these come from the room's own created_at: a room was filed by the
+    // run that retrieved its sources, so for a stored room the two facts are
+    // genuinely the same day, and this is the caller stating that on purpose.
+    date: filed,
+    retrieved: filed,
+  };
+
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "drawer-toggle";
+  toggle.setAttribute("aria-controls", body.id);
+  el.insertBefore(toggle, body);
+
+  const setOpen = (open) => {
+    setDrawerState(el, open ? "expanded" : "filed", payload);
+    toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    toggle.textContent = open ? "Close the drawer" : "Open the drawer";
+    // Four buttons reading "Open the drawer" are four identical entries in a
+    // screen reader's control list. The accessible name contains the visible
+    // one verbatim (WCAG 2.5.3) and adds the plate the eye already has.
+    toggle.setAttribute(
+      "aria-label",
+      `${toggle.textContent}: ${DRAWER_LABELS[category]}`
+    );
+  };
+
+  toggle.addEventListener("click", () => {
+    setOpen(el.dataset.state !== "expanded");
+  });
+  setOpen(false);
+}
+
+/** The bible, or the honest account of a room that has none.
+ *
+ *  Adversarial by construction: the bible is synthesised by a model from live
+ *  web pages it did not choose. It goes through DOMPurify or it does not render
+ *  as HTML at all — if either vendored library failed to load, the fallback is
+ *  escaped plain text, never the raw string. */
+function renderBible(result, status) {
+  const markdown = String(result.research_bible || "").trim();
+  if (markdown) {
+    return `
+      <h3 class="bible-heading">The research bible</h3>
+      <div class="bible-body">${bibleHtml(markdown)}</div>`;
+  }
+  const { heading, body } = noBibleCopy(status);
+  return `
+    <h3 class="bible-heading">${heading}</h3>
+    ${body.map((line) => `<p class="bible-note">${line}</p>`).join("")}`;
+}
+
+function bibleHtml(markdown) {
+  if (window.marked && window.DOMPurify) {
+    return DOMPurify.sanitize(marked.parse(markdown));
+  }
+  return `<pre class="bible-raw">${escapeHtml(markdown)}</pre>`;
+}
+
+/** A room with no bible, in the department's voice.
+ *
+ *  A partial run (star/server.py's _salvage) is a COMPLETE OUTCOME OF A
+ *  DIFFERENT SHAPE, and the copy is written to hold that line under pressure.
+ *  Four researchers ran. Every search was issued, every source came back, every
+ *  citation was checked against the ledger, and all of it is in the drawers
+ *  behind this surface. The one step that did not run is the editor's — folding
+ *  those findings into one written document. Nothing here apologises, hedges,
+ *  or lets the reader conclude the research is suspect, because none of that
+ *  would be true: the shortfall is one assembly step, and the evidence it would
+ *  have been assembled FROM is the thing this product is actually for.
+ *
+ *  The distinction from the empty-complete case matters and is kept: a
+ *  "complete" room with no bible means synthesis produced nothing, which is a
+ *  different fact and gets a different sentence. */
+function noBibleCopy(status) {
+  if (status === "partial") {
+    return {
+      heading: "This room is filed as clips",
+      body: [
+        "All four researchers filed. Every fact in the drawers carries the source it came from and the excerpt that source returned, gathered the same way and checked the same way as a room that has a bible.",
+        "The step that did not run is the editor's: folding those findings into one written document. The drawers hold the research; read it there.",
+      ],
+    };
+  }
+  return {
+    heading: "No bible was written for this room",
+    body: [
+      "The editor produced nothing to read. What the researchers filed is untouched by that: the drawers hold their findings and the sources behind them.",
+    ],
+  };
 }
 
 function makeLinksSafe(container) {

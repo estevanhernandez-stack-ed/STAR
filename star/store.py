@@ -38,9 +38,24 @@ def room_to_document(run_id: str, result: dict, status: str, created_at: str) ->
 
 
 def document_to_room(doc: dict) -> dict:
-    """Rebuild the API's room payload from a stored document. Pure."""
+    """Rebuild the API's room payload from a stored document. Pure.
+
+    `created_at` is here and not only in `room_summary` because the room view
+    stamps it on every citation receipt as the day those sources came back
+    from a search (web/clip.js's `RET <date>`). It was dropped from this shape
+    until Task 6, which left the signature stamp two thirds complete: the
+    browser had a filed date for the drawer and no retrieval date for the
+    sources, and web/drawer.js deliberately refuses to substitute one for the
+    other. A room's creation is when its searches ran, so this is the honest
+    source for that claim and there is no other one on the wire.
+
+    Left as "" when the document has none — an older document written before
+    Task 1 added the field. The client drops the RET line rather than filling
+    it, which is the whole reason this is a real value and not a default.
+    """
     doc = doc or {}
     return {
+        "created_at": doc.get("created_at") or "",
         "story_profile": doc.get("story_profile") or {},
         "research_plan": doc.get("research_plan"),
         "research_bible": doc.get("research_bible") or "",

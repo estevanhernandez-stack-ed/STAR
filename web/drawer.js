@@ -204,10 +204,17 @@ function buildFiledHead(data = {}) {
   const { factCount, sourceCount, questionCount, code, date, searchCount } = data;
   const hasFindingCounts =
     factCount !== undefined || sourceCount !== undefined || questionCount !== undefined;
-  const stampDetail =
-    code && date
-      ? `<span class="stamp-slug">${escapeHtml(code)} &middot; ${escapeHtml(date)}</span>`
-      : "";
+  // Each field independently, joined by what survives. The gate used to be
+  // `code && date`, which meant a room whose document predates the stored
+  // `created_at` field lost its RESEARCHER CODE as well — a fact this caller
+  // does know — because the date it does not know was missing. That is the
+  // inverse of this file's own rule: put on the stamp only what is known, and
+  // put all of it there. Verified against a room with created_at removed: the
+  // slug reads "LOG" alone rather than vanishing.
+  const stampParts = [code, date].filter(Boolean).map((part) => escapeHtml(part));
+  const stampDetail = stampParts.length
+    ? `<span class="stamp-slug">${stampParts.join(" &middot; ")}</span>`
+    : "";
   const countsLine = hasFindingCounts
     ? `${plural(factCount ?? 0, "fact")} &middot;
        ${plural(sourceCount ?? 0, "source")} &middot;
@@ -234,11 +241,47 @@ function buildLabelledLog(data = {}) {
   return log ? `<p class="drawer-legend">What this researcher asked</p>${log}` : "";
 }
 
-function renderFiled(body, data = {}) {
+/** The three finding counts, derived from the payload whenever the payload can
+ *  support them.
+ *
+ *  A live run has no `doc` — findings are not parsed until the room is fetched
+ *  — so it keeps whatever the caller stated (see buildFiledHead's two shapes).
+ *  A room read from the API has one, and deriving there rather than trusting a
+ *  passed number is what stops the stamp's counts from changing when a reader
+ *  opens the drawer: filed and expanded compute the same three numbers from
+ *  the same object, so there is no second implementation to drift. */
+function withDerivedCounts(data, category) {
+  const doc = data.doc;
+  if (!doc) return data;
+  const findings = Array.isArray(doc.findings) ? doc.findings : [];
+  return {
+    ...data,
+    factCount: findings.length,
+    sourceCount: countSources(findings),
+    questionCount: questionsForCategory(data.plan, category).length,
+  };
+}
+
+/** FILED, and — when the caller has a research plan — what this researcher was
+ *  sent to find out.
+ *
+ *  Task 6 added the scene needs here, not only to the expanded state, and the
+ *  reason is a composition failure Task 3 flagged and Task 5 inherited: a filed
+ *  card reached from the rail has no search log (that is live-run data), so it
+ *  held a stamp and a counts line inside a 260px card and nothing else. Four of
+ *  those are the room's default view. The plan's questions are the honest thing
+ *  to put there — they are per category, they are already on the wire, and they
+ *  say what is inside the drawer and why a screenwriter would open it.
+ *
+ *  It also puts research obligation 1 (docs/design/DIRECTION.md) on the first
+ *  screen instead of behind a click, which is the whole complaint that
+ *  direction was written to answer. */
+function renderFiled(body, data = {}, category = "") {
   // The log is carried over from the searching state so the card does not
   // empty at the moment it succeeds.
   body.innerHTML = `
-    ${buildFiledHead(data)}
+    ${buildFiledHead(withDerivedCounts(data, category))}
+    ${renderSceneNeeds(questionsForCategory(data.plan, category))}
     ${buildLabelledLog(data)}
   `;
 }
@@ -254,22 +297,29 @@ function renderFiled(body, data = {}) {
  *
  *  Reading order is an argument, not a layout preference:
  *    1. the stamp and the counts — what this drawer is
- *    2. what the department could not do cleanly — the uncertainty numbers,
+ *    2. what these findings are for — the scene needs, so every clip below is
+ *       read under the question it was gathered to answer
+ *    3. what the department could not do cleanly — the uncertainty numbers,
  *       BEFORE the findings rather than in a footnote after them. Burying
  *       them under the good news would be the sycophancy the aversion
  *       research names as the actual harm.
- *    3. what these findings are for — the scene needs, so every clip below is
- *       read under the question it was gathered to answer
  *    4. the clips
  *    5. the lines the parser could not file, verbatim
  *    6. the searches that produced all of it
  *
- *  Counts are computed here rather than trusted from the caller, because in
- *  this state they are derivable from the payload and a derived number cannot
- *  drift from what is on screen. `sourceCount` counts DISTINCT resolved URLs
- *  (see clip.js's countSources) — the stored Detroit-1929 room cites one
- *  museum page on five separate logistics findings, and summing citations
- *  would inflate it to five sources.
+ *  2 and 3 were the other way round until Task 6 put the scene needs on the
+ *  FILED card as well. Opening a drawer must not re-order what was already on
+ *  it — a block that jumps above another one on click reads as a different
+ *  card, not a fuller one, and this state's whole claim is that it is additive.
+ *  The argument for the uncertainty numbers is untouched: they still land
+ *  before a single finding does.
+ *
+ *  Counts come from withDerivedCounts for the same reason they always did —
+ *  they are derivable from the payload here, and a derived number cannot drift
+ *  from what is on screen. `sourceCount` counts DISTINCT resolved URLs (see
+ *  clip.js's countSources) — the stored Detroit-1929 room cites one museum page
+ *  on five separate logistics findings, and summing citations would inflate it
+ *  to five sources.
  *
  *  `date` and `retrieved` are two different factual claims and are two
  *  different fields, deliberately:
@@ -299,14 +349,9 @@ function renderExpanded(body, data = {}, category = "") {
   // two get to disagree.
   const fieldNotes = renderFieldNotes(doc);
   body.innerHTML = `
-    ${buildFiledHead({
-      ...data,
-      factCount: findings.length,
-      sourceCount: countSources(findings),
-      questionCount: questions.length,
-    })}
-    ${renderUncertainty(doc)}
+    ${buildFiledHead(withDerivedCounts(data, category))}
     ${renderSceneNeeds(questions)}
+    ${renderUncertainty(doc)}
     <p class="drawer-legend">What was found</p>
     ${renderClips(findings, stamp, { hasFieldNotes: Boolean(fieldNotes) })}
     ${fieldNotes}
@@ -350,13 +395,17 @@ export function createDrawer(category) {
  *  -> failed); each call fully replaces the body's content, so there is no
  *  stale state left over from a previous call.
  *
- *  "expanded" takes the same payload shape as the others plus `doc` (one
- *  category's ResearchDoc out of GET /api/rooms/{id}), `plan`
+ *  "filed" and "expanded" take the same payload shape as the others plus `doc`
+ *  (one category's ResearchDoc out of GET /api/rooms/{id}), `plan`
  *  (result.research_plan, or its questions array), and `retrieved` (the day
  *  the sources came back, distinct from the filed `date` — see
- *  renderExpanded). It reads the category off the element rather than the
- *  payload so the per-category scene-need join can never be pointed at the
- *  wrong drawer's questions. */
+ *  renderExpanded). One shape for both, because a room mounts every drawer
+ *  filed and expands the same element in place; a second shape would be a
+ *  second chance for the two states to disagree about the same room.
+ *
+ *  Both read the category off the element rather than the payload so the
+ *  per-category scene-need join can never be pointed at the wrong drawer's
+ *  questions. */
 export function setDrawerState(el, state, data = {}) {
   if (!VALID_STATES.has(state)) {
     throw new Error(`setDrawerState: unknown state "${state}"`);
@@ -371,7 +420,7 @@ export function setDrawerState(el, state, data = {}) {
       renderSearching(body, data);
       break;
     case "filed":
-      renderFiled(body, data);
+      renderFiled(body, data, el.dataset.category);
       break;
     case "failed":
       renderFailed(body, data);

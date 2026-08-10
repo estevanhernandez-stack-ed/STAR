@@ -203,6 +203,21 @@ def _persist(run: dict, run_id: str, status: str) -> None:
     """Best-effort persistence. Must never affect the in-memory run state:
     the outcome was already decided by the caller before this runs, and a
     Firestore hiccup here should cost only durability, never correctness.
+
+    `created_at` is read off the run rather than minted here, and that is a
+    correctness point, not tidiness. This function writes the same document
+    twice for every build — once at creation with status "running", once at
+    the terminal status — and `.set()` replaces the whole document, so a
+    fresh `now()` on the second write moved created_at to the moment the run
+    FINISHED. The browser stamps that value on every receipt as the day the
+    sources came back (web/clip.js's `RET`), and a build that starts at 23:58
+    and lands at 00:03 would have stamped the wrong date on real sources.
+    One timestamp, taken once, at creation.
+
+    The fallback exists for a run dict assembled outside create_room (the
+    tests do this). Stamping now is worse than stamping the creation time and
+    better than raising out of a function whose whole contract is that it
+    never costs anything but durability.
     """
     try:
         _store.save(
@@ -212,7 +227,8 @@ def _persist(run: dict, run_id: str, status: str) -> None:
                 run_id,
                 run.get("result"),
                 status,
-                datetime.now(timezone.utc).isoformat(),  # noqa: UP017
+                run.get("created_at")
+                or datetime.now(timezone.utc).isoformat(),  # noqa: UP017
             ),
         )
     except Exception:
@@ -373,16 +389,18 @@ async def _run_pipeline(run_id: str, treatment: str) -> None:
 
 def _partial_message(cause: str) -> str:
     """Shared by both salvage sites so the promise stays consistent with what
-    the browser can actually show. `_salvage`'s payload does carry
-    `categories`, but web/app.js's showResults only ever renders
-    story_profile, research_plan, and research_bible — there is no tab for
-    categories yet. Claiming the findings are "here" overclaims what the
-    user can see right now; say what is true instead.
+    the browser can actually show.
+
+    It used to end "they'll be readable here once the room view for them
+    ships", which was the honest thing to say while `_salvage`'s `categories`
+    had nowhere to render: web/app.js showed a bible, a profile, and a plan,
+    and no clips. That view shipped in Task 6 and the promise came true, so
+    the sentence deferring it is now the false one. The findings are in the
+    room's drawers, and the copy says so.
     """
     return (
-        f"{cause} There is no research bible to read yet, but every "
-        "researcher's findings and sources were gathered and are safely "
-        "saved — they'll be readable here once the room view for them ships."
+        f"{cause} Every researcher's findings and the sources behind them "
+        "were gathered, and they are filed in this room's drawers."
     )
 
 
@@ -561,6 +579,10 @@ async def create_room(
         "search_count": 0,
         "ledger": SourceLedger(),
         "uid": uid,
+        # Taken once, here, and reused by every _persist call this run makes
+        # and by get_room's in-memory branch. See _persist for what a second
+        # timestamp cost.
+        "created_at": datetime.now(timezone.utc).isoformat(),  # noqa: UP017
     }
     # Best-effort, written before the task starts: if this Cloud Run instance
     # recycles mid-build, the run vanishes from memory but this document
@@ -629,7 +651,20 @@ async def get_room(run_id: str, authorization: str | None = Header(None)) -> dic
 
     run = _runs.get(run_id)
     if run is not None and run.get("uid") == uid:
-        return {"status": run["status"], "result": run["result"]}
+        # `created_at` is merged in rather than left to the pipeline, because
+        # `run["result"]` is built from ADK session state (see _run_pipeline
+        # and _salvage) and that state has never held a wall-clock time. The
+        # stored branch below carries the field inside `result`
+        # (star/store.py's document_to_room), and these two branches serve the
+        # SAME room minutes apart — a just-finished build reads through here,
+        # the same room read from the rail tomorrow reads through Firestore.
+        # If only one of them carried the date, a receipt's `RET` stamp would
+        # appear or vanish depending on which path answered, which is the kind
+        # of drift a provenance claim cannot afford.
+        result = run["result"]
+        if result is not None:
+            result = {**result, "created_at": run.get("created_at") or ""}
+        return {"status": run["status"], "result": result}
 
     # Off the event loop; see list_rooms above for why.
     document = await asyncio.to_thread(_store.get, uid, run_id)

@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/shell.css" />
   <link rel="stylesheet" href="/drawer.css" />
   <link rel="stylesheet" href="/clip.css" />
+  <link rel="stylesheet" href="/bible.css" />
   <script src="/vendor/marked.min.js"></script>
   <script src="/vendor/purify.min.js"></script>
 </head>
@@ -65,19 +66,27 @@
         <p id="search-meter" class="meter"></p>
       </section>
 
+      <!-- A filed room. The drawers ARE the room: four hanging folders on
+           the cabinet's own ground, each one openable into its clips. The
+           bible is a secondary surface behind the docket's button, per
+           docs/design/DIRECTION.md ("findings lead, the bible follows").
+           The panel itself is deliberately unpainted — the docket and the
+           drawers are the manila, the stage is the frame. -->
       <section id="results-panel" class="panel hidden">
-        <div class="results-header">
-          <h2 id="result-title">Your research room</h2>
-          <span id="result-stats" class="meter"></span>
+        <!-- The docket: the department's read of the treatment, on the
+             cover sheet where a case file carries it. -->
+        <div class="docket">
+          <div class="docket-head">
+            <h2 id="result-title">Your research room</h2>
+            <button id="bible-btn" class="docket-btn" type="button"
+              aria-expanded="false" aria-controls="bible-surface">The bible</button>
+          </div>
+          <p id="result-stats" class="meter"></p>
+          <div id="docket-body"></div>
         </div>
-        <nav class="tabs">
-          <button class="tab active" data-tab="bible">Research Bible</button>
-          <button class="tab" data-tab="profile">Story Profile</button>
-          <button class="tab" data-tab="plan">Research Plan</button>
-        </nav>
-        <article id="tab-bible" class="tab-content markdown"></article>
-        <article id="tab-profile" class="tab-content hidden"></article>
-        <article id="tab-plan" class="tab-content hidden"></article>
+        <!-- app.js mounts drawer.js's four-drawer grid here. -->
+        <div id="room-grid"></div>
+        <section id="bible-surface" class="bible hidden"></section>
       </section>
     </main>
   </div>

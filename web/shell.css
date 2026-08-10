@@ -7,9 +7,10 @@
        rail" — one step down, so the rail and the textarea both sit in it.
      - --manila is a component surface, never the page: the intake card and
        the room cards sit ON the cabinet, they are not the cabinet.
-   The two hard rules (manila >40% of a filed room; the stamp stays
-   typographic) belong to Task 3's drawer grid, not this file — nothing here
-   is a stamp, and this task ships no filed room grid yet.
+   Nothing in this file is a stamp, so the typographic-stamp rule belongs to
+   web/drawer.css and web/clip.css. The manila >40% rule now partly does live
+   here: the room's docket (below) is manila, and it and the drawer grid are
+   what the filed state is measured across.
 */
 
 * {
@@ -324,8 +325,10 @@ button {
 }
 
 /* ---------------------------------------------------------------------
-   Progress panel — the live-run timeline. Task 4 replaces this with the
-   drawer grid; this is the working seam until then.
+   Progress panel — the live run. The drawer grid (web/drawer.css) is
+   mounted above the timeline by web/app.js's resetProgress(); what remains
+   here is the heading, the activity feed for the agents that have no drawer
+   (intake, planning, synthesis), and the search meter.
 --------------------------------------------------------------------- */
 
 #progress-panel h2 {
@@ -345,6 +348,19 @@ button {
 @keyframes pulse {
   50% {
     opacity: 0.2;
+  }
+}
+
+/* Found while verifying Task 6: this was the one animation in the app with no
+   reduced-motion path — it predates the --stamp-duration token every later
+   component runs its motion through, so nothing switched it off. The ellipsis
+   is the content and the pulse is decoration on top of it, so killing the
+   animation costs the heading nothing: it still reads "The department is
+   working…". Verified with prefers-reduced-motion genuinely emulated, which is
+   the only way this phase has ever caught one of these. */
+@media (prefers-reduced-motion: reduce) {
+  .ellipsis::after {
+    animation: none;
   }
 }
 
@@ -409,24 +425,42 @@ button {
 }
 
 /* ---------------------------------------------------------------------
-   Results panel — the tab/bible view. Task 3-6 replace this with drawers,
-   clips, and a dedicated bible surface; this keeps a loaded room readable
-   in the meantime.
+   Results panel — a filed room: the docket, then the drawer grid, with the
+   bible one control away (web/bible.css).
+
+   THE PANEL ITSELF IS NOT PAINTED. It used to carry `background: var(--manila)`,
+   which was right while it held a tab strip over prose and became wrong the
+   moment it started holding cards: the drawers are manila, and manila cards on
+   a manila panel have no edges. The whole metaphor is that the cards ARE the
+   page and the cabinet is the frame, so the frame stays --cabinet (the stage's
+   own ground, inherited by not painting) and every manila surface in here is a
+   component sitting on it — the docket below, and the four drawers.
+
+   The intake card is unaffected: `.intake` paints its own manila, and it is
+   still correct there. One card on the cabinet is a card; five cards on one
+   card is a background.
 --------------------------------------------------------------------- */
 
-#results-panel {
+/* The docket — the case file's cover sheet, and the room's first manila.
+   Carries the title, the counts, and the department's read of the treatment
+   (the old Story Profile tab, which nobody who wanted their research ever
+   clicked). Sits ABOVE the grid, so the grid's own top margin — derived from
+   --tab-rise in web/drawer.css — is what keeps the first row's cut tabs off
+   this card's bottom edge. */
+.docket {
   background: var(--manila);
   color: var(--ink);
   border-radius: 4px;
-  padding: 1.75rem 2rem;
+  padding: 1.5rem 1.75rem 1.6rem;
+  box-shadow: 0 1px 0 var(--manila-edge);
 }
 
-.results-header {
+.docket-head {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.75rem;
 }
 
 #result-title {
@@ -438,73 +472,88 @@ button {
   font-weight: 700;
 }
 
+/* 0.75, not the 0.65 this rule shipped with. Composited over --manila that is
+   4.9:1; 0.65 measures 3.87:1, under AA for 11px slug text, and this line is
+   not decoration — it carries the search count, the source count, and the day
+   the room was filed. Same opacity web/drawer.css already uses for .drawer-meta
+   on the same surface, so "quiet on manila" has one value in this codebase
+   rather than three that each miss by a different amount. */
 #results-panel .meter {
   color: var(--ink);
-  opacity: 0.65;
+  opacity: 0.75;
+  margin-top: 0.5rem;
 }
 
-.tabs {
-  display: flex;
-  gap: 0.3rem;
-  margin: 1rem 0 1rem;
-  border-bottom: 1px solid var(--manila-edge);
-}
-
-.tab {
+/* The one control on the cover sheet. Bordered rather than filled so it does
+   not compete with a stamp, and --ink on --manila is 8.6:1. */
+.docket-btn {
+  flex: none;
   background: transparent;
   color: var(--ink);
-  opacity: 0.6;
-  border: none;
-  border-bottom: 2px solid transparent;
-  padding: 0.5rem 0.8rem;
+  border: 1px solid var(--ink);
+  border-radius: 3px;
+  padding: 0.45rem 1rem;
+  font-family: var(--label);
+  font-size: var(--label-sm);
   font-weight: 700;
   letter-spacing: var(--track-label);
   text-transform: uppercase;
-  font-size: var(--label-sm);
   cursor: pointer;
 }
 
-.tab.active {
-  opacity: 1;
-  border-bottom-color: var(--aniline);
+.docket-btn:hover {
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
 }
 
-.markdown {
-  font-family: var(--body);
-  line-height: 1.65;
-  font-size: var(--text-md);
-}
-
-.markdown h1,
-.markdown h2 {
-  border-bottom: 1px solid var(--manila-edge);
-  padding-bottom: 0.3rem;
-}
-
-.markdown blockquote {
-  border-left: 3px solid var(--pencil);
-  margin-left: 0;
-  padding-left: 1rem;
-  opacity: 0.8;
-}
-
-.markdown code {
-  background: var(--onionskin);
-  padding: 0.1rem 0.35rem;
-  border-radius: 4px;
+.docket-slug {
+  margin: 0.9rem 0 0;
   font-family: var(--slug);
-  font-size: 0.85em;
+  font-size: var(--label-sm);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--ink);
+  /* 4.9:1 on manila. See #results-panel .meter above for why 0.75 is the one
+     value this codebase uses for quiet text on this surface. */
+  opacity: 0.75;
+}
+
+/* The line that says what the room is FOR. Body face, full-strength ink: it
+   outranks everything else on the cover sheet except the title. */
+.docket-logline {
+  margin: 0.35rem 0 0;
+  max-width: 74ch;
+  font-family: var(--body);
+  font-size: var(--text-md);
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+/* A statement about the room's shape (a partial run), or about why there is
+   nothing in it (a room that never filed). Not an alert and not styled as one
+   — see web/app.js's noBibleCopy for why a partial room is not a failure. */
+.docket-note {
+  margin: 0 0 0.9rem;
+  max-width: 74ch;
+  padding-left: 0.85rem;
+  border-left: 3px solid var(--manila-edge);
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--ink);
 }
 
 .kv {
-  margin: 0.5rem 0;
+  margin: 0.7rem 0 0;
   font-family: var(--body);
   font-size: var(--text-sm);
 }
 
 .kv .k {
   color: var(--ink);
-  opacity: 0.6;
+  /* Was 0.6 while this lived in a tab nobody opened, which measures 3.41:1 on
+     manila. On the docket it is a permanent 11px label on the room's first
+     screen; 0.75 is 4.9:1 and matches every other quiet label on this surface. */
+  opacity: 0.75;
   font-family: var(--label);
   font-size: var(--label-sm);
   text-transform: uppercase;
@@ -520,30 +569,6 @@ button {
   margin: 0.2rem 0.25rem 0.2rem 0;
   font-family: var(--slug);
   font-size: var(--label-sm);
-}
-
-.q {
-  margin: 0.7rem 0;
-  padding-left: 0.9rem;
-  border-left: 2px solid var(--manila-edge);
-  font-family: var(--body);
-  font-size: var(--text-sm);
-}
-
-.q .cat {
-  color: var(--ink);
-  opacity: 0.6;
-  font-family: var(--label);
-  font-size: var(--label-sm);
-  text-transform: uppercase;
-  letter-spacing: var(--track-label);
-}
-
-.q .why {
-  color: var(--ink);
-  opacity: 0.65;
-  font-style: italic;
-  margin-top: 0.15rem;
 }
 
 /* ---------------------------------------------------------------------

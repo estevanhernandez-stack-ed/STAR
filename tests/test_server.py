@@ -112,6 +112,78 @@ def test_room_endpoint_exposes_categories():
     del server._runs["testrun"]
 
 
+def test_a_live_run_reports_created_at_the_same_way_a_stored_room_does():
+    """The two branches of get_room serve the same room minutes apart — this
+    one right after a build, the Firestore one from the rail tomorrow. The
+    browser stamps `created_at` on every receipt as the day the sources came
+    back, so a field present on one path and absent on the other would make a
+    provenance claim appear or vanish depending on who answered."""
+    client = TestClient(server.app)
+    server._runs["timed"] = {
+        "events": [],
+        "status": "complete",
+        "search_count": 3,
+        "ledger": SourceLedger(),
+        "result": {"story_profile": {"title": "1962 Memphis"}, "categories": {}},
+        "uid": "test-uid",
+        "created_at": "2026-08-09T12:00:00+00:00",
+    }
+
+    with mock.patch("star.server.verify_token", return_value="test-uid"):
+        response = client.get("/api/rooms/timed", headers=AUTH)
+
+    assert response.json()["result"]["created_at"] == "2026-08-09T12:00:00+00:00"
+
+    del server._runs["timed"]
+
+
+def test_a_run_with_no_result_yet_still_answers_without_a_created_at_merge():
+    """`result` is None until the pipeline populates it. The merge must not
+    manufacture a payload out of a room that has nothing in it."""
+    client = TestClient(server.app)
+    server._runs["early"] = {
+        "events": [],
+        "status": "running",
+        "search_count": 0,
+        "ledger": SourceLedger(),
+        "result": None,
+        "uid": "test-uid",
+        "created_at": "2026-08-09T12:00:00+00:00",
+    }
+
+    with mock.patch("star.server.verify_token", return_value="test-uid"):
+        response = client.get("/api/rooms/early", headers=AUTH)
+
+    assert response.json()["result"] is None
+
+    del server._runs["early"]
+
+
+def test_persisting_twice_keeps_the_first_created_at():
+    """Every build writes its document twice — once at creation, once at its
+    terminal status — and `.set()` replaces the whole document. A fresh
+    timestamp on the second write moved created_at to the moment the run
+    finished, which for a build spanning midnight put the wrong date on real
+    sources."""
+    run = {
+        "status": "complete",
+        "events": [],
+        "result": {"research_bible": "x"},
+        "uid": "uid-one",
+        "created_at": "2026-08-09T23:58:00+00:00",
+    }
+    fake_store = mock.Mock()
+
+    with mock.patch("star.server._store", fake_store):
+        server._persist(run, "midnight", "running")
+        server._persist(run, "midnight", "complete")
+
+    first, second = [call.args[2] for call in fake_store.save.call_args_list]
+    assert first["created_at"] == "2026-08-09T23:58:00+00:00"
+    assert second["created_at"] == "2026-08-09T23:58:00+00:00"
+    assert second["status"] == "complete"
+
+
 def test_unknown_room_still_404s():
     client = TestClient(server.app)
     fake_store = mock.Mock()

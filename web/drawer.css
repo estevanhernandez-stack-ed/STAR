@@ -24,17 +24,22 @@
    in a real browser. Same lesson applied here without re-learning it.
 */
 
-/* web/index.html's #progress-panel carries class="panel" (web/shell.css),
-   a 760px reading-width ceiling sized for the intake/bible's prose column.
-   Task 4 mounts this same .drawer-grid inside it for the live run, and a
+/* Both panels that host a .drawer-grid carry class="panel" (web/shell.css),
+   whose 760px reading-width ceiling is sized for the intake's prose column. A
    760px parent would clip the grid's own 1120px ceiling below — a child's
-   max-width only caps an upper bound, it does not escape a narrower
-   ancestor. The ID selector's specificity (1,1,0) beats the bare .panel
-   rule (0,1,0) regardless of stylesheet order, so no !important and no
-   JS classList surgery needed. #results-panel is deliberately left alone:
-   it does not host a drawer grid yet (Task 5), and its 760px column still
-   suits the bible/tabs prose it shows today. */
-#progress-panel.panel {
+   max-width only caps an upper bound, it does not escape a narrower ancestor.
+   The ID selectors' specificity (1,1,0) beats the bare .panel rule (0,1,0)
+   regardless of stylesheet order, so no !important and no JS classList surgery
+   needed.
+
+   #results-panel joined this rule in Task 6, when the filed room stopped being
+   a tab strip over prose and became the same four drawers the live run shows.
+   It was excluded before that, and the exclusion said so in a comment that has
+   now been removed rather than left asserting a reason that stopped being
+   true. The bible surface inside that panel does not want 1120px of measure,
+   and does not take it: web/bible.css caps its own text column. */
+#progress-panel.panel,
+#results-panel.panel {
   max-width: 1120px;
 }
 
@@ -224,6 +229,51 @@
   flex-direction: column;
   justify-content: flex-start;
   gap: 0.55rem;
+}
+
+/* The open/close control on a filed room's drawer.
+   Lives here because it is a drawer part, and is CREATED by web/app.js rather
+   than by drawer.js: setDrawerState replaces .drawer-body's innerHTML on every
+   state change, so a control rendered into the body would be destroyed by the
+   click that used it. As a sibling of the body it survives filed <-> expanded
+   with its focus intact. The live run mounts no toggle — a drawer that is
+   still searching has nothing to open.
+
+   Quiet on purpose. It sits directly under the cut tab and directly above the
+   FILED stamp, and the stamp is the element that is meant to be seen first;
+   a filled button there would out-shout the signature of the whole direction.
+   --ink on --manila measures 8.6:1, so quiet costs nothing in legibility. */
+.drawer-toggle {
+  align-self: flex-start;
+  margin-bottom: 0.35rem;
+  background: transparent;
+  color: var(--ink);
+  border: none;
+  /* 60%, not 45%: composited over manila, 45% measures 2.40:1 against WCAG's
+     3:1 floor for a control's own visual boundary, and 60% measures 3.41:1.
+     The label above it is 8.6:1 and is what actually identifies the control,
+     but a rule that is there to be seen should be visible to everyone. */
+  border-bottom: 1px solid color-mix(in srgb, var(--ink) 60%, transparent);
+  border-radius: 0;
+  padding: 0 0 0.15rem;
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.drawer-toggle:hover {
+  border-bottom-color: var(--ink);
+}
+
+/* The global focus ring is --pencil (web/shell.css), which measures 1.9:1 on
+   manila against a 3:1 non-text floor. Same override, same reason, as the
+   receipt's in web/clip.css — this is the second focusable control in the app
+   to sit on a manila card. */
+.drawer-toggle:focus-visible {
+  outline-color: var(--ink);
 }
 
 .drawer-status {
