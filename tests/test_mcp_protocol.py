@@ -16,9 +16,11 @@ edit away from being quietly untrue:
     objects star/server.py hands the router, and a daily cap that counts to
     two after one build through each door.
 
-The four tools are the next item's. `TOOLS` is empty here on purpose, so
-`tools/list` returns an empty list and `tools/call` answers as an unknown
-tool — both of which are real behaviours with real assertions, not stubs.
+The four tools arrived in the item after the transport, and the section at the
+foot of this file is theirs. It asserts against the strings rather than around
+them, because on a surface with no screen the strings ARE the product: a
+refusal that does not say what to do next is the defect, not a cosmetic
+shortfall next to one.
 """
 
 import contextlib
@@ -33,6 +35,7 @@ from fastapi.testclient import TestClient
 from star import config, server, tokens
 from star.guards import DailyCap, RateLimiter
 from star.mcp import protocol, tools
+from star.models import Citation, ClaimResult, ScriptCheckResult, Verdict
 from star.store import TokenStore
 from tests.test_server import _FakeRequest
 from tests.test_store import _FakeClient
@@ -165,10 +168,9 @@ async def test_no_session_id_is_issued_at_the_handshake_or_anywhere_after():
 
 
 @pytest.mark.asyncio
-async def test_tools_list_answers_with_the_surface_this_item_has_not_filled_yet():
-    """Empty is a real answer, not a stub. The next item fills `TOOLS`; what
-    this pins is that the envelope, the key, and the shape are already right,
-    so the only thing that changes is the contents."""
+async def test_tools_list_answers_with_the_whole_surface_and_asks_for_no_second_page():
+    """The envelope, the key, and the shape. What is IN the list is asserted
+    at the foot of this file, where the four tools are."""
     store, _ = a_token_store()
     token = await issue(store)
 
@@ -935,3 +937,754 @@ def test_the_refusal_bodies_are_json_rpc_objects_a_client_can_parse():
         assert parsed["jsonrpc"] == "2.0"
         assert isinstance(parsed["error"]["code"], int)
         assert parsed["error"]["message"].strip()
+
+
+# ============================================================================
+# The four tools, and the strings an agent reads as the product
+# ============================================================================
+#
+# Everything below asserts against copy. That is not a category error on this
+# surface: an agent has no screen, so the descriptions and the refusals are
+# the entire interface, and `prd.md > The Department Over MCP` fails the
+# criterion outright for a bare status code, a bare "invalid request", or a
+# stack trace. A test that only checked `isError` would pass on all three.
+
+IDENTITY = tokens.TokenIdentity(uid=UID, token_id="a1b2c3d4e5f6")
+
+
+def _unreachable(name):
+    """A callable that fails the test if a tool reaches it.
+
+    Every refusal below is supposed to happen BEFORE the server is asked to
+    spend anything, and "before" is only observable as "the callable was never
+    invoked". An AssertionError raised here also proves the second half:
+    `tools.call` catches refusals and nothing else, so a defect still leaves
+    this file rather than being flattened into a tool result.
+    """
+
+    async def _refuse(*args, **kwargs):
+        raise AssertionError(f"{name} should not have been reached")
+
+    return _refuse
+
+
+def calls_for(**handlers) -> tools.Calls:
+    """A `Calls` with only the callable under test wired up."""
+    return tools.Calls(
+        start_build=handlers.get("start_build") or _unreachable("start_build"),
+        read_room=handlers.get("read_room") or _unreachable("read_room"),
+        list_rooms_for=(
+            handlers.get("list_rooms_for") or _unreachable("list_rooms_for")
+        ),
+        run_check=handlers.get("run_check") or _unreachable("run_check"),
+    )
+
+
+async def invoke(name, arguments=None, **handlers) -> dict:
+    return await tools.call(name, arguments or {}, calls_for(**handlers), IDENTITY)
+
+
+def said(result: dict) -> str:
+    """The one piece of text a calling model actually reads."""
+    return result["content"][0]["text"]
+
+
+def carried(result: dict) -> dict:
+    """The JSON half of a tool result, which is always the last block."""
+    return json.loads(said(result).rsplit("\n\n", 1)[-1])
+
+
+# -- the surface itself ------------------------------------------------------
+
+
+def test_the_four_tools_are_the_whole_surface_and_there_is_no_fifth():
+    """`get_room` IS `build_room`'s poll. A fifth tool for run status would be
+    a second name for one answer, and an agent would have to learn which of
+    two calls tells the truth about a room."""
+    assert [tool["name"] for tool in tools.TOOLS] == [
+        "list_rooms",
+        "get_room",
+        "build_room",
+        "check_scene",
+    ]
+    assert set(tools._RUNNERS) == {tool["name"] for tool in tools.TOOLS}
+
+
+def test_every_tool_carries_a_description_and_a_schema_a_client_can_read():
+    for tool in tools.TOOLS:
+        schema = tool["inputSchema"]
+        assert schema["type"] == "object"
+        # Declared closed, and enforced closed — see the unknown-argument test
+        # below. A schema that says `additionalProperties: false` while the
+        # implementation shrugs at extra keys teaches an agent the wrong thing
+        # about its own mistakes.
+        assert schema["additionalProperties"] is False
+        assert set(schema.get("required") or []) <= set(schema["properties"])
+        for prop in schema["properties"].values():
+            assert prop["type"] == "string"
+            assert prop["description"].strip()
+
+        description = tool["description"]
+        assert len(description) > 300, tool["name"]
+        # What it costs, before the call is made. The one thing a person reads
+        # off a screen and an agent has no way to find out.
+        assert "cost" in description.lower(), tool["name"]
+        # And where to go next, named as a tool rather than described.
+        others = {t["name"] for t in tools.TOOLS} - {tool["name"]}
+        assert any(other in description for other in others), tool["name"]
+
+    # It goes on the wire exactly as written.
+    json.dumps(list(tools.TOOLS))
+
+
+def test_build_room_names_a_poll_interval_rather_than_leaving_it_to_guesswork():
+    """An agent with no interval picks one of two bad ones: immediately and
+    forever, or once in five minutes."""
+    description = tools._TOOLS_BY_NAME["build_room"]["description"]
+
+    assert f"{tools.POLL_SECONDS} seconds" in description
+    assert "get_room" in description
+    assert "several minutes" in description
+    # Never a duration promise (obligation 6). "several minutes" is honest;
+    # "about 90 seconds" is not, and the build has run 146s to 420s+.
+    assert "minutes" not in description.replace("several minutes", "")
+
+
+def test_get_room_names_all_five_statuses_it_can_answer_with():
+    description = tools._TOOLS_BY_NAME["get_room"]["description"]
+
+    for status in ("running", "complete", "partial", "error", "interrupted"):
+        assert f"`{status}`" in description
+    assert "no separate status tool" in description
+
+
+def test_check_scenes_description_states_that_the_scene_is_stored():
+    """Obligation 5's agent-facing form. The browser discloses retention above
+    the paste box; this description is the only place the same disclosure can
+    live for a caller that never sees one."""
+    description = tools._TOOLS_BY_NAME["check_scene"]["description"]
+
+    assert "The scene text is stored with the room" in description
+    assert "deleted" in description
+
+
+def test_the_instructions_explain_the_department_rather_than_padding_the_handshake():
+    """`initialize` is the only place a client is told anything before it
+    starts guessing, and spec.md names three facts it owes: minutes and a
+    run_id to poll, citations hydrated from what search returned, and a scene
+    stored with its room."""
+    instructions = tools.INSTRUCTIONS
+
+    assert "run_id" in instructions
+    assert f"{tools.POLL_SECONDS} seconds" in instructions
+    assert "several minutes" in instructions
+    assert "live web search actually returned" in instructions
+    assert "stored with its room" in instructions
+    assert "four tools and no fifth" in instructions
+
+
+@pytest.mark.asyncio
+async def test_tools_list_puts_the_four_on_the_wire_with_their_descriptions():
+    store, _ = a_token_store()
+    token = await issue(store)
+
+    with door(store):
+        body = rpc(TestClient(server.app), call("tools/list"), token=token).json()
+
+    listed = body["result"]["tools"]
+    assert [tool["name"] for tool in listed] == [
+        "list_rooms",
+        "get_room",
+        "build_room",
+        "check_scene",
+    ]
+    for tool in listed:
+        assert tool["description"].strip()
+        assert tool["inputSchema"]["type"] == "object"
+
+
+# -- what a call actually answers with ---------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_an_empty_account_is_told_it_is_empty_rather_than_handed_an_empty_list():
+    """The first thing a fresh agent sees, and `[]` cannot tell it whether the
+    account is wrong, the call is broken, or the writer simply has not started
+    yet."""
+
+    async def _none(uid):
+        assert uid == UID
+        return []
+
+    result = await invoke("list_rooms", list_rooms_for=_none)
+
+    assert result["isError"] is False
+    assert "No rooms are filed under this account yet" in said(result)
+    assert "not an error" in said(result)
+    assert "build_room" in said(result)
+
+
+@pytest.mark.asyncio
+async def test_list_rooms_names_the_count_and_what_the_ids_are_for():
+    async def _two(uid):
+        return [{"run_id": "aaa"}, {"run_id": "bbb"}]
+
+    result = await invoke("list_rooms", list_rooms_for=_two)
+
+    assert result["isError"] is False
+    assert said(result).startswith("2 rooms filed under this account")
+    assert carried(result) == {"rooms": [{"run_id": "aaa"}, {"run_id": "bbb"}]}
+
+
+@pytest.mark.asyncio
+async def test_polling_a_room_still_being_built_answers_running_and_is_not_an_error():
+    """`prd.md`'s edge, stated as an edge: never an error, never a blocking
+    wait. The run registry holds no partial result while a build is in flight
+    (star/server.py sets `run["result"]` only at the end), so the honest
+    answer is the status plus what to do with it — and saying "nothing is
+    filed yet" beats an empty payload with no explanation."""
+
+    async def _running(uid, run_id):
+        return {"status": "running", "result": None}
+
+    result = await invoke("get_room", {"run_id": "abc"}, read_room=_running)
+
+    assert result["isError"] is False
+    assert carried(result) == {"run_id": "abc", "status": "running", "room": None}
+    assert "still being built" in said(result)
+    assert f"{tools.POLL_SECONDS} seconds" in said(result)
+    assert "not an error" in said(result)
+
+
+@pytest.mark.asyncio
+async def test_a_run_that_died_with_the_process_reports_interrupted_verbatim():
+    """Not translated into a failure. A run that did not survive a restart is
+    a distinct outcome: nothing more is coming, and whatever it filed is still
+    good. An agent told "error" would reasonably poll again waiting for it to
+    resolve into something."""
+    filed = {"categories": {"setting": {"findings": [{"fact": "x"}]}}}
+
+    async def _interrupted(uid, run_id):
+        return {"status": "interrupted", "result": filed}
+
+    result = await invoke("get_room", {"run_id": "abc"}, read_room=_interrupted)
+
+    assert result["isError"] is False
+    assert carried(result)["status"] == "interrupted"
+    assert "interrupted" in said(result)
+    assert "will never finish" in said(result)
+    assert "will not change" in said(result)
+
+
+@pytest.mark.asyncio
+async def test_an_interrupted_room_that_filed_nothing_promises_no_findings():
+    """A build persists its document the moment it starts, so an interrupted
+    room usually carries the shape of a room with nothing in it. "What it
+    filed is below" sends an agent to read an empty payload."""
+
+    async def _empty(uid, run_id):
+        return {"status": "interrupted", "result": {"categories": {}}}
+
+    result = await invoke("get_room", {"run_id": "abc"}, read_room=_empty)
+
+    assert "the room below is empty" in said(result)
+    assert "is below and will not change" not in said(result)
+
+
+def test_each_terminal_status_gets_its_own_sentence():
+    """Five statuses, five answers. A shared "the build is done" would leave
+    an agent unable to tell a finished room from a failed one without parsing
+    the payload it was just handed."""
+    reports = {
+        status: tools._room_report(status, {"categories": {}})
+        for status in ("running", "complete", "partial", "error", "interrupted")
+    }
+
+    assert len(set(reports.values())) == 5
+    # And an unfamiliar one says it is unfamiliar rather than guessing.
+    assert "no description for" in tools._room_report("quarantined", None)
+
+
+@pytest.mark.asyncio
+async def test_build_room_hands_back_a_run_id_and_never_the_streams_capability():
+    """`stream_key` guards a run's SSE stream, and this door has no stream:
+    GET /mcp is a 405 by design. Returning it would be exposure bought for
+    nothing."""
+
+    async def _started(uid, treatment):
+        assert uid == UID
+        return {"run_id": "3f2a91c4b0de", "stream_key": "s" * 32}
+
+    result = await invoke("build_room", {"treatment": TREATMENT}, start_build=_started)
+
+    assert result["isError"] is False
+    assert carried(result) == {"run_id": "3f2a91c4b0de", "status": "running"}
+    assert "s" * 32 not in said(result)
+    assert f"{tools.POLL_SECONDS} seconds" in said(result)
+    assert "get_room" in said(result)
+
+
+@pytest.mark.asyncio
+async def test_check_scene_reports_the_tally_the_cost_and_the_retention():
+    async def _checked(uid, run_id, scene):
+        assert scene == "INT. STUDIO - NIGHT"
+        return ScriptCheckResult(
+            scene_id="sc0001",
+            created_at="2026-08-10T00:00:00+00:00",
+            claims=[
+                ClaimResult(
+                    text="a 1961 Impala",
+                    claim_type="object",
+                    verdict=Verdict.CONFIRMED,
+                    citations=[
+                        Citation(url="https://e.example", title="T", excerpt="E")
+                    ],
+                    citation_sources=["room"],
+                ),
+                ClaimResult(
+                    text="a fax machine",
+                    claim_type="technology",
+                    verdict=Verdict.ANACHRONISM,
+                    citations=[
+                        Citation(url="https://f.example", title="U", excerpt="F")
+                    ],
+                    citation_sources=["search"],
+                ),
+            ],
+            search_count=3,
+            unsourced_count=1,
+        )
+
+    result = await invoke(
+        "check_scene",
+        {"run_id": "abc", "scene": "  INT. STUDIO - NIGHT  "},
+        run_check=_checked,
+    )
+
+    text = said(result)
+    assert result["isError"] is False
+    assert "2 claims" in text
+    assert "1 confirmed, 1 anachronism, 0 unverifiable" in text
+    assert "spent 3 live web searches" in text
+    assert "1 cited URL turned up in neither" in text
+    # Obligation 5 again, at the moment it becomes true rather than only in
+    # the description that was read before the call.
+    assert "scene text is now stored with this room" in text
+    # The enum arrives as a string, not as a Python repr.
+    assert [claim["verdict"] for claim in carried(result)["claims"]] == [
+        "confirmed",
+        "anachronism",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_thin_check_carries_the_departments_own_cover_note():
+    """A scene that asserts nothing about the world is a result, and an empty
+    claim list reaches a reader with no screen as a failure unless something
+    says otherwise."""
+
+    async def _nothing(uid, run_id, scene):
+        return ScriptCheckResult(
+            scene_id="sc0002",
+            created_at="2026-08-10T00:00:00+00:00",
+            claims=[],
+            cover_note=(
+                "Nothing in this scene made a claim about the world, so there "
+                "was nothing for the department to check."
+            ),
+        )
+
+    result = await invoke(
+        "check_scene", {"run_id": "abc", "scene": "She is afraid."}, run_check=_nothing
+    )
+
+    assert result["isError"] is False
+    assert "0 claims" in said(result)
+    assert "nothing for the department to check" in said(result)
+    # And not a paragraph describing what each claim below carries, printed
+    # over no claims at all. That reads as a payload the reader lost.
+    assert "Each claim below" not in said(result)
+    # The retention disclosure still stands, because the scene was still kept.
+    assert "now stored with this room" in said(result)
+
+
+# -- the eleven refusals -----------------------------------------------------
+
+
+async def _the_two_ceilings() -> dict[str, str]:
+    """The hourly and daily refusals, read off the server rather than restated.
+
+    Both are the server's own sentences and the tool layer passes them through
+    untouched, so a test that hard-coded them here would be asserting against
+    a copy and would keep passing after the original changed.
+    """
+    with mock.patch.object(
+        server, "_uid_limiter", RateLimiter(max_per_window=1, window_seconds=3600)
+    ):
+        server._uid_gate(UID)
+        hourly = server._uid_gate(UID)
+
+    with (
+        building(daily_cap=DailyCap(max_per_day=0)),
+        pytest.raises(server.HTTPException) as daily,
+    ):
+        await server._mcp_start_build(UID, TREATMENT)
+
+    return {
+        "per-account hourly ceiling": hourly,
+        "shared daily budget": daily.value.detail,
+    }
+
+
+async def delivered(status: int, detail: str) -> str:
+    """One of the server's refusals, as the agent door actually hands it over."""
+
+    async def _raise(uid, treatment):
+        raise server.HTTPException(status, detail)
+
+    return said(
+        await invoke("build_room", {"treatment": TREATMENT}, start_build=_raise)
+    )
+
+
+@pytest.mark.asyncio
+async def test_every_row_of_the_error_table_has_a_message_of_its_own():
+    """spec.md's eleven rows, compared as a set rather than read by eye.
+
+    Two of them are not errors and are here anyway: a room still building and
+    a room whose build was interrupted are answers, and the reason they need
+    their own words is exactly the reason the nine refusals do.
+    """
+    rows = {
+        "no token": tokens.MISSING.message,
+        "bad or unknown token": tokens.UNRECOGNISED.message,
+        "revoked token": tokens.REVOKED.message,
+        "room not found": tools.ROOM_NOT_FOUND,
+        "treatment too short": tools.treatment_too_short(12),
+        "treatment too long": tools.treatment_too_long(9001, 8000),
+        "scene too long": tools.scene_too_long(9001, 8000),
+        "run still building": tools.STILL_BUILDING,
+        "run interrupted": tools._room_report("interrupted", None),
+    }
+    # As delivered, not as raised. The tool layer adds the half a screen would
+    # have carried, and what an agent reads is what this row has to be.
+    for label, detail in (await _the_two_ceilings()).items():
+        rows[label] = await delivered(429, detail)
+
+    assert len(rows) == 11
+    assert len(set(rows.values())) == 11, "two rows are sharing one message"
+    for label, message in rows.items():
+        # A sentence, not a code. Eight words is the floor because the
+        # shortest legitimate row — the revoked token — needs ten to name
+        # what failed and where to get a new one.
+        assert len(message.split()) >= 8, label
+        assert message.strip().endswith("."), label
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_room_is_told_how_to_get_an_id_that_works():
+    """"Room not found" on its own fails the criterion. On screen that answer
+    lands beside a rail listing every room the reader owns; here there is no
+    rail."""
+
+    async def _missing(uid, run_id):
+        raise server.HTTPException(404, "Unknown run")
+
+    result = await invoke("get_room", {"run_id": "nope"}, read_room=_missing)
+
+    assert result["isError"] is True
+    assert said(result) == tools.ROOM_NOT_FOUND
+    assert "list_rooms" in said(result)
+    assert "Unknown run" not in said(result)
+
+
+@pytest.mark.asyncio
+async def test_check_scene_gets_the_same_answer_for_a_room_it_cannot_reach():
+    async def _missing(uid, run_id, scene):
+        raise server.HTTPException(404, "Unknown run")
+
+    result = await invoke(
+        "check_scene", {"run_id": "nope", "scene": "INT. BAR"}, run_check=_missing
+    )
+
+    assert result["isError"] is True
+    assert said(result) == tools.ROOM_NOT_FOUND
+
+
+@pytest.mark.asyncio
+async def test_a_short_treatment_is_refused_before_anything_is_spent():
+    """`_unreachable` is the assertion that matters here: the refusal happens
+    ahead of `_start_build`, so no hourly slot and no daily slot is charged
+    for a treatment the department was never going to plan from."""
+    result = await invoke("build_room", {"treatment": "A movie about a car."})
+
+    text = said(result)
+    assert result["isError"] is True
+    assert str(tools.MIN_TREATMENT_CHARS) in text
+    assert "20 characters" in text
+    # The three things the planner actually needs, asked for by name.
+    assert "when the story is set" in text
+    assert "where it happens" in text
+    assert "what the characters actually do" in text
+
+
+@pytest.mark.asyncio
+async def test_a_long_treatment_names_the_cap_and_the_count_that_was_sent():
+    cap = config.max_treatment_chars()
+    result = await invoke("build_room", {"treatment": "x" * (cap + 1)})
+
+    text = said(result)
+    assert result["isError"] is True
+    assert str(cap) in text
+    assert str(cap + 1) in text
+    assert "Nothing was spent" in text
+
+
+@pytest.mark.asyncio
+async def test_a_long_scene_names_the_cap_and_the_count_that_was_sent():
+    cap = config.max_scene_chars()
+    result = await invoke("check_scene", {"run_id": "abc", "scene": "x" * (cap + 1)})
+
+    text = said(result)
+    assert result["isError"] is True
+    assert str(cap) in text
+    assert str(cap + 1) in text
+    assert "nothing was stored" in text
+
+
+@pytest.mark.asyncio
+async def test_the_floor_this_module_names_is_the_floor_the_server_enforces():
+    """The one number written down twice. star/server.py:693 is the authority;
+    this module refuses ahead of it only so the message can name the floor and
+    say what a treatment needs to contain. Drift fails here rather than
+    shipping a refusal that names a number nothing enforces."""
+    with building():
+        await server._mcp_start_build(UID, "e" * tools.MIN_TREATMENT_CHARS)
+        with pytest.raises(server.HTTPException) as refused:
+            await server._mcp_start_build(UID, "e" * (tools.MIN_TREATMENT_CHARS - 1))
+
+    assert refused.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_a_ceiling_the_server_refuses_reaches_the_agent_in_its_own_words():
+    """Passed through rather than re-worded. The hourly refusal already names
+    the ceiling, the window, and that reads are still free; a second copy here
+    is a second thing to keep in step."""
+    ceilings = await _the_two_ceilings()
+
+    async def _refused(uid, treatment):
+        raise server.HTTPException(429, ceilings["per-account hourly ceiling"])
+
+    result = await invoke("build_room", {"treatment": TREATMENT}, start_build=_refused)
+
+    assert result["isError"] is True
+    assert said(result) == ceilings["per-account hourly ceiling"]
+    assert str(config.max_rooms_per_ip_per_hour()) in said(result)
+    assert "hour" in said(result)
+    assert "not limited" in said(result)
+    # Nothing bolted on, because the server's sentence already carries it.
+    assert tools.READS_ARE_FREE not in said(result)
+
+
+@pytest.mark.asyncio
+async def test_the_daily_budget_refusal_is_told_that_reading_still_works():
+    """The one refusal on this surface that could stop an agent cold. On
+    screen the rail keeps listing rooms while the daily cap is spent, so the
+    browser never has to say it; an agent reads "STAR has hit its daily
+    research limit" and can reasonably conclude the whole department is shut,
+    reads included. It is not."""
+    ceilings = await _the_two_ceilings()
+    text = await delivered(429, ceilings["shared daily budget"])
+
+    assert ceilings["shared daily budget"] in text
+    assert "daily" in text
+    assert "tomorrow" in text
+    assert tools.READS_ARE_FREE in text
+    assert "list_rooms" in text
+
+
+@pytest.mark.asyncio
+async def test_a_room_that_is_not_ready_is_told_how_to_find_out_when_it_is():
+    """"Give the department a moment" is a browser sentence: on screen there
+    is a live timeline saying when the moment is over. Here there is not."""
+
+    async def _building(uid, run_id, scene):
+        raise server.HTTPException(
+            409,
+            "This room is still being built. Give the department a moment to "
+            "finish filing, then check the scene against it.",
+        )
+
+    result = await invoke(
+        "check_scene", {"run_id": "abc", "scene": "INT. BAR"}, run_check=_building
+    )
+
+    assert result["isError"] is True
+    assert "still being built" in said(result)
+    assert tools.WAIT_FOR_THE_ROOM in said(result)
+    assert f"{tools.POLL_SECONDS} seconds" in said(result)
+
+
+# -- arguments an agent got wrong --------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_missing_argument_is_named_along_with_what_it_is_for():
+    result = await invoke("get_room", {})
+
+    text = said(result)
+    assert result["isError"] is True
+    assert "`get_room` needs `run_id`" in text
+    # The property's own description, so the sentence an agent reads in
+    # tools/list and the sentence it gets back cannot disagree.
+    assert tools._ROOM_ID in text
+    assert "tools/list" in text
+
+
+@pytest.mark.asyncio
+async def test_an_argument_of_the_wrong_type_is_told_what_it_sent():
+    result = await invoke("get_room", {"run_id": 12})
+
+    text = said(result)
+    assert result["isError"] is True
+    assert "must be a string" in text
+    assert "a number" in text
+
+
+@pytest.mark.asyncio
+async def test_an_empty_argument_is_not_treated_as_an_id():
+    result = await invoke("check_scene", {"run_id": "abc", "scene": "   "})
+
+    assert result["isError"] is True
+    assert "`scene` arrived empty" in said(result)
+
+
+@pytest.mark.asyncio
+async def test_an_argument_this_tool_does_not_take_is_named_rather_than_ignored():
+    """The failure this prevents is a loop, not a wasted call. Ignore `roomId`
+    and the tool sees no `run_id`, so the refusal talks about a missing
+    argument the agent is certain it supplied."""
+    result = await invoke("get_room", {"roomId": "abc"})
+
+    text = said(result)
+    assert result["isError"] is True
+    assert "does not take an argument called `roomId`" in text
+    assert "`run_id`" in text
+
+
+@pytest.mark.asyncio
+async def test_list_rooms_says_it_takes_nothing_when_it_is_handed_something():
+    result = await invoke("list_rooms", {"limit": "5"})
+
+    assert result["isError"] is True
+    assert "no arguments at all" in said(result)
+
+
+@pytest.mark.asyncio
+async def test_check_scene_names_both_of_its_arguments_when_one_is_wrong():
+    result = await invoke("check_scene", {"room": "abc", "scene": "INT. BAR"})
+
+    assert "`run_id`" in said(result)
+    assert "`scene`" in said(result)
+
+
+# -- the split: tool failures vs protocol failures ---------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_refused_tool_call_is_a_tool_result_and_not_a_json_rpc_error():
+    """The whole error posture, end to end on the wire. A model can read this
+    and act on it; a JSON-RPC error would tell it the client is broken, which
+    is not a thing a model can fix."""
+    store, _ = a_token_store()
+    token = await issue(store)
+    fake_store = mock.Mock()
+    fake_store.get.return_value = None
+
+    with (
+        door(store),
+        mock.patch("star.server._store", fake_store),
+        mock.patch.dict(server._runs, {}, clear=True),
+    ):
+        body = rpc(
+            TestClient(server.app),
+            call("tools/call", name="get_room", arguments={"run_id": "nope"}),
+            token=token,
+        ).json()
+
+    assert "error" not in body
+    assert body["result"]["isError"] is True
+    assert body["result"]["content"][0]["text"] == tools.ROOM_NOT_FOUND
+
+
+@pytest.mark.asyncio
+async def test_a_tool_that_does_not_exist_is_told_the_four_that_do():
+    result = await invoke("build_a_bear", {})
+
+    text = said(result)
+    assert result["isError"] is True
+    for name in ("list_rooms", "get_room", "build_room", "check_scene"):
+        assert name in text
+
+
+# -- the copy rule that binds every surface ----------------------------------
+
+
+async def every_string_an_agent_reads() -> dict[str, str]:
+    """Everything this door can put in front of a model, gathered in one place.
+
+    Assembled by driving the refusals rather than by listing constants, so a
+    string added later without a test of its own is still swept by the two
+    checks below.
+    """
+    strings = {"instructions": tools.INSTRUCTIONS}
+    for tool in tools.TOOLS:
+        strings[f"{tool['name']} description"] = tool["description"]
+        for name, prop in tool["inputSchema"]["properties"].items():
+            strings[f"{tool['name']}.{name}"] = prop["description"]
+
+    strings["room not found"] = tools.ROOM_NOT_FOUND
+    strings["still building"] = tools.STILL_BUILDING
+    strings["treatment too short"] = tools.treatment_too_short(12)
+    strings["treatment too long"] = tools.treatment_too_long(9001, 8000)
+    strings["scene too long"] = tools.scene_too_long(9001, 8000)
+    for status in ("running", "complete", "partial", "error", "interrupted"):
+        empty = {"categories": {}}
+        full = {"categories": {"setting": {"findings": [{"fact": "x"}]}}}
+        strings[f"room report {status} empty"] = tools._room_report(status, empty)
+        strings[f"room report {status} filed"] = tools._room_report(status, full)
+
+    async def _none(uid):
+        return []
+
+    strings["reads are free"] = tools.READS_ARE_FREE
+    strings["wait for the room"] = tools.WAIT_FOR_THE_ROOM
+    strings["empty account"] = said(await invoke("list_rooms", list_rooms_for=_none))
+    strings["unknown tool"] = said(await invoke("no_such_tool", {}))
+    strings["missing argument"] = said(await invoke("get_room", {}))
+    strings["wrong type"] = said(await invoke("get_room", {"run_id": 1}))
+    strings["blank argument"] = said(await invoke("get_room", {"run_id": " "}))
+    strings["unknown argument"] = said(await invoke("get_room", {"roomId": "a"}))
+    return strings
+
+
+@pytest.mark.asyncio
+async def test_nothing_an_agent_reads_calls_a_source_verified():
+    """The rule that binds every other surface in this project, applied to the
+    one surface with no pixels. What the department can honestly say is which
+    ledger a citation came out of, and it says that instead."""
+    for label, text in (await every_string_an_agent_reads()).items():
+        assert "verified" not in text.lower(), label
+
+
+@pytest.mark.asyncio
+async def test_nothing_an_agent_reads_is_a_bare_code_or_our_own_vocabulary():
+    """The three shapes `prd.md` fails a refusal for, plus the leak
+    star/server.py's `_execute` was rewritten to close."""
+    banned = ("traceback", "exception", "http 4", "http 5", "status code")
+    for label, text in (await every_string_an_agent_reads()).items():
+        lowered = text.lower()
+        assert len(text.split()) >= 8, label
+        for word in banned:
+            assert word not in lowered, f"{label} carries {word!r}"

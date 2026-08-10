@@ -793,3 +793,39 @@ and proves zero occurrences of "account" and exactly one of "Google" — the foo
 credit, pinned by exact string. The card's copy is not in the document at all:
 `#account-panel` ships empty and `web/account.js` fills it only when the rail's entry is
 used.
+
+### Checkpoint 4 — the agent door, driven live
+
+`initialize` → `notifications/initialized` → `tools/list` → `list_rooms` → `get_room`, over
+HTTPS against the running service with a real bearer token. `GET /mcp` answers 405,
+`POST /mcp` with no credential answers 401 before the body is read, and
+`notifications/initialized` answers **202 with a zero-byte body**.
+
+Every refusal was read as an agent with no screen, and every one names what failed, why,
+and what to do next:
+
+- A room id that does not exist says to call `list_rooms`, and volunteers that a room under
+  somebody else's account answers identically, so the caller is told the answer is not an
+  oracle rather than being left to infer it.
+- A 9-character treatment names the 40-character floor, the count sent, and the three things
+  the planner actually needs: when it is set, where it happens, what the characters do.
+- **`{"roomId": …}` is refused by name** — "does not take an argument called `roomId`. It
+  takes one argument, `run_id`" — rather than as a missing-argument error about an argument
+  the agent is certain it sent. That is the loop a persona would otherwise never escape.
+- An unknown **tool** returns `isError: true` and lists the four; an unknown **method**
+  returns JSON-RPC `-32601`. The split the error posture turns on, holding on the wire.
+
+### A harness gotcha worth writing down
+
+The first bearer token minted for this walkthrough resolved perfectly in the minting process
+and was refused by the server. The token was fine. The **script that wrote it never called
+`load_dotenv()`**, so its Firestore client fell back to the ADC default project — which is
+whatever `gcloud config get-value project` happens to be, here `project-626labs` — while the
+server reads `GOOGLE_CLOUD_PROJECT=star-research-dept` out of `.env` at import.
+
+Two stores, two databases, one silently empty. Nothing raised: the write succeeded and the
+read succeeded, both against the wrong project, and the only symptom was a generic refusal
+at the door. **Any maintenance script that touches this repo's Firestore must call
+`load_dotenv()` before importing `star.store`**, or it is talking to a different database
+than the service is. `star/server.py` gets this right at line 21 and that is the only reason
+the service does.

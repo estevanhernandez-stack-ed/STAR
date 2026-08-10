@@ -353,7 +353,7 @@ three tools and note the fourth as next. **Pipeline B and the video never go.**
   cases, and both doors decrementing one `_daily_cap`. Then `pip install .` into a clean venv and
   `python -c "import star.mcp"` — the one line that proves the packaging change took.
 
-- [ ] **11. The four tools, and the strings an agent reads as the product**
+- [x] **11. The four tools, and the strings an agent reads as the product**
   Spec ref: `spec.md > The department over MCP > The four tools` + `> Error strings`
   Depends on: 10. Effort: **M**. **← Checkpoint 4**
   What to build: `star/mcp/tools.py` — the four JSON schemas plus `tools/call` dispatch onto the
