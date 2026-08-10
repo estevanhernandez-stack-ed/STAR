@@ -166,7 +166,7 @@ three tools and note the fourth as next. **Pipeline B and the video never go.**
   intake path and grep the rendered DOM for "Google" and "account" — zero hits. Confirm Manila still
   owns more than 40% of the room's filed-state pixel area, measured, not judged.
 
-- [ ] **5. Pipeline B's two agents, and the budget that feeds them**
+- [x] **5. Pipeline B's two agents, and the budget that feeds them**
   Spec ref: `spec.md > Pipeline B — Script Check` — Shape, `claim_extractor`, `verifier`, Budget and time
   Depends on: nothing in Gate A. Effort: **M**.
   What to build: `star/models.py` gains `ClaimSet`, `ClaimResult`, `ScriptCheckResult` —
