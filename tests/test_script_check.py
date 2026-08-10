@@ -170,7 +170,10 @@ def test_the_verifier_is_given_the_room_before_it_can_search():
 
     assert "<room_files>" in instruction
     assert "Work the room's files first" in instruction
-    assert "the claims the files do not answer" in instruction
+    # The durable half of the rule. The clause naming WHICH claims to search for
+    # was reworded once already (see the certainty test below), so this asserts
+    # the part that holds under either phrasing rather than pinning the wording.
+    assert "the files do not answer" in instruction
 
 
 def test_the_verifier_is_told_its_certainty_is_not_a_source():
