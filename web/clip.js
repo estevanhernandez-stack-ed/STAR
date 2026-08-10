@@ -61,16 +61,49 @@ export function plural(n, word) {
   return `${n} ${word}${suffix}`;
 }
 
-/** The exact claim the ledger check supports, and no more. Deliberately three
- *  sentences: what happened, where the words came from, and what the reader
- *  still has to do themselves. Cutting the third sentence would leave a
- *  citation reading as an endorsement of the fact above it, which is the
- *  precise failure the aversion research documents — people trust a cited
- *  answer more even when it is wrong. */
-const LEDGER_CHECK_COPY =
-  "This source came back from a live search during this build. Its title and " +
-  "the excerpt above are the page's own words as the search returned them, " +
-  "not the researcher's. Whether they support the fact is yours to judge.";
+/** The exact claim the ledger check supports, and no more. Three sentences:
+ *  what happened, where the words came from, and what the reader still has to
+ *  do themselves. Cutting the third would leave a citation reading as an
+ *  endorsement of the fact above it, which is the precise failure the aversion
+ *  research documents — people trust a cited answer more even when it is wrong.
+ *
+ *  The MIDDLE sentence is branched, because it makes a claim about specific
+ *  things on screen and both of them can be absent:
+ *    - No excerpt. `_best_excerpt` (star/findings.py) returns "" for a ledger
+ *      entry that carries no excerpts, and renderReceipt already has a branch
+ *      that says so out loud — so the fixed copy sat directly under "There is
+ *      nothing to quote" and asserted "the excerpt above" anyway.
+ *    - No title from the page. star/findings.py falls back to `entry.url` when
+ *      the ledger has no title, and this file falls back to the domain; either
+ *      way what is on the stamp is our derivation, not the page's own words.
+ *  Copy that is true in three branches and false in the fourth is not precise
+ *  copy, and precision here is the whole of obligation 3. */
+function ledgerCheckCopy({ hasExcerpt, titleFromPage }) {
+  const opening = "This source came back from a live search during this build.";
+  // "it", not "they" — the subject is the source itself, which is the one
+  // thing every branch below still has to talk about.
+  const closing = "Whether it supports the fact is yours to judge.";
+  let middle;
+  if (titleFromPage && hasExcerpt) {
+    middle =
+      "Its title and the excerpt above are the page's own words as the search " +
+      "returned them, not the researcher's.";
+  } else if (titleFromPage) {
+    middle =
+      "Its title is the page's own words as the search returned it, not the " +
+      "researcher's.";
+  } else if (hasExcerpt) {
+    middle =
+      "The excerpt above is the page's own words as the search returned it, " +
+      "not the researcher's. The search returned no title for it, so the line " +
+      "on the stamp is this link's own address.";
+  } else {
+    middle =
+      "The search returned neither a title nor an excerpt for it, so nothing " +
+      "here is in the page's own words.";
+  }
+  return `${opening} ${middle} ${closing}`;
+}
 
 /** The failure, in the same register. Never softened to "could not be
  *  confirmed": the ledger knows something stronger and more specific than
@@ -139,9 +172,10 @@ function renderExcerpt(text) {
  *  Research obligation 2 says a citation that cannot be clicked through to its
  *  real excerpt is worse than no citation, and "clicked through" has to include
  *  a keyboard: <summary> is focusable, toggles on Enter and Space, exposes its
- *  own expanded state to assistive tech, and picks up shell.css's global
- *  :focus-visible outline — all of it native, none of it something a later edit
- *  can silently break.
+ *  own expanded state to assistive tech, and takes a :focus-visible outline —
+ *  all of it native, none of it something a later edit can silently break. The
+ *  outline needs a manila-surface override rather than shell.css's global one;
+ *  clip.css says why.
  *
  *  `index` drives the stack offset in clip.css. It is our own loop counter, not
  *  payload data. */
@@ -149,7 +183,14 @@ function renderReceipt(citation, index, { date, code }) {
   const url = httpUrl(citation?.url);
   if (!url) return "";
   const raw = String(citation.url);
-  const title = String(citation?.title || "").trim() || domainOf(raw);
+  const givenTitle = String(citation?.title || "").trim();
+  // A "title" that is just the URL is not a title. star/findings.py hydrates
+  // `title=entry.title or entry.url`, so a ledger entry with no title arrives
+  // here carrying its own address in the title field; this file then falls
+  // back to the domain. Both are our derivations, and the check copy below has
+  // to know that rather than calling either one the page's own words.
+  const titleFromPage = Boolean(givenTitle) && givenTitle !== raw && givenTitle !== url.href;
+  const title = givenTitle || domainOf(raw);
   const excerpt = String(citation?.excerpt || "").trim();
 
   // Only what is actually known reaches the stamp. Task 4 established this
@@ -179,7 +220,7 @@ function renderReceipt(citation, index, { date, code }) {
             ? `<blockquote class="receipt-excerpt">${renderExcerpt(excerpt)}</blockquote>`
             : `<p class="receipt-excerpt receipt-excerpt-empty">The search returned this source without an excerpt. There is nothing to quote.</p>`
         }
-        <p class="receipt-check">${LEDGER_CHECK_COPY}</p>
+        <p class="receipt-check">${ledgerCheckCopy({ hasExcerpt: Boolean(excerpt), titleFromPage })}</p>
         <a class="receipt-url" href="${escapeHtml(url.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url.href)}</a>
       </div>
     </details>`;
@@ -245,15 +286,27 @@ export function renderClip(finding, stamp = {}) {
  *
  *  A category with zero parsed findings is a real outcome, not an error: the
  *  researcher may have written prose the parser could not file. Saying so, and
- *  pointing at where that prose went, beats an empty panel. */
-export function renderClips(findings, stamp = {}) {
+ *  pointing at where that prose went, beats an empty panel.
+ *
+ *  `hasFieldNotes` exists because the pointer can be a lie. "Whatever they did
+ *  write is kept below" is only true when there is something below, and there
+ *  is a reachable path where there is not: star/server.py's `_build_categories`
+ *  calls `parse_findings(state.get(f"findings_{c.value}"), …)`, and `.get`
+ *  returns None for a category whose researcher never wrote its output_key.
+ *  parse_findings(None) yields findings=[] AND field_notes="", so renderFieldNotes
+ *  renders nothing and the promise points at blank card. The caller passes what
+ *  it is actually about to render, not what the payload contains, so the two
+ *  cannot drift. */
+export function renderClips(findings, stamp = {}, { hasFieldNotes = false } = {}) {
   const list = Array.isArray(findings) ? findings : [];
   const clips = list
     .map((f) => renderClip(f, stamp))
     .filter(Boolean)
     .join("");
   if (!clips) {
-    return `<p class="clip-empty">Nothing from this researcher parsed into a clip. Whatever they did write is kept below, word for word.</p>`;
+    return hasFieldNotes
+      ? `<p class="clip-empty">Nothing from this researcher parsed into a clip. Whatever they did write is kept below, word for word.</p>`
+      : `<p class="clip-empty">Nothing from this researcher parsed into a clip, and there is no unparsed prose to show either — this category produced nothing the department could file.</p>`;
   }
   return `<ul class="clip-list">${clips}</ul>`;
 }

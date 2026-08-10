@@ -271,14 +271,33 @@ function renderFiled(body, data = {}) {
  *  museum page on five separate logistics findings, and summing citations
  *  would inflate it to five sources.
  *
- *  `code` and `date` are passed through to every receipt stamp and are
- *  optional: a caller that does not know the retrieval date gets a stamp
- *  without one, never a guessed one. */
+ *  `date` and `retrieved` are two different factual claims and are two
+ *  different fields, deliberately:
+ *    - `date` is the FILED stamp's date, which is what buildFiledHead renders.
+ *    - `retrieved` is the day these sources actually came back from a search,
+ *      which is what clip.js prints as `RET <date>` on every receipt.
+ *  They are the same value during a live run and only during a live run: the
+ *  render happens as the agent_done event arrives, so web/app.js's client
+ *  "now" is genuinely both. They come apart the moment a stored room is opened
+ *  from the rail — a room built on 09 AUG and read in September would stamp
+ *  every source `RET 09 SEP` if this reused the convenience value. That is a
+ *  fabricated provenance claim on the exact element whose whole job is
+ *  provenance, so `retrieved` is never defaulted from `date`. A caller that
+ *  does not supply it gets a stamp with no RET line, the same way renderFiled
+ *  refuses to fabricate a domain for the third slot.
+ *
+ *  Task 6: the real value is the room document's `created_at`
+ *  (star/store.py) — an ISO string, so format it the way web/app.js's
+ *  stampDate() does (DD MON YYYY) before passing it. */
 function renderExpanded(body, data = {}, category = "") {
   const doc = data.doc || {};
   const findings = Array.isArray(doc.findings) ? doc.findings : [];
   const questions = questionsForCategory(data.plan, category);
-  const stamp = { date: data.date, code: data.code };
+  const stamp = { date: data.retrieved, code: data.code };
+  // Rendered once and reused, so the empty-clips copy can promise prose only
+  // when there is prose. Asking the payload instead of the markup is how the
+  // two get to disagree.
+  const fieldNotes = renderFieldNotes(doc);
   body.innerHTML = `
     ${buildFiledHead({
       ...data,
@@ -289,8 +308,8 @@ function renderExpanded(body, data = {}, category = "") {
     ${renderUncertainty(doc)}
     ${renderSceneNeeds(questions)}
     <p class="drawer-legend">What was found</p>
-    ${renderClips(findings, stamp)}
-    ${renderFieldNotes(doc)}
+    ${renderClips(findings, stamp, { hasFieldNotes: Boolean(fieldNotes) })}
+    ${fieldNotes}
     ${buildLabelledLog(data)}
   `;
 }
@@ -319,7 +338,7 @@ export function createDrawer(category) {
   el.className = "drawer";
   el.dataset.category = category;
   el.innerHTML = `
-    <div class="tab"><span class="tab-label">${escapeHtml(label)}</span></div>
+    <div class="drawer-tab"><span class="drawer-tab-label">${escapeHtml(label)}</span></div>
     <div class="drawer-body"></div>
   `;
   setDrawerState(el, "idle");
@@ -332,10 +351,12 @@ export function createDrawer(category) {
  *  stale state left over from a previous call.
  *
  *  "expanded" takes the same payload shape as the others plus `doc` (one
- *  category's ResearchDoc out of GET /api/rooms/{id}) and `plan`
- *  (result.research_plan, or its questions array). It reads the category off
- *  the element rather than the payload so the per-category scene-need join
- *  can never be pointed at the wrong drawer's questions. */
+ *  category's ResearchDoc out of GET /api/rooms/{id}), `plan`
+ *  (result.research_plan, or its questions array), and `retrieved` (the day
+ *  the sources came back, distinct from the filed `date` — see
+ *  renderExpanded). It reads the category off the element rather than the
+ *  payload so the per-category scene-need join can never be pointed at the
+ *  wrong drawer's questions. */
 export function setDrawerState(el, state, data = {}) {
   if (!VALID_STATES.has(state)) {
     throw new Error(`setDrawerState: unknown state "${state}"`);
@@ -368,7 +389,10 @@ export function setDrawerState(el, state, data = {}) {
  *  the mounting task already holds — createDrawerGrid hands back four of these
  *  and web/app.js already keeps them in a Map. `doc` is one entry of the room
  *  payload's `categories`; `plan` is `result.research_plan`. `extra` carries
- *  the stamp fields a caller genuinely knows: { code, date, searches }.
+ *  only the fields a caller genuinely knows:
+ *    { code, date, retrieved, searches }
+ *  — `date` stamps FILED, `retrieved` stamps RET on each receipt, and they are
+ *  not interchangeable. See renderExpanded.
  *
  *  A thin wrapper over setDrawerState on purpose — every state a drawer can
  *  reach goes through one function, so nothing can leave the element's

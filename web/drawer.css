@@ -39,7 +39,7 @@
 }
 
 /* --tab-rise is the one number the whole hanging-folder geometry depends on:
-   how far a cut tab sticks up above its card's top edge. .tab reads it as a
+   how far a cut tab sticks up above its card's top edge. .drawer-tab reads it as
    negative `top`, and the grid derives its own headroom and row gap from it
    so the three can never drift apart.
 
@@ -90,12 +90,12 @@
 
    Paint order inside this stacking context:
      -1  ::after   the second folder edge, offset behind everything
-      0  .tab      the cut tab — only the part above the face survives
+      0  .drawer-tab  the cut tab — only the part above the face survives
       1  ::before  the manila front face, which covers the tab's base
       2  content
    The face therefore has to be a pseudo-element rather than this element's
    own background: an element always paints its own background before its
-   positioned children, so a negative z-index on .tab could never be
+   positioned children, so a negative z-index on .drawer-tab could never be
    covered by it. */
 .drawer {
   position: relative;
@@ -128,7 +128,7 @@
    than one folder per category, even though only the top one is shown.
    Geometric and flat, not a texture: a single offset rectangle, tokens
    only. Not selected by the manila measurement (it targets .drawer/.clip/
-   .tab elements, not pseudo-elements), so it plays no part in clearing the
+   .drawer-tab elements, not pseudo-elements), so it plays no part in clearing the
    40% rule — it is read, not measured. */
 .drawer::after {
   content: "";
@@ -142,7 +142,18 @@
 
 /* The cut tab — a hanging-folder tab sticking up above the card's top edge,
    carrying the plate label. clip-path gives the angled "cut" corners rather
-   than a plain rectangle. */
+   than a plain rectangle.
+
+   NAMED .drawer-tab, not .tab, and the rename is not cosmetic. web/shell.css
+   declares a bare `.tab` for the results panel's tab strip at the same (0,1,0)
+   specificity, and index.html loads drawer.css SECOND — so these rules were
+   winning on the strip's three buttons. Measured on the live page before the
+   rename: "Research Bible" computed to position:absolute, top:-28px, left:24px,
+   background --manila-edge, with this clip-path, and .tabs collapsed to 1px
+   tall because all three buttons had left flow and stacked at one coordinate.
+   A component that styles by a generic English noun will collide with any
+   other component that reaches for the same noun; the drawer's tab is a
+   drawer part and now says so. */
 /* Sits at z-index 0 so the face (z-index 1) covers its base. Raised far
    enough that the whole label clears the face — otherwise the face crops
    the text it exists to carry. The clip-path angles the cut corners, and
@@ -150,7 +161,7 @@
    cut tab is scored. */
 /* Falls back to the same literal when a .drawer is used outside a grid, so a
    standalone drawer still hangs correctly. */
-.tab {
+.drawer-tab {
   position: absolute;
   z-index: 0;
   top: calc(var(--tab-rise, 1.75rem) * -1);
@@ -160,7 +171,7 @@
   clip-path: polygon(6% 0%, 94% 0%, 100% 100%, 0% 100%);
 }
 
-.tab-label {
+.drawer-tab-label {
   display: block;
   font-family: var(--label);
   font-size: var(--label-sm);
@@ -177,11 +188,11 @@
    draft tried --pencil text directly on the default --manila-edge tab and
    measured 1.4:1 — nowhere close, and a state built to look "quiet" is not
    an excuse to make it unreadable. */
-.drawer[data-state="idle"] .tab {
+.drawer[data-state="idle"] .drawer-tab {
   background: var(--pencil);
 }
 
-.drawer[data-state="idle"] .tab-label {
+.drawer[data-state="idle"] .drawer-tab-label {
   color: var(--drawer-shadow);
 }
 
@@ -195,11 +206,11 @@
 }
 
 /* FAILED — tab in --oxide, per the rule. */
-.drawer[data-state="failed"] .tab {
+.drawer[data-state="failed"] .drawer-tab {
   background: var(--oxide);
 }
 
-.drawer[data-state="failed"] .tab-label {
+.drawer[data-state="failed"] .drawer-tab-label {
   color: var(--manila);
 }
 

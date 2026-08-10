@@ -21,12 +21,20 @@
      --oxide on --manila              3.2:1   <- known shortfall, so it doesn't
      --aniline on --manila            4.4:1   <- misses AA for small text
      aniline mixed 70% into --ink
-       on --manila                    5.5:1   <- what the stamp's letters use
+       on --manila                    5.5:1   <- stamp letters AND .receipt-url
+     --pencil on --manila             1.9:1   <- why the focus ring is overridden
+     --ink on --manila                8.6:1   <- what the focus ring uses
    The aniline stamp therefore carries the raw token as its RULE (4.4:1 clears
    the 3:1 non-text requirement) and a color-mixed shade of the same token as
    its letterforms. Still one pad, still flat ink, still no gradient — the rule
    DIRECTION.md sets is against washes and gradients, and color-mix from the
    token is how this codebase has derived every other shade.
+
+   The two 4.4:1 pairs are the same mistake twice, caught once: --receipt-url
+   shipped on the raw token by inheriting shell.css's global link color, which
+   is correct on every surface that existed before this file and wrong on
+   manila. Any new small text on manila in this file goes through the mixed
+   shade, not the token.
 
    Motion is belt-and-braces, the same as web/drawer.css's .stamp: the lift
    transition is driven by --stamp-duration (already 0ms under reduced motion,
@@ -46,6 +54,18 @@
 
 .drawer[data-state="expanded"] .drawer-body {
   gap: 0.9rem;
+}
+
+/* The press does not replay when a reader opens a drawer.
+   DIRECTION.md: "the stamp is an event, not a badge." The event is a category
+   FILING — a thing that happened once, at a moment, during the run. Expanding
+   re-renders the same stamp markup (drawer.js's buildFiledHead serves both
+   states), so without this the animation fires again and stages a filing that
+   is not happening, which turns the signature element back into decoration.
+   Suppressed by state rather than by a flag through the render path: the state
+   is the fact, and CSS already knows it. */
+.drawer[data-state="expanded"] .stamp {
+  animation: none;
 }
 
 /* An expanded drawer is a reading view, not a tile: it takes the full width
@@ -133,10 +153,21 @@
    The clip — one fact on onionskin, its receipts beneath.
 --------------------------------------------------------------------- */
 
+/* Capped, because onionskin that holds nothing is manila spent on nothing.
+   The clip painted edge to edge across an expanded drawer (~1000px of usable
+   width at desktop) while .clip-fact caps at 64ch — roughly 45% of the ground
+   carried no content. 48rem is sized to the widest thing a clip actually
+   holds, which is the receipt face's stamp + title + cue row, not the prose.
+   .field-note already did this; .clip only capped the text inside its box.
+
+   Not a rescue of the >40% manila rule: DIRECTION.md scopes that rule to the
+   FILED state, which this file does not touch. This is free area, so it goes
+   back. */
 .clip-list {
   list-style: none;
   margin: 0.4rem 0 0;
   padding: 0;
+  max-width: 48rem;
   display: flex;
   flex-direction: column;
   gap: 0.85rem;
@@ -260,13 +291,21 @@
 }
 
 /* `flex: 0 1 auto`, not `1 1 <basis>`: growing meant a one-line title like
-   "Detroit River - Wikipedia" still occupied its full 506px cap, parking the
+   "Detroit River - Wikipedia" still occupied its full cap, parking the
    "Excerpt" cue 330px past the end of the words it belongs to. Shrink-to-fit
    with a cap gives long titles room to wrap and short ones nothing they do not
-   use. */
+   use.
+
+   54ch, not 62ch, because .clip-list now caps at 48rem: a receipt face has
+   ~706px of inner width there, and the widest stamp (147px) plus the gaps
+   (27px) plus the cue (53px) leave 479px. At 62ch a long title claimed all of
+   it and pushed the cue onto its own flex line with 663px of empty row beside
+   it — the same "stray label" the auto-margin produced, arrived at from the
+   other direction. Measured: 2 of 7 real receipts wrapped at 62ch, 0 at 54ch.
+   Titles still wrap inside their own box; the cue stays on the line. */
 .receipt-title {
   flex: 0 1 auto;
-  max-width: 62ch;
+  max-width: 54ch;
   font-family: var(--body);
   font-size: var(--text-sm);
   line-height: 1.4;
@@ -362,12 +401,38 @@
   opacity: 0.78;
 }
 
+/* Same color-mix shade as .receipt-stamp's letterforms, and for the same
+   reason. This shipped as the raw --aniline token, which is 4.37:1 on manila —
+   under AA — at --label-sm, the exact pair this file's own contrast table
+   already flags as a miss for small text. Inheriting shell.css's global
+   `a { color: var(--aniline) }` is what let it through: the rule is correct on
+   --cabinet and --drawer-shadow, where every other link in the app lives, and
+   wrong on the first link this codebase ever put on manila. It matters more
+   here than anywhere: obligation 2 says the reader must be able to read the
+   target, and this is the target. */
 .receipt-url {
   font-family: var(--slug);
   font-size: var(--label-sm);
   line-height: 1.5;
-  color: var(--aniline);
+  color: color-mix(in srgb, var(--aniline) 70%, var(--ink));
   overflow-wrap: anywhere;
+}
+
+/* The focus ring, on manila.
+   shell.css:41's global `:focus-visible { outline: 2px solid var(--pencil) }`
+   was sound for every control that existed before this file: the rail buttons,
+   the textarea, and the tab strip all sit on --cabinet (pencil 4.0:1) or
+   --drawer-shadow (4.8:1). <summary class="receipt-face"> is the first
+   focusable control in the app to sit on --manila, where --pencil measures
+   1.88:1 against a 3:1 non-text floor — so this diff is what introduced the
+   problem and this rule is what pays for it. --ink measures 8.6:1 on the
+   manila the ring surrounds and 12.7:1 on the onionskin the 2px offset puts it
+   over, so it clears the floor against both adjacent surfaces.
+   Deliberately scoped, not a change to the global rule: weakening the default
+   would break the surfaces where --pencil is already correct. */
+.receipt-face:focus-visible,
+.receipt-url:focus-visible {
+  outline-color: var(--ink);
 }
 
 /* ---------------------------------------------------------------------
