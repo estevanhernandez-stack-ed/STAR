@@ -8,6 +8,11 @@ Budget (review fixes M1 + part of H3): when invoked by an ADK agent, the
 search count lives in the run's session state, so every run gets its own
 budget — no shared global counter to reset or race. The module-level
 counter remains only as a fallback for direct script calls.
+
+The ceiling itself now comes from session state too, seeded when the session
+is created: a build seeds nothing and gets max_searches_per_build(), a check
+seeds max_searches_per_check() (see star/agents/script_check.py). One tool,
+two pipelines, and neither has to know what the other spends.
 """
 
 import os
@@ -84,10 +89,41 @@ def _publish_sources(tool_context: ToolContext | None, results: list[dict]) -> N
     tool_context.state[key] = recorded
 
 
+def _budget(tool_context: ToolContext | None) -> int:
+    """How many searches this run is allowed, in total.
+
+    Whoever creates the ADK session decides: `star.server` seeds nothing for a
+    build and a check seeds `search_budget` (star/agents/script_check.py).
+
+    ABSENT AND ZERO ARE DIFFERENT ANSWERS, which is why this tests `is None`
+    rather than the truthiness the spec's one-liner used
+    (`state.get("search_budget") or config.max_searches_per_build()`). Absent
+    means nobody set a ceiling, so the build default applies. Zero means
+    somebody set one, and the value they chose was "spend nothing" —
+    `STAR_MAX_SEARCHES_PER_CHECK=0` is the first thing a reader reaches for to
+    stop a check spending money. Under `or`, that variable does the opposite of
+    what it says: it hands the run the BUILD budget, 30 searches instead of 0.
+    A knob that inverts at its safest setting is the same class of defect as
+    the admission-order bug in star/server.py, where getting the daily cap and
+    the per-IP check backwards cost a whole day's budget in about two seconds.
+
+    Zero is not a lockout. `_spend_budget` refuses the first search, the tool
+    returns its budget-exhausted error, and the verifier finishes the list from
+    the room's own files with `budget:` notes on what it could not reach — which
+    is exactly what a zero ceiling should produce, and it says so on screen
+    rather than pretending it looked.
+    """
+    if tool_context is not None:
+        seeded = tool_context.state.get("search_budget")
+        if seeded is not None:
+            return int(seeded)
+    return config.max_searches_per_build()
+
+
 def _spend_budget(tool_context: ToolContext | None) -> bool:
     """Returns True if a search may proceed; counts the spend."""
     global _fallback_count
-    budget = config.max_searches_per_build()
+    budget = _budget(tool_context)
     if tool_context is not None:
         used = tool_context.state.get("search_count", 0)
         if used >= budget:
@@ -122,10 +158,13 @@ def parallel_search(
         per-run search budget is exhausted.
     """
     if not _spend_budget(tool_context):
+        # The number names this run's own ceiling, not the build default. A
+        # check that ran out at 8 and was told "budget of 30 exhausted" is
+        # telling its agent something false about what it just hit.
         return [
             {
                 "error": (
-                    f"Search budget of {config.max_searches_per_build()} exhausted "
+                    f"Search budget of {_budget(tool_context)} exhausted "
                     "for this run. Report which questions remain unresearched."
                 )
             }

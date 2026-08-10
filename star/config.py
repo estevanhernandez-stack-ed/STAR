@@ -32,6 +32,44 @@ def max_treatment_chars() -> int:
     return int(os.environ.get("STAR_MAX_TREATMENT_CHARS", "8000"))
 
 
+def max_scene_chars() -> int:
+    """Ceiling on one pasted scene (Pipeline B).
+
+    8000 to match the treatment cap above, which is roughly four script pages
+    at standard formatting — more than any single scene a writer checks in one
+    pass. Unlike the treatment cap this number was never measured against a
+    real check's cost or latency; it is carried from the treatment cap because
+    the two pastes are the same order of size.
+    (default — confirm on next interactive run)
+    """
+    return int(os.environ.get("STAR_MAX_SCENE_CHARS", "8000"))
+
+
+def max_searches_per_check() -> int:
+    """Per-check search budget, seeded into ADK session state.
+
+    A check is not a build. A build researches four categories from nothing
+    and gets 30; a check starts from a room that has already been researched
+    and only pays for what the room's own files do not answer. Eight live
+    searches is generous for one scene, and the ceiling matters more here than
+    in a build because a check is synchronous — every search is time a writer
+    spends watching a working state.
+    """
+    return int(os.environ.get("STAR_MAX_SEARCHES_PER_CHECK", "8"))
+
+
+def check_timeout_seconds() -> int:
+    """Wall-clock ceiling on one script check.
+
+    Well under Cloud Run's 900s request timeout, because a check is answered
+    in the request that asked for it rather than through the run registry. A
+    build gets 600s and salvages what the researchers already filed; there is
+    nothing partial worth salvaging from a scene check, so this ceiling turns
+    into a failure that names the cap rather than into a partial result.
+    """
+    return int(os.environ.get("STAR_CHECK_TIMEOUT_SECONDS", "180"))
+
+
 def max_rooms_per_ip_per_hour() -> int:
     """Per-caller ceiling on a public endpoint that spends money to answer."""
     return int(os.environ.get("STAR_MAX_ROOMS_PER_IP_PER_HOUR", "5"))

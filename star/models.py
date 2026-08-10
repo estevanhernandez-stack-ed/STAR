@@ -89,10 +89,68 @@ class Verdict(str, Enum):
 
 
 class Claim(BaseModel):
-    """A real-world claim extracted from a scene."""
+    """A real-world claim extracted from a scene, before anyone has checked it."""
 
     text: str
     claim_type: str = Field(description="object | language | timing | geography | technology | behavior")
     verdict: Verdict | None = None
     note: str | None = None
     citations: list[Citation] = []
+
+
+class ClaimSet(BaseModel):
+    """The claim_extractor's `output_schema`: everything one scene asserts.
+
+    An empty list is a legitimate answer. A scene of pure interior dialogue
+    makes no claim about the world, and the check says so rather than
+    inventing one to avoid returning nothing.
+    """
+
+    claims: list[Claim]
+
+
+class ClaimResult(BaseModel):
+    """One claim after the verifier and `star/verdicts.py` are done with it.
+
+    `verdict` is required here where `Claim.verdict` is optional, because a
+    claim before verification and a claim after it are two states, not one
+    type with a hole in it. Anything holding a ClaimResult can render a
+    verdict without asking whether there is one.
+
+    `citations` and `citation_sources` are parallel lists: index i of the
+    second says whether the room's own files or a fresh search produced
+    index i of the first. Two lists rather than a field on Citation, because
+    Citation is Pipeline A's type and provenance is Pipeline B's question.
+    """
+
+    text: str = Field(description="The claim's exact substring of the scene")
+    claim_type: str
+    verdict: Verdict
+    note: str = ""
+    citations: list[Citation] = []
+    citation_sources: list[str] = Field(
+        default=[], description='"room" | "search", parallel to citations'
+    )
+    unsourced_urls: list[str] = Field(
+        default=[],
+        description="Cited URLs in neither ledger. Stamped, never rendered as "
+        "a source — the same posture Finding.unverified_urls takes.",
+    )
+    reason: str = Field(
+        default="",
+        description='"" | "budget" | "unreached". Why a verdict is thin, when '
+        "the reason is the department's rather than the world's.",
+    )
+
+
+class ScriptCheckResult(BaseModel):
+    """One filed check: a scene, its claims, and what the check cost."""
+
+    scene_id: str
+    created_at: str
+    claims: list[ClaimResult]
+    parse_rate: float = 0.0
+    unsourced_count: int = 0
+    field_notes: str = ""
+    search_count: int = 0
+    budget_exhausted: bool = False
