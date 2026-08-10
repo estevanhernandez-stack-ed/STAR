@@ -180,8 +180,12 @@ function send(url, options, token) {
  *  renderRail, and the sentence above is what it now renders.
  *
  *  WHY RETRYING A POST IS SAFE HERE. `_require_uid` is the first statement of
- *  every handler in star/server.py — create_room included, ahead of the rate
- *  limiter, the daily cap, and the run itself. A 401 from this origin therefore
+ *  create_room (star/server.py), ahead of the rate limiter, the daily cap,
+ *  and the run itself. It is NOT the first statement of every handler:
+ *  stream_events has no Authorization header to read (EventSource sends no
+ *  custom headers) and is guarded by a per-run key instead. The conclusion
+ *  below only ever rested on create_room, but a premise stated wider than it
+ *  holds is a premise the next reader will reuse somewhere it does not. A 401 from this origin therefore
  *  means the request was refused before it could spend anything, so replaying
  *  it cannot start a second build. This is a property of that server, not a
  *  general truth about retrying POSTs, which is why it is written down here.

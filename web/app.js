@@ -281,13 +281,33 @@ async function buildRoom() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ treatment }),
     });
-    if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+    // Guarded the way showResults already guards its own error path. An
+    // unguarded res.json() here surfaced the PARSE failure instead of the
+    // request failure: a Cloud Run 429 or 503 with an HTML body, or anything
+    // that did not come from FastAPI, put `Unexpected token '<', "<html>"...
+    // is not valid JSON` on the first screen as the department's own message.
+    // The success path below is the same exposure and takes the same guard.
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        detail = (await res.json()).detail || detail;
+      } catch {
+        /* body wasn't JSON; fall back to statusText */
+      }
+      throw new Error(detail);
+    }
     // `stream_key` is the capability for this run's event stream, minted
     // server-side and handed back exactly once, here. It is the only way the
     // progress stream can identify its caller: EventSource sends no custom
     // headers, so the Authorization header every other request carries is
     // unavailable to it. See star/server.py's stream_events.
-    ({ run_id: runId, stream_key: streamKey } = await res.json());
+    let body;
+    try {
+      body = await res.json();
+    } catch {
+      throw new Error("The department answered, but not in a shape this page understands.");
+    }
+    ({ run_id: runId, stream_key: streamKey } = body);
   } catch (err) {
     $("intake-error").textContent = err.message;
     $("build-btn").disabled = false;
@@ -481,9 +501,17 @@ async function showResults(runId) {
         "Still in the department",
         "This room is still being researched. Reconnecting to a live run isn't available yet — check back once it's filed.",
       ],
+      // States what the payload proves — nothing was filed — and not why.
+      // "the server restarted" was one cause of a document stuck at
+      // status "running"; the other is _persist swallowing an exception on
+      // the TERMINAL write (star/server.py), which leaves the creation-time
+      // document in place after a run that completed and filed four drawers.
+      // In that case both halves of the old sentence were false, and the
+      // owner was told their finished research never happened. Same defect
+      // as the failed-drawer copy fixed in 98384c3, in a sibling branch.
       interrupted: [
         "Interrupted before it filed",
-        "This run did not finish — the server restarted before any research was filed. Start a new room instead.",
+        "This run never finished — nothing was filed under it. Start a new room instead.",
       ],
       error: [
         "Did not file",
@@ -613,7 +641,7 @@ function renderDocket(profile, status) {
     .join(" &middot; ");
 
   return `
-    ${status === "partial" ? partialDocketNote() : ""}
+    ${status === "partial" && !String(result.research_bible || "").trim() ? partialDocketNote() : ""}
     ${slug ? `<p class="docket-slug">${slug}</p>` : ""}
     ${
       profile.logline
@@ -657,6 +685,14 @@ function filedCount(categories) {
  *  stamp and no receipts at all. A one-line summary is exactly where a
  *  universal claim does the most damage, because nothing next to it qualifies
  *  it. What is true without exception is that the research is in the drawers. */
+/*  Gated on the bible actually being absent, not on status === "partial".
+ *  star/server.py's _salvage deliberately KEEPS a bible that synthesis wrote
+ *  before the ceiling tripped ("rather than discarding a real bible"), so
+ *  `partial` and `has a bible` are not mutually exclusive. Gated on status
+ *  alone, this note printed "Filed without a bible" on a cover sheet with a
+ *  working bible button beside it — and noBibleCopy, which does the honest
+ *  counting, never runs in that branch to correct it. Both surfaces now read
+ *  the same fact rather than two proxies for it. */
 function partialDocketNote() {
   return `<p class="docket-note">Filed without a bible. The research is in the drawers.</p>`;
 }

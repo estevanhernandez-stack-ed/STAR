@@ -20,8 +20,11 @@
        citations. No drawer state has a citation to check — a drawer is a
        container for clips, and the check happens inside one. Task 4's
        live-run FILED transition knows even less: `agent_done`
-       (star/server.py) carries only the friendly agent label, never a URL
-       or a fact. Stamping the DRAWER aniline would claim a verification
+       (star/server.py) carries the friendly agent label and the category,
+       and never a URL or a fact. (It carried only the label until ba4e3fe;
+       web/app.js corrected its own copy of this claim in Task 6 and this
+       one was missed. The argument is unchanged either way — a category is
+       not a citation.) Stamping the DRAWER aniline would claim a verification
        this component cannot see, exactly what research obligation 3 warns
        against — so it stays Task 3's --ink, extended rather than reversed.
        What Task 4 legitimately DOES know at the moment a category files:
@@ -127,7 +130,7 @@ function buildSearchLog(searches, { withQueries }) {
     : "";
 }
 
-/** How long ago the newest search landed, as M:SS — the same shape the run
+/** How long ago the newest search was ISSUED, as M:SS — the same shape the run
  *  meter uses, so the two clocks on screen read as the same kind of number.
  *  A future or nonsense `since` clamps to 0:00 rather than rendering a
  *  negative age. */
@@ -149,7 +152,7 @@ export function tickDrawerClocks(root, now = Date.now()) {
   for (const el of root.querySelectorAll(".search-age[data-since]")) {
     const since = Number(el.dataset.since);
     if (Number.isFinite(since)) {
-      el.textContent = ` · last search ${ageText(since, now)} ago`;
+      el.textContent = ` · newest ${ageText(since, now)} ago`;
     }
   }
 }
@@ -170,10 +173,18 @@ function renderSearching(body, data = {}) {
   const newest = searches[searches.length - 1];
   const since = Number(newest?.at);
   const age = Number.isFinite(since)
-    ? `<span class="search-age" data-since="${since}"> &middot; last search ${ageText(since, Date.now())} ago</span>`
+    ? `<span class="search-age" data-since="${since}"> &middot; newest ${ageText(since, Date.now())} ago</span>`
     : "";
   const tally = searches.length
-    ? `<p class="drawer-meta drawer-counts">${plural(searches.length, "search")} landed${age}</p>`
+    // "issued", not "landed". star/server.py pushes the `search` event from
+    // inside `for call in event.get_function_calls()` — the tool CALL, not
+    // its response — so at the moment this renders, the newest search has by
+    // construction NOT come back. drawer.css's own [data-current] comment
+    // says exactly that ("the only thing actually known is that this is the
+    // most recent one, not that the earlier ones came back") while this line
+    // claimed the opposite, one file away. "Issued" is what the event proves
+    // and it costs nothing.
+    ? `<p class="drawer-meta drawer-counts">${plural(searches.length, "search")} issued${age}</p>`
     : "";
   body.innerHTML = `
     <p class="drawer-status">Searching</p>

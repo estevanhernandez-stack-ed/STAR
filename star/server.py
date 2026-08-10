@@ -86,7 +86,16 @@ _daily_cap = DailyCap(max_per_day=config.max_rooms_per_day())
 
 
 def _require_uid(authorization: str | None) -> str:
-    """Every /api route is scoped to a caller. No token, no data."""
+    """Scope a request to its caller. No token, no data.
+
+    Every /api route calls this EXCEPT stream_events, which cannot: an
+    EventSource sends no custom headers, so there is no Authorization to
+    read. That route is guarded by a per-run capability instead — see its
+    docstring. This docstring used to claim the universal, and that claim
+    is how the stream shipped with no check at all for most of this
+    project's life: it is the first thing anyone auditing the auth posture
+    reads, and it told them the answer they were looking for.
+    """
     uid = verify_token(authorization)
     if uid is None:
         raise HTTPException(401, "Sign-in required.")
@@ -647,11 +656,12 @@ async def stream_events(
     This is the only /api route that cannot use the Authorization header, and
     that is a browser constraint rather than a choice: EventSource sends no
     custom headers, so `_require_uid` has nothing to read. For most of this
-    project's life the route consequently checked nothing at all, and
-    `_require_uid`'s own docstring ("Every /api route is scoped to a caller.
-    No token, no data.") was quietly false — anyone holding a run_id could
-    stream someone else's research: their objectives, their query strings,
-    their agents' progress.
+    project's life the route consequently checked nothing at all, while
+    `_require_uid`'s own docstring asserted the universal it was the sole
+    exception to — anyone holding a run_id could stream someone else's
+    research: their objectives, their query strings, their agents' progress.
+    That docstring now names this exception explicitly, because it is the
+    first thing anyone auditing the auth posture reads.
 
     `k` is a per-run capability minted in create_room and returned to the
     caller that started the run, alongside run_id. The alternative was passing
@@ -661,6 +671,13 @@ async def stream_events(
     for in the same breath. A per-run key is narrower than the identity it
     stands in for: it grants exactly one run's event stream, and it dies with
     the process that holds the run.
+
+    It is a query parameter too, so it lands in Cloud Run's requestUrl field
+    like any other. That exposure is REDUCED, not avoided, and the difference
+    is the whole argument: a leaked ID token is a live credential for one
+    person's entire account until it expires, while a leaked stream key buys
+    one already-finished run's event log on an instance that has since
+    restarted.
 
     A bad key 404s rather than 403ing, and with the same detail as an unknown
     run. 403 would confirm that a guessed run_id exists, turning this check

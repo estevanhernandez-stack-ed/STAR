@@ -75,18 +75,22 @@
      the grid in #progress-panel, and the bottom row's shadow and offset
      folder edge both extend past the card. */
   margin: calc(var(--tab-rise) + 1rem) auto 2.5rem;
-  /* .stage (web/shell.css) is a flex row with the default align-items:
-     stretch, so a direct child with no intrinsic height fills the stage's
-     full viewport height — this grid included. Left in place deliberately:
-     opting out (align-self: flex-start) traded one composition bug for its
-     mirror image, an unexplained void below the grid instead of dead space
-     inside the cards, which is the same "stage floats, unanchored" failure
-     Task 2 flagged, just relocated. Filling the height is correct; what
-     was wrong upstream was centering content inside that height (fixed
-     below, .drawer-body: justify-content: flex-start) rather than the
-     height itself. A tall manila card with its content anchored under the
-     tab and blank stock below reads as an actual folder; a tall card with
-     content floating in the middle reads as an empty box. */
+  /* No align-self here, and the reason recorded in Task 3 is no longer the
+     reason. That note said .drawer-grid was a direct child of .stage — a
+     flex row — so opting out with align-self: flex-start would trade dead
+     space inside the cards for a void below them. The grid has not been a
+     child of .stage since Task 4: the live run inserts it into
+     #progress-panel (web/app.js) and a filed room mounts it into #room-grid.
+     The flex item is .panel; align-self on this element is inert, so the
+     paragraph was explaining a deliberate non-decision about a mechanism
+     that is not wired.
+
+     What survives is the composition rule it was really about, which is
+     still load-bearing: a tall manila card with its content anchored under
+     the tab and blank stock below reads as an actual folder, while the same
+     card with content floating in the middle reads as an empty box. That is
+     enforced where it actually lives — .drawer-body's justify-content:
+     flex-start, below. */
 }
 
 /* The card is layered deliberately, because a hanging folder's cut tab is

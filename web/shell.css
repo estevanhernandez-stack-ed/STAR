@@ -458,7 +458,18 @@ a {
    renderReceipt stamps the domain, RET and FILED BY; renderExcerpt prints the
    search's own words, or "There is nothing to quote"; renderUnsourced keeps a
    link that never came back and marks it. Nothing here says "verified", which
-   is the claim the ledger check does not support. */
+   is the claim the ledger check does not support.
+
+   Read the QUANTIFIER, not just the mechanism. This comment used to end at
+   the line above, and the copy it vouched for said "the source it came from"
+   — asserting that a source EXISTS for every fact. star/findings.py keeps a
+   Finding whose every cited URL failed the ledger check, with citations: [],
+   and star/server.py's _maybe_warn_empty_ledger exists because a whole run
+   can land that way. The mechanisms listed above were all real; the sentence
+   was still false, and checking each mechanism in turn is exactly how that
+   goes unnoticed. It now reads "the sources that came back for it", which
+   allows zero — the same scoped form app.js's noBibleCopy was rewritten to
+   after the identical defect was caught there. */
 .intake-rule {
   margin: 1.25rem 0 0;
   padding-top: 0.9rem;
@@ -636,11 +647,6 @@ button {
 #timeline .who {
   color: var(--manila);
   font-weight: 700;
-}
-
-#timeline .obj {
-  color: var(--pencil-text);
-  font-style: italic;
 }
 
 /* Both of these sit on the stage, which is --cabinet, where raw --pencil is

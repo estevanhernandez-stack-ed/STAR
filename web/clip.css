@@ -420,7 +420,12 @@
 
 .receipt-excerpt-empty {
   font-style: normal;
-  opacity: 0.7;
+  /* 0.75, not 0.70 — 0.70 measures 4.34:1 on manila, under the 4.5 floor.
+     The same value is rejected by name in drawer.css's .search-queries and
+     clip.css's .field-notes-note. It survived Task 7's sweep because the
+     sweep read .receipt-excerpt (8.63:1) and this is a MODIFIER class: a
+     table built by selector misses every rule that only changes opacity. */
+  opacity: 0.75; /* 4.93:1 */
 }
 
 /* The narrow claim, in body type rather than slug: this is the most important
