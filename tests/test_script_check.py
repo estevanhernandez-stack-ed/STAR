@@ -170,7 +170,30 @@ def test_the_verifier_is_given_the_room_before_it_can_search():
 
     assert "<room_files>" in instruction
     assert "Work the room's files first" in instruction
-    assert "only for the claims the files do not answer" in instruction
+    assert "the claims the files do not answer" in instruction
+
+
+def test_the_verifier_is_told_its_certainty_is_not_a_source():
+    """The room-first rule must not read as permission to answer from memory.
+
+    Measured on the first live run: the verifier spent 1 of 8 searches and
+    answered "cell phone" in a 1962 scene out of its own knowledge with no
+    citation. `star/verdicts.py` downgraded it exactly as designed, so the most
+    obvious anachronism on the page came back unstamped. The instruction had
+    said to search "only for the claims the files do not answer", and the model
+    counted its own certainty as an answer.
+
+    This pins the correction, because the failure it prevents is invisible
+    offline: every unit test here passes either way, and the only symptom is a
+    verdict quietly losing its stamp on a real scene.
+    """
+    instruction = verifier.instruction
+
+    assert "Your certainty is not a source" in instruction
+    assert "including the claims that look obvious" in instruction
+    # The old phrasing is the one the model read as permission. If it ever
+    # comes back, this fails rather than the demo losing a stamp.
+    assert "only for the claims the files do not answer" not in instruction
 
 
 def test_the_verifier_states_the_whole_line_format():

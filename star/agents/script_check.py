@@ -100,9 +100,25 @@ verifier = Agent(
         "<room_files>\n{room_files?}\n</room_files>\n\n"
         "Work the room's files first. They were researched for this story, "
         "they are already paid for, and a claim they settle needs no search at "
-        "all. Call the parallel_search tool only for the claims the files do "
-        "not answer, and batch what is left into as few calls as the questions "
+        "all. Call the parallel_search tool for every claim the files do not "
+        "answer, and batch what is left into as few calls as the questions "
         "allow — one call, one objective, 2-4 targeted queries.\n\n"
+        # Measured 2026-08-10, first live run: the verifier spent 1 of 8
+        # searches and answered "cell phone" in a 1962 scene from its own
+        # knowledge with no source. star/verdicts.py caught it exactly as
+        # designed and downgraded the verdict to unverifiable, so the most
+        # obvious anachronism on the page came back unstamped. The instruction
+        # said to search "only for the claims the files do not answer", and the
+        # model read its own certainty as an answer. Nothing about the pipeline
+        # was wrong; this sentence was.
+        "Your certainty is not a source. A verdict has to rest on something you "
+        "actually read, either in <room_files> or in a parallel_search result "
+        "you received on this run, and a claim you are sure about with nothing "
+        "behind it is thrown out rather than stamped. So search for anything "
+        "the room's files do not carry, including the claims that look obvious "
+        "to you — those are usually the cheapest to source and the most "
+        "embarrassing to get wrong. You have a budget; spending it is what it "
+        "is for.\n\n"
         "Report one line per claim, in exactly this format:\n\n"
         "- <verdict> | <exact claim text> | <url>, <url> | <note>\n\n"
         "verdict is exactly one of:\n"
