@@ -1121,3 +1121,35 @@ softened.
 
 **And one of mine.** The first route audit reported the SSE stream as `_require_uid`-guarded
 by matching a docstring. The code was right; the audit nearly shipped a false clean.
+
+### Deployed, and verified against the deployed thing
+
+Pushed 37 commits to `origin/main`, then deployed. Revision **`star-00005-9cf`** serving 100%
+of traffic at `https://star-390753828501.us-central1.run.app`. Push before deploy on purpose:
+Cloud Run builds from local source, so deploying first would have put code on the internet
+that existed nowhere but one laptop.
+
+Probes run against production rather than inferred from a successful build:
+
+- `/` answers 200.
+- **`/config.js` carries `GOOGLE.clientId`**, which was the whole reason this deploy needed
+  the two values passed in. Google account linking is live.
+- **`GET /mcp` answers 405 and an unauthenticated `POST /mcp` answers 401.** That 401 is
+  worth more than it looks: it proves `star.mcp` imported inside the real image. The packaging
+  line was the one change in this cycle whose failure mode is invisible locally and fatal in
+  production, and the spec called it the highest-value line in the document per character.
+  A missing entry in `[tool.setuptools] packages` would have been a 500 here, not a 401.
+- `/docs`, `/redoc`, `/openapi.json` all 404.
+- **`maxScale` and `minScale` both read `1`** on the serving revision, read off the revision
+  rather than the service YAML, which lies.
+
+### A UX observation from the builder, recorded not fixed
+
+Opening a drawer buries the other three. All four mount closed and each carries its own
+toggle, which is correct and deliberate — `paintRoom`'s comment argues that opening one by
+default would assert that one researcher's category is the one you came for. But an expanded
+drawer with nine facts and fourteen receipts is tall enough that the remaining three tabs sit
+well below the fold, and a reader who opens the first may not learn there are three more.
+
+Not changed during submission week. The candidates are an accordion that closes the others,
+or sticky tabs. Routed to a later polish pass.
