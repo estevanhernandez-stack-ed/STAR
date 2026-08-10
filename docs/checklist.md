@@ -107,7 +107,7 @@ three tools and note the fourth as next. **Pipeline B and the video never go.**
   the browser console, link, and confirm the uid survives. Start a build, navigate away and back,
   and confirm the timeline resumes without duplicating entries.
 
-- [ ] **3. The token layer, server-side**
+- [x] **3. The token layer, server-side**
   Spec ref: `spec.md > MCP tokens` + `spec.md > The card: the account surface > Endpoints`
   Depends on: 2 (a linked uid is needed to exercise the allow path). Effort: **M**.
   What to build: `star/auth.py` gains `verify_claims(header) -> dict | None` returning the claim

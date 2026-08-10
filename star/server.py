@@ -32,15 +32,17 @@ from star import config  # noqa: E402
 
 config.validate_env()
 
+from star import tokens  # noqa: E402
 from star.agents.pipelines import build_room, check_scene  # noqa: E402
 from star.agents.script_check import check_state  # noqa: E402
-from star.auth import verify_token  # noqa: E402
+from star.auth import linked_provider, verify_claims, verify_token  # noqa: E402
 from star.findings import parse_findings  # noqa: E402
 from star.guards import DailyCap, RateLimiter  # noqa: E402
 from star.ledger import SourceLedger, ledger_from_room  # noqa: E402
 from star.models import Category, ClaimSet, ScriptCheckResult  # noqa: E402
 from star.store import (  # noqa: E402
     RoomStore,
+    TokenStore,
     document_to_room,
     document_to_scene,
     room_to_document,
@@ -81,6 +83,10 @@ _CATEGORY_BY_AUTHOR = {f"researcher_{c.value}": c for c in Category}
 _TERMINAL_RUN_STATUSES = ("complete", "partial", "error")
 
 _store = RoomStore()
+# A second store rather than a second collection under the first, because MCP
+# tokens live at the top level and RoomStore's every method opens with a uid.
+# Both share one Firestore client — see star/store.py's _default_client.
+_token_store = TokenStore()
 
 # Abuse guards. In-memory is correct, not a compromise — see star/guards.py's
 # module docstring for why, and what breaks if this ever runs on more than
@@ -108,6 +114,27 @@ def _require_uid(authorization: str | None) -> str:
     if uid is None:
         raise HTTPException(401, "Sign-in required.")
     return uid
+
+
+def _require_claims(authorization: str | None) -> dict:
+    """Scope a request to its caller AND hand back what was verified about it.
+
+    One route needs more than a uid. `POST /api/tokens` refuses to issue a
+    credential to an account whose only proof of ownership is a `localStorage`
+    entry, and that question is answered by the claim set rather than by the
+    uid — see star/auth.py's linked_provider.
+
+    The 401 is duplicated from `_require_uid` rather than `_require_uid` being
+    rewritten to call this, on purpose. Every other route reaches verification
+    through `verify_token`, which is the name the whole test suite patches to
+    stand in for Firebase; routing them through a second seam would change how
+    dozens of tests reach the server for no behavioural gain. Two lines is the
+    cheaper cost.
+    """
+    claims = verify_claims(authorization)
+    if claims is None:
+        raise HTTPException(401, "Sign-in required.")
+    return claims
 
 
 def _caller_key(request: Request) -> str:
@@ -1145,6 +1172,100 @@ async def delete_scene(
     uid = _require_uid(authorization)
     if not await asyncio.to_thread(_store.delete_scene, uid, run_id, scene_id):
         raise HTTPException(404, "Unknown check")
+    return Response(status_code=204)
+
+
+# --- The card: issued tokens ------------------------------------------------
+#
+# Three routes, each scoped to its caller before it does anything: two through
+# the `_require_uid` every other /api route uses, and POST through
+# `_require_claims`, which needs one thing more than a uid. Linking itself
+# needs no endpoint — it is client-side against Identity Toolkit — so this is
+# the whole server side of the account surface.
+
+
+class TokenRequest(BaseModel):
+    # Defaulted, not required, and that is deliberate on two counts. A reader
+    # issuing their first token has nothing to call it yet, and an empty label
+    # is a truthful blank on the card rather than a name the department made up
+    # for them. It also keeps this route inside the reach of the route-audit
+    # test in tests/test_server.py, which posts one body at every POST route
+    # and reads a 422 as "did not require auth".
+    label: str = ""
+
+
+@app.post("/api/tokens")
+async def create_token(
+    req: TokenRequest, authorization: str | None = Header(None)
+) -> dict:
+    """Issue one MCP token. The only moment its plaintext exists on the wire.
+
+    The refusal below is the coupling that put identity ahead of the agent
+    door: an anonymous account's only proof of ownership is a `localStorage`
+    entry, so a long-lived token pointing at one is a credential to an account
+    nobody can recover — not by the reader, and not by anyone helping them.
+    The message names that reason rather than leaving a 403 to explain itself,
+    because a bare refusal over a control the card renders as available is the
+    kind of answer a reader reads as a bug in the department.
+
+    What the guard keys on, and why it is not the field the spec names, is
+    argued in full at star/auth.py's linked_provider. Short version: the spec
+    says `firebase.sign_in_provider == "anonymous"`, nobody has measured what
+    that field reads after a link, and if it keeps describing how the SESSION
+    began then that check refuses exactly the accounts it exists to admit.
+    """
+    claims = _require_claims(authorization)
+    if linked_provider(claims) is None:
+        raise HTTPException(
+            403,
+            "This session has no account attached, so there is nothing to issue "
+            "a token against. Attach a Google account from Your card first — a "
+            "token issued to a browser-only session would be a key to rooms "
+            "nobody could ever sign back in to.",
+        )
+    label = req.label.strip()
+    if len(label) > tokens.MAX_LABEL_CHARS:
+        raise HTTPException(
+            400,
+            f"Token labels are capped at {tokens.MAX_LABEL_CHARS} characters — "
+            f"that one is {len(label)}. Name the agent, not the errand.",
+        )
+    plaintext, token = await tokens.issue(claims["uid"], label, _token_store)
+    # The metadata shape GET returns, plus the one field that will never appear
+    # again. Same shape both ways so the card has one renderer, and the field
+    # that differs is the one it has to announce before it draws.
+    return {"token": plaintext, **jsonable_encoder(token)}
+
+
+@app.get("/api/tokens")
+async def list_tokens(authorization: str | None = Header(None)) -> dict:
+    """Every token this account has issued. Metadata, never the credential.
+
+    There is no route that returns a token's plaintext or its hash, and that is
+    the shape of the promise rather than a filter applied on the way out: the
+    plaintext was never stored, and `star/tokens.py`'s to_metadata builds the
+    payload field by field so the hash cannot ride along on a later change.
+    """
+    uid = _require_uid(authorization)
+    return {"tokens": jsonable_encoder(await tokens.list_for(uid, _token_store))}
+
+
+@app.delete("/api/tokens/{token_id}")
+async def revoke_token(
+    token_id: str, authorization: str | None = Header(None)
+) -> Response:
+    """Revoke one token. Soft, so its next call can be told what happened.
+
+    A token that is not this uid's answers exactly as a token that does not
+    exist, down to the string — the no-oracle posture `get_room` and
+    `stream_events` already take. Unlike those two it cannot be reached by
+    construction: `/mcp_tokens` is a top-level collection with no uid in its
+    path, so the ownership comparison is explicit, and it lives next to the
+    write in star/store.py rather than here.
+    """
+    uid = _require_uid(authorization)
+    if not await tokens.revoke(uid, token_id, _token_store):
+        raise HTTPException(404, "Unknown token")
     return Response(status_code=204)
 
 

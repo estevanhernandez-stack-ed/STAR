@@ -787,6 +787,9 @@ def test_every_api_route_requires_auth_except_the_explicitly_open_sse_stream():
         "list_scenes",
         "get_scene",
         "delete_scene",
+        "create_token",
+        "list_tokens",
+        "revoke_token",
     } <= checked_names
 
 

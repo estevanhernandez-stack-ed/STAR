@@ -67,8 +67,9 @@ class _FakeSnapshot:
 
 
 class _FakeCollection:
-    def __init__(self, store, prefix):
+    def __init__(self, store, prefix, matches=None):
         self._store, self._prefix = store, prefix
+        self._matches = matches
 
     def document(self, doc_id):
         return _FakeDoc(self._store, f"{self._prefix}/{doc_id}")
@@ -76,10 +77,32 @@ class _FakeCollection:
     def collection(self, name):
         return _FakeCollection(self._store, f"{self._prefix}/{name}")
 
+    def where(self, filter=None):
+        """Keyword-only, like the real client's supported form.
+
+        google-cloud-firestore 2.x deprecated the positional
+        `where("uid", "==", uid)` shape in favour of `filter=FieldFilter(...)`,
+        so a fake that accepted three positional arguments would let a caller
+        pass the form that warns on every call in production. Only `==` is
+        modelled, because only `==` is used.
+        """
+        assert filter is not None, "the positional where() form is deprecated"
+        assert filter.op_string == "==", f"unmodelled operator {filter.op_string}"
+        field, value = filter.field_path, filter.value
+
+        def matches(data):
+            return (data or {}).get(field) == value
+
+        return _FakeCollection(self._store, self._prefix, matches)
+
     def stream(self):
         depth = self._prefix.count("/") + 1
         for path, data in self._store.data.items():
-            if path.startswith(self._prefix + "/") and path.count("/") == depth:
+            if (
+                path.startswith(self._prefix + "/")
+                and path.count("/") == depth
+                and (self._matches is None or self._matches(data))
+            ):
                 yield _FakeSnapshot(data)
 
 

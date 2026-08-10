@@ -7,6 +7,12 @@ non-event, and the caller decides the HTTP consequence.
 
 Header parsing is separated from verification so the parsing — the part most
 likely to be subtly wrong — is testable without a network.
+
+One caller needs more than the uid. Issuing an MCP token to an account whose
+only proof of ownership is a `localStorage` entry would be issuing a
+credential nobody can recover, so `verify_claims` returns the whole verified
+claim set and `linked_provider` reads the one question that refusal actually
+turns on.
 """
 
 import logging
@@ -109,8 +115,20 @@ def extract_bearer(header: str | None) -> str | None:
     return parts[1]
 
 
-def verify_token(header: str | None) -> str | None:
-    """Return the caller's uid, or None if the header is absent or invalid."""
+def verify_claims(header: str | None) -> dict | None:
+    """Return the caller's verified claim set, or None.
+
+    The whole of what `verify_token` used to be, minus the last line. It is
+    split out because one caller needs more than the uid: `POST /api/tokens`
+    refuses to issue a credential to an account nobody can recover, and
+    whether an account is recoverable is a claim, not a uid — see
+    `linked_provider` below.
+
+    Contract unchanged and load-bearing: never raises, one log line per
+    verification failure, None for every way a header can be wrong. A claim
+    set with no uid is None too, so `verify_token` below stays a field read
+    rather than a second set of rules.
+    """
     token = extract_bearer(header)
     if token is None:
         return None
@@ -145,5 +163,65 @@ def verify_token(header: str | None) -> str | None:
         return None
     if not isinstance(claims, dict):
         return None
-    uid = claims.get("uid")
-    return uid or None
+    return claims if claims.get("uid") else None
+
+
+def verify_token(header: str | None) -> str | None:
+    """Return the caller's uid, or None if the header is absent or invalid."""
+    claims = verify_claims(header)
+    return claims["uid"] if claims else None
+
+
+def linked_provider(claims: dict | None) -> str | None:
+    """The federated account attached to this uid, or None.
+
+    THE QUESTION IS NOT "HOW DID THIS SESSION SIGN IN." `POST /api/tokens`
+    refuses an anonymous account, and `spec.md > The card` names that check as
+    `firebase.sign_in_provider == "anonymous"`. The reason `prd.md` gives for
+    the refusal is narrower than that field: an anonymous account's only proof
+    of ownership is a `localStorage` entry, so a long-lived token pointing at
+    one is a credential to an account nobody can recover. What makes an
+    account recoverable is a federated identity being ATTACHED to it, and
+    `firebase.identities` is where that is recorded.
+
+    UNMEASURED, AND BUILT FOR BOTH ANSWERS. Nobody has yet read the claim set
+    of a real Firebase ID token minted after an anonymous session linked a
+    Google credential through `accounts:signInWithIdp`. Two shapes are
+    possible and the difference is not cosmetic:
+
+      A. Linking flips `firebase.sign_in_provider` to "google.com". Either
+         field admits the account and the spec's check works as written.
+      B. `sign_in_provider` keeps describing how THIS session began and stays
+         "anonymous", while `firebase.identities` gains a "google.com" entry.
+         A guard reading `sign_in_provider` alone then refuses exactly the
+         linked accounts it exists to admit, and does so silently until
+         somebody tries to mint a token.
+
+    So identities is read first and sign_in_provider is the fallback, which is
+    correct under A and under B. B is the shape `web/auth.js`'s
+    `linkedProvider()` already assumes, and the two have to agree: a card
+    drawing "attached to a Google account" over a server refusing to issue a
+    token is the worst failure available here, because both halves look like
+    they are working. When the claim shape is finally measured, this becomes a
+    confirmation rather than a change.
+
+    The dot is the whole of the provider rule, verbatim from `web/auth.js`:
+    Firebase keys a federated identity by the provider's domain — google.com,
+    apple.com, github.com — and keys the two non-federated ones as plain
+    "email" and "phone". Values are not inspected, matching the browser
+    exactly. A dotted key with an empty value is not a shape Firebase emits,
+    and a server stricter than the browser is a false refusal on a real
+    account, which is the failure this function exists to prevent.
+    """
+    firebase = (claims or {}).get("firebase")
+    if not isinstance(firebase, dict):
+        return None
+    identities = firebase.get("identities")
+    if isinstance(identities, dict):
+        for key in identities:
+            if isinstance(key, str) and "." in key:
+                return key
+    sign_in = firebase.get("sign_in_provider")
+    if isinstance(sign_in, str) and sign_in and sign_in != "anonymous":
+        return sign_in
+    return None

@@ -170,3 +170,26 @@ class ScriptCheckResult(BaseModel):
         description="One plain line about what this check had to work with. "
         "Empty when the claims speak for themselves.",
     )
+
+
+class McpToken(BaseModel):
+    """One issued MCP token, as the card and the API are allowed to see it.
+
+    Metadata only. There is no field here for the secret and no field for its
+    hash, and that absence is the type doing its job: `GET /api/tokens` returns
+    a list of these, so a field added to the stored document later cannot
+    arrive on the wire by accident. The plaintext exists exactly once, in the
+    response to `POST /api/tokens`, where it is carried alongside one of these
+    rather than inside it.
+
+    `revoked_at` is here rather than being filtered out of the list, because a
+    revoked token stays on the card. The soft delete is what lets the next call
+    with that token be TOLD it was revoked, and the card showing the same fact
+    is the reader's half of that.
+    """
+
+    token_id: str
+    label: str
+    created_at: str
+    last_used_at: str | None = None
+    revoked_at: str | None = None

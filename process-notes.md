@@ -661,3 +661,61 @@ trip and a console edit. Discovered on day four, it costs the ordering argument.
 The throwaway anonymous account minted by the prover is now permanently linked to a real
 Google identity in `star-research-dept`. It is not a leak and it is useful — it is the
 linked uid items 3 and 4 need to exercise the allow path, and the only one that exists.
+
+### Checkpoint 2 — Pipeline B, run live against a real room
+
+Room `92f7835a` built from a fictional 1962 Memphis treatment in **135s**, status `complete`.
+One check against it, with a Compact Cassette planted as the anachronism and a cell phone
+planted as the blatant one. **25 seconds**, well inside the 180s ceiling.
+
+**`search_count: 1`. Pipeline B genuinely called `parallel_search`.** This is the
+partner-track pass/fail and it is now measured rather than asserted, independently of
+Pipeline A.
+
+**`parse_rate: 1.0`, `field_notes` empty.** `spec.md > Open issues` #3 asked whether the
+verifier's prose grammar would hold, with a schema'd-structurer fallback waiting if it
+came in under 70% across five runs. First run: every line parsed. The fallback stays
+unbuilt.
+
+**The room answered six of eight claims; one search covered the rest.** `citation_sources`
+reads `room` for the Satellite Record Shop, McLemore Avenue, acetates, lacquer practice,
+WDIA, and union scale, and `search` only for the cassette deck. The department consulting
+its own files before spending is not a slogan here, it is what the payload says happened.
+
+**The planted anachronism landed with a real citation.** `cassette deck` came back
+`ANACHRONISM`, sourced to Philips' own 1963 announcement, with the note "Compact cassette
+technology was introduced by Philips in August 1963." That is the demo's centrepiece and it
+works.
+
+**`budget_exhausted: false`, `unsourced_count: 0`, `cover_note: ""`** — all three correct
+for a room with files and a scene with claims.
+
+Cross-uid isolation, replay, and delete all confirmed against the live service. A stranger
+asking for this room and a stranger asking for a room that never existed both receive
+`{"detail":"Unknown run"}`, byte-identical. `DELETE` returned 204, the subsequent `GET`
+404, and the list came back empty.
+
+### The defect the checkpoint found, and it is a prompt, not a pipeline
+
+`cell phone` in a 1962 scene came back **`UNVERIFIABLE`**, not `ANACHRONISM`.
+
+Nothing malfunctioned. The verifier issued a verdict with **zero citations**, and
+`star/verdicts.py`'s downgrade rule did exactly what it was built to do: a `confirmed` or
+`anachronism` carrying no hydrated citation has nothing behind it, so it is downgraded and
+the reason is stated. The guard fired correctly on its first live encounter with the case
+it exists for.
+
+The cause is upstream. `verifier`'s instruction says to search only for the claims the
+room's files do not answer, and the model read its own certainty as an answer — it spent
+**1 of 8** available searches. A verdict from memory is exactly the unearned confidence this
+design exists to refuse, and the downgrade is the system refusing it correctly.
+
+What that leaves on screen is honest and bad: the most obvious anachronism in the scene
+reads as unverifiable, under a note that says there was nothing to check it against and
+then asserts the fact anyway.
+
+The fix is one instruction line in `star/agents/script_check.py`: a verdict requires a
+source actually read, so search for anything the room's files do not carry, **even when
+certain**. The pipeline needs no change and `verdicts.py` needs no change. Recorded here
+rather than fixed silently, because the honest reading is that the annotator passed its
+first live test by catching its own pipeline.

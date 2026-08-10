@@ -9,6 +9,7 @@ get right instead of two.
 Schema:
     /users/{uid}/rooms/{run_id}
     /users/{uid}/rooms/{run_id}/scenes/{scene_id}
+    /mcp_tokens/{token_id}
 
 Filed checks hang off the room they were checked against, as a subcollection
 rather than a field on the room. Three reasons, in order: a room is read on
@@ -24,8 +25,30 @@ concurrent write.
 import os
 
 from google.api_core.exceptions import NotFound
+from google.cloud.firestore_v1 import FieldFilter
 
 _UNTITLED = "Untitled room"
+
+_client = None
+
+
+def _default_client():
+    """The one Firestore client this process uses, built on first need.
+
+    Lazy for the reason the property below was lazy before there were two
+    stores: `star/server.py` constructs its stores at import time, and every
+    test in the suite injects a fake instead — building a real client at import
+    would put a network dependency in front of a suite that has none. Shared
+    because two stores in one process should not mean two gRPC channels; both
+    classes below still take a client for injection, and only fall through to
+    this when they were given none.
+    """
+    global _client
+    if _client is None:
+        from google.cloud import firestore
+
+        _client = firestore.Client(project=os.environ.get("GOOGLE_CLOUD_PROJECT"))
+    return _client
 
 
 def room_to_document(run_id: str, result: dict, status: str, created_at: str) -> dict:
@@ -177,11 +200,7 @@ class RoomStore:
     @property
     def client(self):
         if self._client is None:
-            from google.cloud import firestore
-
-            self._client = firestore.Client(
-                project=os.environ.get("GOOGLE_CLOUD_PROJECT")
-            )
+            self._client = _default_client()
         return self._client
 
     def _rooms(self, uid: str):
@@ -257,4 +276,109 @@ class RoomStore:
         if not document.get().exists:
             return False
         document.delete()
+        return True
+
+
+class TokenStore:
+    """Reads and writes MCP tokens at the top-level /mcp_tokens/{token_id}.
+
+    Top level, not /users/{uid}/tokens/{token_id}, and the read that decides it
+    is authentication's: an agent presents a token and nothing else, so the
+    server does not know the uid until after the lookup. A top-level collection
+    makes that lookup one get() by document id — no query, no index, no
+    collection-group scan, on the path every single MCP call pays for. The
+    card's list is the rare read and pays instead with a where(), which
+    Firestore's automatic single-field index already serves.
+
+    The mirrored alternative — a document under the user plus a hash index —
+    was rejected because two documents means a revoke can half-apply, and a
+    half-revoked credential is worse than a slow list.
+
+    A separate class rather than methods on RoomStore, because every RoomStore
+    method opens with a uid and this collection has no uid in its path. Putting
+    `get(token_id)` on a class organised around user scoping is how an
+    unscoped read ends up looking scoped to the next reader.
+    """
+
+    def __init__(self, client=None) -> None:
+        self._client = client
+
+    @property
+    def client(self):
+        if self._client is None:
+            self._client = _default_client()
+        return self._client
+
+    def _tokens(self):
+        return self.client.collection("mcp_tokens")
+
+    def save(self, token_id: str, document: dict) -> None:
+        self._tokens().document(token_id).set(document)
+
+    def get(self, token_id: str) -> dict | None:
+        snapshot = self._tokens().document(token_id).get()
+        return snapshot.to_dict() if snapshot.exists else None
+
+    def list_for_uid(self, uid: str) -> list[dict]:
+        """Every token issued to one account, newest first.
+
+        Sorted in Python rather than by `order_by`, because a where() plus an
+        order_by on different fields is a composite index, and a composite
+        index is a deploy artifact this project does not otherwise have. N is
+        the number of tokens one writer has issued.
+
+        `filter=FieldFilter(...)` rather than the positional
+        `where("uid", "==", uid)` the spec writes as shorthand: the positional
+        form is deprecated in google-cloud-firestore 2.x and warns on every
+        call.
+        """
+        query = self._tokens().where(filter=FieldFilter("uid", "==", uid))
+        documents = [s.to_dict() for s in query.stream() if s.exists]
+        documents.sort(key=lambda d: (d or {}).get("created_at") or "", reverse=True)
+        return documents
+
+    def touch(self, token_id: str, when: str) -> None:
+        """Stamp when this token was last used. Throttled by the caller.
+
+        Raises `NotFound` on a token that is no longer there, the same way
+        `mark_interrupted` does and for the same reason: `.update()` on a
+        missing document raises rather than creating a partial one. The caller
+        decides what a lost stamp is worth, which is nothing — see
+        star/tokens.py.
+        """
+        self._tokens().document(token_id).update({"last_used_at": when})
+
+    def revoke(self, uid: str, token_id: str, when: str) -> bool:
+        """Soft-delete one token, if it is this uid's.
+
+        Returns False for a token that does not exist AND for a token that
+        belongs to someone else — one answer for both, so the endpoint above
+        cannot become an oracle for which token ids are real. That is
+        `get_room`'s posture, reached here by an explicit comparison because a
+        top-level collection has no uid in its path to reach it by
+        construction. This is the one place in the project where cross-uid
+        isolation is a check somebody has to remember rather than a property of
+        the path, so it lives here, against the write, instead of in a handler
+        where the next handler could forget it.
+
+        Soft, where `delete_scene` is hard, and the difference is who is owed
+        an answer. A revoked token has to be TOLD it was revoked on its next
+        call, and a deleted document answers exactly like a token that never
+        existed. A writer's script pages are the opposite case: the promise
+        above the paste box is that the text stops being kept.
+
+        An already-revoked token keeps its first timestamp and still reports
+        True. The first revocation is the fact worth keeping, and a second
+        DELETE from a card that still lists the token is a plausible click
+        rather than an error.
+        """
+        document = self._tokens().document(token_id)
+        snapshot = document.get()
+        if not snapshot.exists:
+            return False
+        stored = snapshot.to_dict() or {}
+        if stored.get("uid") != uid:
+            return False
+        if not stored.get("revoked_at"):
+            document.update({"revoked_at": when})
         return True
