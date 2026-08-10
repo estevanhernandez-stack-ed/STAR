@@ -158,6 +158,50 @@
   padding: 0;
 }
 
+/* Tables. The bible is model-generated markdown rendered by marked, so this
+   file does not get to decide what elements appear in it — a comparison table
+   is well within what a research editor writes, and `pre` above was the only
+   wide element with anywhere to go. A table has no intrinsic ceiling: it sizes
+   to its content and pushes the surface out, which at 390px is the one thing
+   that would break the no-horizontal-overflow result this task measured.
+
+   `display: block` on the table is what makes `overflow-x` apply at all — a
+   `table` box does not scroll — and it is why the wrapper is the element
+   itself rather than a div this file cannot inject into sanitised markup.
+   Cell padding and the rule under the header row use --manila-edge, the same
+   folder-edge colour every other divider on this surface uses. */
+.bible-body table {
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+  margin: 1.2rem 0;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.bible-body th,
+.bible-body td {
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--manila-edge);
+  text-align: left;
+  vertical-align: top;
+}
+
+.bible-body th {
+  font-family: var(--label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  font-size: var(--label-sm);
+}
+
+/* Images too, for the same reason and with less ceremony: nothing in the
+   pipeline forbids one, and an unconstrained img is the other way a
+   model-authored document blows out a column. */
+.bible-body img {
+  max-width: 100%;
+  height: auto;
+}
+
 /* The bible is synthesised from live web pages, so its links point wherever
    those pages pointed. They are opened through web/app.js's makeLinksSafe
    (target=_blank plus rel=noopener noreferrer) and they are underlined here

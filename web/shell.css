@@ -58,19 +58,47 @@ a {
      #build-btn     global focus ring           1.88:1  (Task 6)
      .bible-body a  global focus ring           2.76:1  (Task 6)
 
-   Four elements are the whole set of paper surfaces this app mounts, and
+   FIVE elements are the whole set of paper surfaces this app mounts, and
    everything on paper is inside one of them: .intake (manila, holds the
    onionskin retention slip), .docket (manila, holds the onionskin chips),
    .drawer (manila, holds the onionskin clips and the manila receipts inside
-   them), .bible (onionskin). So the defaults are set once, HERE, for those
-   subtrees — a control or a link that lands on paper tomorrow inherits a
-   ratio that already clears the floor, instead of inheriting a dark-ground
-   value and waiting to be measured.
+   them), .bible (onionskin), and .banner (onionskin, below). So the defaults
+   are set once, HERE, for those subtrees — a control or a link that lands on
+   paper tomorrow inherits a ratio that already clears the floor, instead of
+   inheriting a dark-ground value and waiting to be measured.
+
+   .banner joined the list in Task 7's fix round, in the same pass that
+   repainted it onionskin — the list said "four" while the line below it made
+   the count five, which is precisely the drift this block exists to stop.
+   Nothing in #auth-error is focusable today, so it is latent rather than
+   broken; it is also exactly where the sixth instance lands, because a dismiss
+   button added there would take the global --pencil ring at 2.76:1 on
+   onionskin, which is the .bible-body a bug verbatim.
 
    The global rules above are deliberately NOT weakened. --pencil is right
    where --pencil is right: 4.07:1 on --cabinet and 4.80:1 on --drawer-shadow,
-   which is every surface these four do not cover, and #new-room-btn's ring
+   which is every surface these five do not cover, and #new-room-btn's ring
    depends on it. This overrides by surface, not by lowering the default.
+
+   WHAT THIS RULE DOES AND DOES NOT GUARANTEE. The `outline-color` two thirds
+   genuinely covers every control on paper, because an outline colour is not
+   otherwise set by anyone: the UA sheet does not touch it, and it reaches
+   descendants through the descendant combinator rather than through
+   inheritance. The `color` third is weaker than it first reads, and the first
+   version of this comment overstated it. `color` here is INHERITED, and
+   inheritance loses to any directly-matching declaration — including the UA
+   stylesheet's own `button { color: buttontext }`. A bare <button> dropped on
+   manila tomorrow does NOT pick up --ink from this rule. Every such control in
+   the app sets its own colour today (.docket-btn, .drawer-toggle, #build-btn,
+   the textarea), so nothing is wrong; the rule is a correct default for
+   ordinary text and a partial one for form controls, and it should not be read
+   as more.
+
+   The blunt repair — adding `:is(button, input, textarea, select)` to the
+   selector — is deliberately NOT taken. At (0,2,0) it would beat the bare
+   `textarea` rule below at (0,0,1) and paint --ink over the textarea's
+   deliberate --manila-on---drawer-shadow, breaking a 9.01:1 pair to fix a
+   hypothetical one.
 
    Specificity note: `:is(...)` takes its most specific argument, so these are
    (0,2,0) and (0,1,1) — they beat the (0,0,0)/(0,1,0) globals above and tie
@@ -80,13 +108,14 @@ a {
 .intake,
 .docket,
 .drawer,
-.bible {
+.bible,
+.banner {
   color: var(--ink);
 }
 
 /* --ink is 8.63:1 on --manila and 12.70:1 on --onionskin. Both clear the 3:1
    non-text floor a focus indicator has to meet, against either paper. */
-:is(.intake, .docket, .drawer, .bible) :focus-visible {
+:is(.intake, .docket, .drawer, .bible, .banner) :focus-visible {
   outline-color: var(--ink);
 }
 
@@ -95,7 +124,7 @@ a {
    manila and 8.10:1 on onionskin. Still one pad, still a flat solid, still
    derived from the token — the rule DIRECTION.md sets is against washes and
    gradients, not against deriving a shade for the surface it lands on. */
-:is(.intake, .docket, .drawer, .bible) a {
+:is(.intake, .docket, .drawer, .bible, .banner) a {
   color: color-mix(in srgb, var(--aniline) 70%, var(--ink));
 }
 
@@ -500,7 +529,10 @@ button {
 
 /* The intake's own error line, which sits on --manila where raw --oxide is
    3.23:1 — Task 3's logged palette-inherent shortfall, and this is one of the
-   two places it reaches text. Mixed toward --ink it is 4.59:1. The pad keeps
+   two places it reaches text. Mixed toward --ink it is 4.57:1 — the browser's
+   own composited value, which is what ships; 4.59 was this comment's first
+   number, computed off the mix by hand before the rule was measured in place.
+   The pad keeps
    its meaning: this is oxide darkened for the paper it is printed on, not a
    third colour, and the UNSOURCED stamp still carries the raw token on the
    onionskin where it measures 4.75:1. */

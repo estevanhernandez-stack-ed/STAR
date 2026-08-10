@@ -168,9 +168,16 @@ function send(url, options, token) {
  *  that is transient — which, on the evidence, this one is.
  *
  *  WHY ONCE. Twice is a loop with a small number in it. If the second attempt
- *  is also refused, the caller gets that response and surfaces it: shell.js's
- *  refreshRail draws an empty rail, app.js's buildRoom shows the banner. A
- *  wrong answer arriving honestly beats a spinner that never resolves.
+ *  is also refused, the caller gets that response and says so: shell.js's
+ *  refreshRail draws the rail with "Your filed rooms could not be reached just
+ *  now. They are not lost — reload to try again.", and app.js's buildRoom shows
+ *  the banner. A wrong answer arriving honestly beats a spinner that never
+ *  resolves — but only if the answer is actually honest, and this comment used
+ *  to claim "draws an empty rail" while the rail said "Nothing filed yet. Paste
+ *  a treatment below and the department gets started." That is not empty, it is
+ *  an assertion that the reader has no saved work, on the exact screen where
+ *  this file has just established that we do not know. Fixed in shell.js's
+ *  renderRail, and the sentence above is what it now renders.
  *
  *  WHY RETRYING A POST IS SAFE HERE. `_require_uid` is the first statement of
  *  every handler in star/server.py — create_room included, ahead of the rate

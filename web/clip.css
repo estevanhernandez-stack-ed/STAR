@@ -349,8 +349,25 @@
   text-transform: uppercase;
 }
 
+/* The hostname on the stamp's first line, and the last long-string field in
+   this file without a break opportunity — .receipt-title, .receipt-url,
+   .receipt-excerpt and .unsourced-url all carry `overflow-wrap: anywhere`
+   already. A hostname has none by default: no spaces, and dots are not break
+   opportunities.
+
+   Not hypothetical for this corpus. At 390px the drawer's content box is about
+   311px, and `digitalcollections.detroitpubliclibrary.org` sets to roughly
+   330px plus the stamp's own padding — a Detroit archive is exactly the kind of
+   source this research returns. Flex cannot rescue it either: .receipt-stamp is
+   a flex item whose default `min-width: auto` floors at min-content, so a
+   single unbreakable string sets the floor for the whole row.
+
+   Task 7's "zero descendants exceed their clientWidth at 390px" was measured
+   across all 72 receipts in the stored room and was true of them. It was a
+   statement about that data, not about the layout. */
 .receipt-source {
   font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
 /* Sits directly after the title, not pushed to the card's far edge. At an

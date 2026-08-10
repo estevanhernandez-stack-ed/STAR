@@ -236,7 +236,7 @@
    flagged colour on screen is the flagged colour in the palette.
 
      label on the tab   --manila on --oxide      3.23:1 -> --onionskin 4.75:1
-     the status line    --oxide on --manila      3.23:1 -> mixed 4.59:1
+     the status line    --oxide on --manila      3.23:1 -> mixed 4.57:1
 
    --onionskin is used here as a letterform colour, not as a ground; the rule
    tokens.css states is that onionskin must never become a PAGE ground, and an
@@ -530,6 +530,18 @@
    1120px ceiling is declared above and would otherwise apply, which is
    harmless today (no viewport in this range is that wide) and wrong the first
    time someone moves the breakpoint.
+
+   `minmax(0, 1fr)` rather than `1fr`, and this is the line that actually makes
+   390px work — it was described as bookkeeping in the first draft of this
+   comment, which undersold it. `1fr` is shorthand for `minmax(auto, 1fr)`, and
+   that `auto` minimum resolves to the column's MIN-CONTENT width, so a single
+   unbreakable string anywhere in a card — a hostname on a receipt stamp, a long
+   URL, a query string in the search log — sets a floor the column cannot go
+   below, and the grid pushes past the viewport. An explicit `0` minimum lets
+   the column shrink and hands the wrapping back to the elements, which is where
+   web/clip.css's `overflow-wrap: anywhere` can do something about it. The same
+   substitution is on .drawer-grid's desktop `repeat(2, minmax(0, 1fr))` above,
+   for the same reason.
 --------------------------------------------------------------------- */
 @media (max-width: 900px) {
   .drawer-grid {
