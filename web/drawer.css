@@ -15,7 +15,28 @@
    The stamp stays typographic: no distress texture, no gradient, no image,
    rotation never past 2.5deg. See drawer.js's header for why the FILED
    stamp uses --ink rather than --aniline.
+
+   Task 4 adds the press: a short scale-and-settle over --stamp-duration
+   (0ms under prefers-reduced-motion — tokens.css already flips that token;
+   this file just consumes it) plus an explicit `animation: none` override
+   as a second guard, because Task 1's own report found a reduced-motion
+   rule that looked correct and silently lost to specificity until verified
+   in a real browser. Same lesson applied here without re-learning it.
 */
+
+/* web/index.html's #progress-panel carries class="panel" (web/shell.css),
+   a 760px reading-width ceiling sized for the intake/bible's prose column.
+   Task 4 mounts this same .drawer-grid inside it for the live run, and a
+   760px parent would clip the grid's own 1120px ceiling below — a child's
+   max-width only caps an upper bound, it does not escape a narrower
+   ancestor. The ID selector's specificity (1,1,0) beats the bare .panel
+   rule (0,1,0) regardless of stylesheet order, so no !important and no
+   JS classList surgery needed. #results-panel is deliberately left alone:
+   it does not host a drawer grid yet (Task 5), and its 760px column still
+   suits the bible/tabs prose it shows today. */
+#progress-panel.panel {
+  max-width: 1120px;
+}
 
 .drawer-grid {
   display: grid;
@@ -215,20 +236,75 @@
 }
 
 /* The FILED stamp — typographic only. A bordered label, not a fill, not a
-   texture. Rotation held well under the 2.5deg ceiling DIRECTION.md sets. */
+   texture. Rotation held well under the 2.5deg ceiling DIRECTION.md sets.
+   -2deg is the resting transform; the keyframes below hold that same
+   rotation throughout so nothing appears to spin or tilt, only press. */
 .stamp {
-  display: inline-block;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
   align-self: flex-start;
   border: 2px solid var(--ink);
   border-radius: 2px;
   padding: 0.3rem 0.9rem;
+  color: var(--ink);
+  transform: rotate(-2deg);
+  animation: stamp-press var(--stamp-duration) ease-out;
+}
+
+/* "Filed" — the headline, in the same --label voice every other drawer
+   plate and tab uses. */
+.stamp-word {
   font-family: var(--label);
   font-size: var(--label-md);
   font-weight: 700;
   letter-spacing: var(--track-label);
   text-transform: uppercase;
-  color: var(--ink);
-  transform: rotate(-2deg);
+}
+
+/* Researcher code + retrieval date — the two fields Task 4's live run can
+   state honestly (see drawer.js's renderFiled doc comment for the third
+   field, domain, and why it is not here). --slug per DIRECTION.md's stamp
+   spec: this is metadata, not a label. */
+.stamp-slug {
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+  letter-spacing: 0.03em;
+  opacity: 0.85;
+}
+
+/* The press: a short scale-and-settle, not a bounce or a spin — DIRECTION.md
+   is explicit that the stamp must read as typographic, not as a Photoshop
+   filter, so the only things that move are opacity and scale, and only
+   briefly. Rotation stays fixed at the resting -2deg for the entire
+   animation. */
+@keyframes stamp-press {
+  0% {
+    transform: rotate(-2deg) scale(1.5);
+    opacity: 0;
+  }
+  55% {
+    transform: rotate(-2deg) scale(0.94);
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(-2deg) scale(1);
+    opacity: 1;
+  }
+}
+
+/* Belt-and-braces, per this file's header comment: --stamp-duration is
+   already 0ms under reduced motion (tokens.css), which alone makes the
+   animation complete instantly — but Task 1 found that a rule that looks
+   correct can still lose to specificity or a browser edge case, and did
+   not ship on the strength of that alone. This second, independent path
+   to "no motion" was verified with prefers-reduced-motion actually
+   emulated in a real browser, not assumed from the token chain. */
+@media (prefers-reduced-motion: reduce) {
+  .stamp {
+    animation: none;
+  }
 }
 
 .drawer-counts {

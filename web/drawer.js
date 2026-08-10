@@ -6,22 +6,32 @@
 
    Built static-first, per docs/design/DIRECTION.md: a drawer that only
    reads correctly while animating is a drawer that fails as a still frame.
-   Motion (the stamp press, Task 4) is layered on top of this later; nothing
-   here depends on an animation to be legible.
+   Task 4 layers the stamp's press animation on top (--stamp-duration,
+   0ms under prefers-reduced-motion) without changing what any state reads
+   as a frozen frame — the animation is not load-bearing for legibility.
 
    Color discipline, checked against DIRECTION.md's palette table:
      - --oxide marks the FAILED tab. Same "flagged" meaning shell.js already
        gave it for the rail's error/interrupted marker (web/shell.js).
-     - --aniline is NOT used here. DIRECTION.md reserves it for "filed AND
-       verified" at the per-citation level — a claim only Task 5 can make,
-       once it joins a finding to its ledger check. A drawer being "filed"
-       only means this category's research pass completed; some of its
-       findings may still carry unverified_urls. Stamping the drawer itself
-       aniline would overclaim exactly what research obligation 3 warns
-       against, and would collide with Task 2's own precedent (the rail's
-       "complete" marker deliberately uses --manila-edge, not --aniline,
-       for the same reason). The FILED stamp here is --ink: typographic,
-       legible, and makes no verification claim.
+     - --aniline is NOT used here, still. DIRECTION.md's "signature" stamp
+       (domain, retrieval date, researcher's code, in --aniline) is
+       specified at the per-CITATION level: it fires "when the ledger check
+       passes" against one Finding's citations. Task 4's own live-run
+       consumer of this file — the drawer's FILED transition — has no
+       citation to check. `agent_done` (star/server.py) carries only the
+       friendly agent label, never a URL or a fact; the domain and
+       fact/source/question counts a filed category eventually carries only
+       exist once GET /api/rooms/{id} is fetched and parsed, which is
+       Task 5's territory (findings, citations, the ledger check). Stamping
+       the DRAWER aniline here would claim a verification this component
+       still cannot see, exactly what research obligation 3 warns against —
+       so this stays Task 3's --ink, extended rather than reversed. What
+       Task 4 legitimately DOES know at the moment a category files: which
+       researcher (the category itself, encoded as a three-letter code) and
+       when (today, genuinely — the render happens the moment the event
+       arrives). Both are now on the stamp; no domain is fabricated to fill
+       the third slot the citation-level design calls for. See renderFiled
+       below and drawer.css's .stamp rule for the full reasoning.
      - Search-progress dots use --pencil (metadata), not --aniline — a
        landed search is not a verified fact.
 */
@@ -44,8 +54,15 @@ function escapeHtml(s) {
     .replaceAll('"', "&quot;");
 }
 
+/* Naive "+s" breaks on "search" ("searchs") — a real bug this file already
+ * had (Task 3's aria-label on the dot row), surfaced while testing Task 4's
+ * new "N searches completed" stamp line, which hits the exact same word.
+ * Standard English pluralization for words ending in a sibilant sound
+ * takes "+es", not "+s". */
 function plural(n, word) {
-  return `${n} ${word}${n === 1 ? "" : "s"}`;
+  if (n === 1) return `${n} ${word}`;
+  const suffix = /(?:[sxz]|[cs]h)$/i.test(word) ? "es" : "s";
+  return `${n} ${word}${suffix}`;
 }
 
 function renderIdle(body) {
@@ -72,17 +89,45 @@ function renderSearching(body, data = {}) {
   `;
 }
 
-/** FILED: a typographic stamp plus the three counts the plan calls for.
- *  "Filed" only — never "verified". See the module header for why. */
+/** FILED: a typographic stamp plus whatever tally is honestly known the
+ *  moment it lands. "Filed" only — never "verified". See the module header
+ *  for why, and for why the stamp stays --ink rather than --aniline.
+ *
+ *  Two callers, two honest payload shapes — never guess between them by
+ *  defaulting a missing number to 0, which would silently turn "not known
+ *  yet" into a false "zero":
+ *    - The live run (web/app.js) calls this the instant a category's
+ *      agent_done event fires. It knows the researcher's `code` and
+ *      today's `date` (the stamp itself), and `searchCount` (how many
+ *      searches that category ran) — it does NOT know fact/source/question
+ *      counts, because findings are not parsed until the room is fetched.
+ *    - A filed room (GET /api/rooms/{id}, Task 5) calls this with real
+ *      `factCount`/`sourceCount`/`questionCount`.
+ *  Presence of any of the three finding counts (even 0 — a category can
+ *  legitimately file with zero facts) selects the finding-count line;
+ *  otherwise the honest fallback is the search tally, never a fabricated
+ *  zero. */
 function renderFiled(body, data = {}) {
-  const { factCount = 0, sourceCount = 0, questionCount = 0 } = data;
+  const { factCount, sourceCount, questionCount, code, date, searchCount } = data;
+  const hasFindingCounts =
+    factCount !== undefined || sourceCount !== undefined || questionCount !== undefined;
+  const stampDetail =
+    code && date
+      ? `<span class="stamp-slug">${escapeHtml(code)} &middot; ${escapeHtml(date)}</span>`
+      : "";
+  const countsLine = hasFindingCounts
+    ? `${plural(factCount ?? 0, "fact")} &middot;
+       ${plural(sourceCount ?? 0, "source")} &middot;
+       ${plural(questionCount ?? 0, "question")}`
+    : searchCount !== undefined
+      ? `${plural(searchCount, "search")} completed`
+      : "";
   body.innerHTML = `
-    <div class="stamp">Filed</div>
-    <p class="drawer-meta drawer-counts">
-      ${plural(factCount, "fact")} &middot;
-      ${plural(sourceCount, "source")} &middot;
-      ${plural(questionCount, "question")}
-    </p>
+    <div class="stamp">
+      <span class="stamp-word">Filed</span>
+      ${stampDetail}
+    </div>
+    ${countsLine ? `<p class="drawer-meta drawer-counts">${countsLine}</p>` : ""}
   `;
 }
 

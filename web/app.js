@@ -3,8 +3,15 @@
    The stage's state (intake / running / room) and the rail of saved rooms
    belong to shell.js. This file owns starting a build, streaming its
    progress, and painting a room's content once it's open — the tab-based
-   render below is the seam Task 3 replaces with the drawer grid; the
-   plumbing that gets a room onto the stage is not.
+   render below is the seam Task 5/6 replace with drawers and a dedicated
+   bible surface for the FILED room; the live RUNNING view is this task's
+   own seam, and it now routes into web/drawer.js's four-drawer grid
+   instead of the plain timeline that used to be the only feedback.
+
+   Research obligation 6 (never promise a duration) governs everything in
+   the SSE handler below: no ETA, no progress bar implying completion.
+   Elapsed time is shown because it is a fact about the past, not a claim
+   about the future — see elapsedLabel().
 */
 
 import { authedFetch, getIdToken } from "/auth.js";
@@ -15,18 +22,51 @@ import {
   refreshRail,
   setRoomRenderer,
 } from "/shell.js";
+import { createDrawerGrid, setDrawerState } from "/drawer.js";
 
 const $ = (id) => document.getElementById(id);
 
 const timeline = $("timeline");
+const progressPanel = $("progress-panel");
 
 let searchCount = 0;
+
+// SSE "agent_done" (star/server.py) carries only the friendly agent label
+// its own _FRIENDLY dict assigns each author — unlike "search" events, it
+// never carries `category`. Category has to be recovered client-side from
+// the same four labels _FRIENDLY gives the researcher authors. There is no
+// shared source of truth across the Python/JS boundary for this map; keep
+// it in sync with star/server.py's _FRIENDLY by hand if either changes.
+const AGENT_TO_CATEGORY = {
+  "Setting researcher": "setting",
+  "Props researcher": "objects_props",
+  "Logistics researcher": "logistics",
+  "Forces & conflicts researcher": "forces_conflicts",
+};
+
+// The three-letter researcher code the stamp carries (DIRECTION.md's
+// "researcher's code", visual-directions.md's "lifted straight from
+// found_by") — one clean abbreviation per drawer plate.
+const CATEGORY_CODE = {
+  setting: "SET",
+  objects_props: "OBJ",
+  logistics: "LOG",
+  forces_conflicts: "FOR",
+};
+
+// Live-run tracking. Rebuilt fresh at the top of every buildRoom() call by
+// resetProgress() — nothing here is meant to survive across two builds in
+// the same session.
+let drawerEls = new Map(); // category -> drawer element
+let categorySearch = new Map(); // category -> { objective, count }
+let filedCategories = new Set();
+let elapsedTimer = null;
+let runStartedAt = null;
 
 $("build-btn").addEventListener("click", buildRoom);
 $("new-room-btn").addEventListener("click", () => {
   showIntake();
-  timeline.innerHTML = "";
-  searchCount = 0;
+  resetProgress();
   $("treatment").value = "";
   $("intake-error").textContent = "";
   $("build-btn").disabled = false;
@@ -47,6 +87,82 @@ function addEntry(cls, html) {
   li.innerHTML = html;
   timeline.appendChild(li);
   li.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
+/** DD MON YYYY, matching the stamp's slug-face convention in
+ *  docs/design/visual-directions.md's own mockup ("RET 09 AUG 2026"). Uses
+ *  the browser's local clock — for a live run the retrieval genuinely just
+ *  happened, so client "now" and server "now" differ by network latency
+ *  only, not by anything worth reconciling. */
+function stampDate(d = new Date()) {
+  return `${pad2(d.getDate())} ${d.toLocaleString("en-US", { month: "short" }).toUpperCase()} ${d.getFullYear()}`;
+}
+
+/** Elapsed time only — never a prediction. Research obligation 6 forbids an
+ *  ETA or a progress bar implying completion; it says nothing against
+ *  stating how long the department has been at it, which is a fact about
+ *  the past, not a promise about the future. star/config.py's own recorded
+ *  range (146s-420s+) is exactly why no single number belongs here as an
+ *  estimate — this clock only ever counts up from what already happened. */
+function elapsedLabel() {
+  const secs = Math.max(0, Math.floor((Date.now() - runStartedAt) / 1000));
+  return `${Math.floor(secs / 60)}:${pad2(secs % 60)} elapsed`;
+}
+
+function updateMeter() {
+  $("search-meter").textContent = `${searchCount} cited searches so far · ${elapsedLabel()}`;
+}
+
+function startElapsedTimer() {
+  runStartedAt = Date.now();
+  updateMeter();
+  elapsedTimer = setInterval(updateMeter, 1000);
+}
+
+function stopElapsedTimer() {
+  if (elapsedTimer) clearInterval(elapsedTimer);
+  elapsedTimer = null;
+}
+
+/** Rebuilds the live drawer grid and clears every piece of per-run state.
+ *  Called at the top of every build, and again on "New room" — the error
+ *  path below never navigates away on its own (the rail's own "New room"
+ *  button is the recovery path, always visible), so a stray interval or a
+ *  stale drawer reference must not survive into whatever the user does
+ *  next. */
+function resetProgress() {
+  stopElapsedTimer();
+  timeline.innerHTML = "";
+  $("search-meter").textContent = "";
+  searchCount = 0;
+  filedCategories = new Set();
+  categorySearch = new Map();
+  const grid = createDrawerGrid();
+  drawerEls = new Map([...grid.children].map((el) => [el.dataset.category, el]));
+  const oldGrid = progressPanel.querySelector(".drawer-grid");
+  if (oldGrid) {
+    oldGrid.replaceWith(grid);
+  } else {
+    progressPanel.insertBefore(grid, timeline);
+  }
+}
+
+/** Marks every drawer that never reached "filed" by the time the run ended
+ *  — a terminal error, an editor that ran out of time (partial), or
+ *  (defensively) "complete" itself, in case a researcher produced no final
+ *  response for some reason unrelated to the timeout or the editor. A
+ *  drawer left "searching" forever after the run is already over is worse
+ *  than an honest "did not file" — see web/drawer.js's FAILED state. */
+function sweepUnfiledDrawers() {
+  for (const [category, el] of drawerEls) {
+    if (!filedCategories.has(category)) {
+      setDrawerState(el, "failed");
+    }
+  }
 }
 
 async function buildRoom() {
@@ -88,7 +204,9 @@ async function buildRoom() {
     return;
   }
 
+  resetProgress();
   showRunning();
+  startElapsedTimer();
   addEntry("done", "Treatment received. The department is assembling.");
 
   const source = new EventSource(`/api/rooms/${runId}/events`);
@@ -96,14 +214,57 @@ async function buildRoom() {
     const ev = JSON.parse(msg.data);
     if (ev.type === "search") {
       searchCount += 1;
-      const obj = ev.objective
-        ? `<div class="obj">&ldquo;${escapeHtml(truncate(ev.objective, 160))}&rdquo;</div>`
-        : "";
-      addEntry("search", `<span class="who">${escapeHtml(ev.agent)}</span> is searching the live web${obj}`);
-      $("search-meter").textContent = `${searchCount} cited searches so far (Parallel Search API)`;
+      const category = ev.category;
+      if (category && drawerEls.has(category)) {
+        const s = categorySearch.get(category) || { objective: "", count: 0 };
+        s.count += 1;
+        if (ev.objective) s.objective = ev.objective;
+        categorySearch.set(category, s);
+        // A category that already filed must never visually un-stamp back
+        // to "searching" — found by testing a stray/duplicate "search"
+        // arriving after that category's agent_done. Whether the real
+        // pipeline can ever produce that ordering is unverified either way,
+        // so this guards it rather than assuming it can't happen. The tally
+        // above still updates either way — a search that genuinely
+        // happened is still true even if the drawer no longer visualizes
+        // per-search progress.
+        if (!filedCategories.has(category)) {
+          setDrawerState(drawerEls.get(category), "searching", {
+            objective: s.objective,
+            searchCount: s.count,
+          });
+        }
+      }
+      updateMeter();
     } else if (ev.type === "agent_done") {
-      addEntry("done", `<span class="who">${escapeHtml(ev.agent)}</span> filed their work.`);
+      const category = AGENT_TO_CATEGORY[ev.agent];
+      if (category && drawerEls.has(category)) {
+        // Defends against a researcher whose turn produces more than one
+        // "final" text part in one run (an ADK behavior this file cannot
+        // rule out) filing — and re-animating — the same drawer twice.
+        if (!filedCategories.has(category)) {
+          filedCategories.add(category);
+          const s = categorySearch.get(category) || { count: 0 };
+          setDrawerState(drawerEls.get(category), "filed", {
+            code: CATEGORY_CODE[category],
+            date: stampDate(),
+            searchCount: s.count,
+          });
+        }
+      } else {
+        // Intake, planning, and synthesis have no drawer — they still get
+        // a line in the activity feed so the run doesn't read as silent
+        // during the fan-out and the fan-in.
+        addEntry("done", `<span class="who">${escapeHtml(ev.agent)}</span> filed their work.`);
+      }
+    } else if (ev.type === "warning") {
+      // The empty-ledger signal (star/server.py's _maybe_warn_empty_ledger)
+      // — run-wide, not per-category, so it goes to the activity feed
+      // rather than any one drawer.
+      addEntry("warn", escapeHtml(ev.message));
     } else if (ev.type === "complete") {
+      stopElapsedTimer();
+      sweepUnfiledDrawers();
       source.close();
       showResults(runId);
       refreshRail(runId);
@@ -111,11 +272,15 @@ async function buildRoom() {
       // The editor ran out of time, but the researchers did not. Their
       // findings and citations are real and already paid for, so show them
       // rather than throwing away a four-minute build.
+      stopElapsedTimer();
+      sweepUnfiledDrawers();
       source.close();
       addEntry("warn", escapeHtml(ev.message));
       showResults(runId);
       refreshRail(runId);
     } else if (ev.type === "error") {
+      stopElapsedTimer();
+      sweepUnfiledDrawers();
       source.close();
       addEntry("error", `Something broke: ${escapeHtml(ev.message)}`);
       $("build-btn").disabled = false;
@@ -234,10 +399,6 @@ function makeLinksSafe(container) {
     a.target = "_blank";
     a.rel = "noopener noreferrer";
   });
-}
-
-function truncate(s, n) {
-  return s.length > n ? s.slice(0, n - 1) + "…" : s;
 }
 
 function escapeHtml(s) {
