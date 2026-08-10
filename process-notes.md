@@ -1216,3 +1216,26 @@ thing.
 Skipped — no `friction.jsonl` exists on disk, so there was nothing to calibrate. No friction
 was logged this cycle: the cross-artifact drift measurement came back 0% on `scope.md` and
 `prd.md`, 1% on `spec.md`, and 9% on `checklist.md`, all far under the 50% rewrite threshold.
+
+### Open issue #4, closed with evidence rather than a prediction
+
+The remaining half of `spec.md > Open issues` #4 — whether any MCP client other than the
+in-repo harness can connect — is answered, and the earlier prediction was **too absolute**.
+
+Both prior statements said a client that "insists on discovering an authorization server"
+would refuse. True as far as it goes, and it misses the case that turns out to be the common
+one: a client that **attempts** discovery, finds nothing, and falls back to the credential it
+was handed. Measured against the live service, `mcp-remote` logs "Discovering OAuth server
+configuration...", gets four 404s, and completes `initialize` (returning `2025-11-25` from
+`star 0.1.0`) and `tools/list` (all four tools) anyway.
+
+So the honest three-way split, replacing the two-way one:
+
+- Static-header client — connects. `claude mcp add --transport http … --header`.
+- Discovery-attempting client that degrades — connects, via a stdio bridge.
+- Discovery-*requiring* client that refuses without it — does not.
+
+A desktop client reaches STAR today through the second case. The OAuth authorization server
+is still the real fix and is still correctly cut, but the practical gap it leaves is narrower
+than this cycle assumed. `claude_desktop_config.json` was written to
+`%APPDATA%\Claude\` with the token placeholdered.

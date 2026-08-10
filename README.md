@@ -52,7 +52,7 @@ a ledger of what search actually returned:
 Deterministic multi-step pipelines built as ADK workflow agents, not a free-roaming chat
 loop.
 
-```
+```text
 Pipeline A · Build the Room  (SequentialAgent)
   intake        treatment → StoryProfile                  [Gemini, schema'd]
   planner       StoryProfile → ResearchPlan               [Gemini, schema'd]
@@ -157,7 +157,7 @@ fails rather than ships.
 `POST /mcp`, Streamable HTTP, on the same origin as the app. Authenticate with a per-user
 token issued from **Your card** in the web app:
 
-```
+```http
 Authorization: Bearer star_<token_id>.<secret>
 ```
 
@@ -169,9 +169,51 @@ Four tools and no fifth: `list_rooms`, `get_room`, `build_room`, `check_scene`. 
 **is** `build_room`'s poll. Every description is written for a reader who cannot see a
 screen, and every refusal names what failed and what to do next.
 
-**Known limitation.** MCP's authorization spec expects OAuth 2.1 with protected-resource
-metadata discovery, and STAR ships none. Any client that can be configured with a static
-bearer header works; a client that insists on discovering an authorization server will not.
+**Known limitation, and the shape of it measured rather than assumed.** MCP's authorization
+spec expects OAuth 2.1 with protected-resource metadata discovery, and STAR ships none: all
+four `/.well-known/oauth-*` paths answer 404, and the `401` carries a bare
+`WWW-Authenticate: Bearer` with no `resource_metadata` parameter.
+
+Any client configurable with a static bearer header works. A client that *requires* discovery
+and refuses without it will not. The interesting case is the one in between, and it is the
+common one: a client that **attempts** discovery, finds nothing, and falls back to the header
+it was given connects fine. Verified against the live service — `mcp-remote` logs
+"Discovering OAuth server configuration...", gets nothing, and completes `initialize` and
+`tools/list` anyway.
+
+### Connecting a desktop client
+
+For any MCP client that speaks stdio rather than HTTP, bridge it:
+
+```jsonc
+{
+  "mcpServers": {
+    "star": {
+      "command": "npx",
+      "args": [
+        "-y", "mcp-remote@latest",
+        "https://star.626labs.dev/mcp",
+        "--header", "Authorization: Bearer star_<token_id>.<secret>"
+      ]
+    }
+  }
+}
+```
+
+Issue the token from **Your card** in the web app. It requires a linked account, and it is
+shown exactly once.
+
+For a client that speaks HTTP directly, no bridge is needed:
+
+```bash
+claude mcp add --transport http star https://star.626labs.dev/mcp \
+  --header "Authorization: Bearer star_<token_id>.<secret>"
+```
+
+**One number worth knowing before wiring an agent to this.** `get_room` on a complete room
+returns about 152,000 bytes, roughly 37,000 tokens — the bible is 16k of it and the four
+drawers are 127k, because citation excerpts are real slabs of the pages search returned. Fine
+for a single read. Do not poll `get_room` in a loop after a build reaches a terminal status.
 
 ## The persona harness
 
@@ -194,7 +236,7 @@ the MCP endpoint from the same process.
 GOOGLE_OAUTH_CLIENT_ID=... FIREBASE_API_KEY=... bash scripts/deploy.sh
 ```
 
-Live at **https://star.626labs.dev**, a Cloud Run domain mapping onto the same service.
+Live at **[star.626labs.dev](https://star.626labs.dev)**, a Cloud Run domain mapping onto the same service.
 Cloud Run additionally answers on two hostnames of its own, a project-number form and a
 hash form, and both keep serving whether or not anyone means them to. That matters for one
 reason: `web/auth.js` sends `location.origin + "/"` as its OAuth `redirect_uri`, so **every**
