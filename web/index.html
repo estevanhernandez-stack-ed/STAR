@@ -5,67 +5,80 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>STAR — Story &amp; Treatment Agentic Research</title>
   <link rel="stylesheet" href="/tokens.css" />
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/shell.css" />
   <script src="/vendor/marked.min.js"></script>
   <script src="/vendor/purify.min.js"></script>
 </head>
 <body>
   <div id="auth-error" class="banner hidden">
-    Could not start a session. STAR needs Google sign-in to run. Check your connection and reload.
+    Could not start a session with the department. Check your connection and reload.
   </div>
-  <header>
-    <div class="brand">
-      <span class="star-mark">✶</span>
-      <div>
-        <h1>STAR</h1>
-        <p class="tagline">Story &amp; Treatment Agentic Research</p>
-      </div>
-    </div>
-    <p class="strap">Every studio has a research department. Now every writer does.</p>
-  </header>
 
-  <main>
-    <!-- Intake panel -->
-    <section id="intake-panel" class="panel">
-      <h2>Hand your treatment to the department</h2>
-      <p class="hint">
-        A logline works; a paragraph works better. Era, place, and what your
-        characters actually do gives the researchers the most to chase down.
-      </p>
-      <textarea id="treatment" rows="7"
-        placeholder="A period drama set in 1962 Memphis. A 19-year-old session guitarist talks her way into a recording studio's house band while moonlighting as a getaway driver for her brother's crew..."></textarea>
-      <div class="actions">
-        <button id="build-btn">Build the Room</button>
-        <span id="intake-error" class="error"></span>
+  <div class="cabinet">
+    <!-- The rail: every saved room, cheap by construction (room_summary
+         omits the bible and categories server-side). -->
+    <aside class="rail" id="rail" aria-label="Saved rooms">
+      <div class="rail-head">
+        <span class="star-mark" aria-hidden="true">✶</span>
+        <div class="rail-brand">
+          <h1>STAR</h1>
+          <p class="rail-tagline">Story &amp; Treatment Agentic Research</p>
+        </div>
       </div>
-    </section>
 
-    <!-- Live progress -->
-    <section id="progress-panel" class="panel hidden">
-      <h2>The department is working<span class="ellipsis"></span></h2>
-      <ul id="timeline"></ul>
-      <p id="search-meter" class="meter"></p>
-    </section>
+      <button id="new-room-btn" class="rail-new" type="button">New room</button>
 
-    <!-- Results -->
-    <section id="results-panel" class="panel hidden">
-      <div class="results-header">
-        <h2 id="result-title">Your research room</h2>
-        <span id="result-stats" class="meter"></span>
-      </div>
-      <nav class="tabs">
-        <button class="tab active" data-tab="bible">Research Bible</button>
-        <button class="tab" data-tab="profile">Story Profile</button>
-        <button class="tab" data-tab="plan">Research Plan</button>
+      <nav class="rail-list" id="rail-list" aria-label="Saved rooms list">
+        <!-- Rendered by shell.js's renderRail(). -->
       </nav>
-      <article id="tab-bible" class="tab-content markdown"></article>
-      <article id="tab-profile" class="tab-content hidden"></article>
-      <article id="tab-plan" class="tab-content hidden"></article>
-      <div class="actions">
-        <button id="new-room-btn" class="secondary">Start another project</button>
-      </div>
-    </section>
-  </main>
+    </aside>
+
+    <!-- The stage: intake, live progress, or a filed room. Exactly one
+         panel is visible at a time — shell.js owns the switch. -->
+    <main class="stage" id="stage">
+      <section id="intake-panel" class="panel intake">
+        <h2>Hand your treatment to the department</h2>
+        <p class="hint">
+          A logline works; a paragraph works better. Era, place, and what
+          your characters actually do is what turns a guess into a grounded
+          fact.
+        </p>
+        <p class="retention">
+          Your treatment itself is not stored — only the profile the
+          department extracts from it, and the research it produces. Both
+          are kept under this browser's identity, so you can come back to
+          them. Nothing is visible without your sign-in token.
+        </p>
+        <textarea id="treatment" rows="7"
+          placeholder="A period drama set in 1962 Memphis. A 19-year-old session guitarist talks her way into a recording studio's house band while moonlighting as a getaway driver for her brother's crew..."></textarea>
+        <div class="actions">
+          <button id="build-btn">Build the Room</button>
+          <span id="intake-error" class="error"></span>
+        </div>
+      </section>
+
+      <section id="progress-panel" class="panel hidden">
+        <h2>The department is working<span class="ellipsis"></span></h2>
+        <ul id="timeline"></ul>
+        <p id="search-meter" class="meter"></p>
+      </section>
+
+      <section id="results-panel" class="panel hidden">
+        <div class="results-header">
+          <h2 id="result-title">Your research room</h2>
+          <span id="result-stats" class="meter"></span>
+        </div>
+        <nav class="tabs">
+          <button class="tab active" data-tab="bible">Research Bible</button>
+          <button class="tab" data-tab="profile">Story Profile</button>
+          <button class="tab" data-tab="plan">Research Plan</button>
+        </nav>
+        <article id="tab-bible" class="tab-content markdown"></article>
+        <article id="tab-profile" class="tab-content hidden"></article>
+        <article id="tab-plan" class="tab-content hidden"></article>
+      </section>
+    </main>
+  </div>
 
   <footer>
     <p>
