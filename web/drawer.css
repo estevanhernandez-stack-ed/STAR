@@ -38,18 +38,44 @@
      content floating in the middle reads as an empty box. */
 }
 
+/* The card is layered deliberately, because a hanging folder's cut tab is
+   part of the BACK panel: it rises above the front face and its base is
+   hidden behind it. A tab painted on top reads as a label stuck on a box.
+
+   Paint order inside this stacking context:
+     -1  ::after   the second folder edge, offset behind everything
+      0  .tab      the cut tab — only the part above the face survives
+      1  ::before  the manila front face, which covers the tab's base
+      2  content
+   The face therefore has to be a pseudo-element rather than this element's
+   own background: an element always paints its own background before its
+   positioned children, so a negative z-index on .tab could never be
+   covered by it. */
 .drawer {
   position: relative;
+  z-index: 0;
   display: flex;
   flex-direction: column;
   min-height: 260px;
-  background: var(--manila);
   color: var(--ink);
-  border-radius: 3px;
   padding: 2.5rem 1.75rem 2rem;
+}
+
+.drawer::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: var(--manila);
+  border-radius: 3px;
   box-shadow:
     0 1px 0 var(--manila-edge),
     0 16px 28px color-mix(in srgb, var(--drawer-shadow) 55%, transparent);
+}
+
+.drawer > * {
+  position: relative;
+  z-index: 2;
 }
 
 /* A second folder edge peeking out behind the card — the drawer holds more
@@ -71,11 +97,17 @@
 /* The cut tab — a hanging-folder tab sticking up above the card's top edge,
    carrying the plate label. clip-path gives the angled "cut" corners rather
    than a plain rectangle. */
+/* Sits at z-index 0 so the face (z-index 1) covers its base. Raised far
+   enough that the whole label clears the face — otherwise the face crops
+   the text it exists to carry. The clip-path angles the cut corners, and
+   it widens downward so the hidden base is the wider end, the way a real
+   cut tab is scored. */
 .tab {
   position: absolute;
-  top: -1.15rem;
+  z-index: 0;
+  top: -1.75rem;
   left: 1.5rem;
-  padding: 0.45rem 1.15rem 0.35rem;
+  padding: 0.4rem 1.15rem 0.55rem;
   background: var(--manila-edge);
   clip-path: polygon(6% 0%, 94% 0%, 100% 100%, 0% 100%);
 }
