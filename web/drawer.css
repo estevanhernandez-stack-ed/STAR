@@ -1,0 +1,216 @@
+/* THE MORGUE — the drawer, in its five states.
+   Tokens only, from web/tokens.css. No raw hex, no rgba() literals — the one
+   shadow color is derived with color-mix() from a token, matching the
+   precedent web/shell.css already set for .rail-room:hover.
+
+   The hard rule this file exists to satisfy (docs/design/DIRECTION.md):
+   manila must own more than 40% of the room's pixel area in the filed
+   state. The cards are the page; --cabinet is the frame. Concretely, that
+   means .drawer-grid is sized to fill the stage as a composition, not to
+   sit as a small object centered in a large empty frame — the failure mode
+   Task 2 flagged in its own intake card and asked this task not to repeat.
+   .drawer-grid intentionally does NOT rely on .panel's 760px max-width
+   (web/shell.css) for this reason; it carries its own, wider ceiling.
+
+   The stamp stays typographic: no distress texture, no gradient, no image,
+   rotation never past 2.5deg. See drawer.js's header for why the FILED
+   stamp uses --ink rather than --aniline.
+*/
+
+.drawer-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.75rem;
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  /* .stage (web/shell.css) is a flex row with the default align-items:
+     stretch, so a direct child with no intrinsic height fills the stage's
+     full viewport height — this grid included. Left in place deliberately:
+     opting out (align-self: flex-start) traded one composition bug for its
+     mirror image, an unexplained void below the grid instead of dead space
+     inside the cards, which is the same "stage floats, unanchored" failure
+     Task 2 flagged, just relocated. Filling the height is correct; what
+     was wrong upstream was centering content inside that height (fixed
+     below, .drawer-body: justify-content: flex-start) rather than the
+     height itself. A tall manila card with its content anchored under the
+     tab and blank stock below reads as an actual folder; a tall card with
+     content floating in the middle reads as an empty box. */
+}
+
+.drawer {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 260px;
+  background: var(--manila);
+  color: var(--ink);
+  border-radius: 3px;
+  padding: 2.5rem 1.75rem 2rem;
+  box-shadow:
+    0 1px 0 var(--manila-edge),
+    0 16px 28px color-mix(in srgb, var(--drawer-shadow) 55%, transparent);
+}
+
+/* A second folder edge peeking out behind the card — the drawer holds more
+   than one folder per category, even though only the top one is shown.
+   Geometric and flat, not a texture: a single offset rectangle, tokens
+   only. Not selected by the manila measurement (it targets .drawer/.clip/
+   .tab elements, not pseudo-elements), so it plays no part in clearing the
+   40% rule — it is read, not measured. */
+.drawer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--manila-edge);
+  border-radius: 3px;
+  transform: translate(7px, 9px);
+  z-index: -1;
+}
+
+/* The cut tab — a hanging-folder tab sticking up above the card's top edge,
+   carrying the plate label. clip-path gives the angled "cut" corners rather
+   than a plain rectangle. */
+.tab {
+  position: absolute;
+  top: -1.15rem;
+  left: 1.5rem;
+  padding: 0.45rem 1.15rem 0.35rem;
+  background: var(--manila-edge);
+  clip-path: polygon(6% 0%, 94% 0%, 100% 100%, 0% 100%);
+}
+
+.tab-label {
+  display: block;
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+/* IDLE — "tab pencil": the tab itself is rendered in the pencil color, not
+   just its label, so it reads as unmarked at a glance rather than merely
+   dim. --drawer-shadow on --pencil measures 4.8:1 (WCAG AA); the first
+   draft tried --pencil text directly on the default --manila-edge tab and
+   measured 1.4:1 — nowhere close, and a state built to look "quiet" is not
+   an excuse to make it unreadable. */
+.drawer[data-state="idle"] .tab {
+  background: var(--pencil);
+}
+
+.drawer[data-state="idle"] .tab-label {
+  color: var(--drawer-shadow);
+}
+
+.drawer[data-state="idle"] .drawer-status {
+  color: var(--pencil);
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  font-family: var(--body);
+  font-style: italic;
+}
+
+/* FAILED — tab in --oxide, per the rule. */
+.drawer[data-state="failed"] .tab {
+  background: var(--oxide);
+}
+
+.drawer[data-state="failed"] .tab-label {
+  color: var(--manila);
+}
+
+.drawer[data-state="failed"] .drawer-status {
+  color: var(--oxide);
+}
+
+.drawer-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 0.55rem;
+}
+
+.drawer-status {
+  margin: 0;
+  font-family: var(--label);
+  font-size: var(--label-md);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+/* The count/objective/message line beneath the status — always --slug,
+   per the brief's "the count line in --slug". */
+.drawer-meta {
+  margin: 0;
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+  color: var(--ink);
+  opacity: 0.75;
+  line-height: 1.5;
+}
+
+.drawer-objective {
+  font-style: italic;
+}
+
+.drawer-dots {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.15rem;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--pencil);
+  flex: none;
+}
+
+.dot-overflow {
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+  color: var(--pencil);
+}
+
+/* The FILED stamp — typographic only. A bordered label, not a fill, not a
+   texture. Rotation held well under the 2.5deg ceiling DIRECTION.md sets. */
+.stamp {
+  display: inline-block;
+  align-self: flex-start;
+  border: 2px solid var(--ink);
+  border-radius: 2px;
+  padding: 0.3rem 0.9rem;
+  font-family: var(--label);
+  font-size: var(--label-md);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink);
+  transform: rotate(-2deg);
+}
+
+.drawer-counts {
+  margin-top: 0.7rem;
+}
+
+/* ---------------------------------------------------------------------
+   Below 900px the grid collapses to one column — Task 7 owns the full
+   responsive pass, but a drawer this narrow would already read fine as a
+   single column, so the rule is declared here rather than left implicit.
+--------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .drawer-grid {
+    grid-template-columns: 1fr;
+    max-width: 560px;
+  }
+}
