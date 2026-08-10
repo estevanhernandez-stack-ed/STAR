@@ -1153,3 +1153,66 @@ well below the fold, and a reader who opens the first may not learn there are th
 
 Not changed during submission week. The candidates are an accordion that closes the others,
 or sticky tabs. Routed to a later polish pass.
+
+## /reflect
+
+Cycle #19 closed. `docs/reflection.md` written. Updated unified builder profile —
+`projects_completed` 18 → 19, `last_project`, and a `notes` entry recording the
+domain-distance diagnosis, the multi-point answering pattern, and the scope-as-optionality
+correction. `shared.*` and the `vibe-doc` block untouched.
+
+### The correction the builder made to the review
+
+The agent's opening read was that `scope.md` had been absorbed by `/prd` — measured by how
+often it was reached back to during the build, which was twice. The builder rejected the
+metric, not the conclusion: scope's value is in what it opens, not in what it is later cited
+for. "It always unlocks a lot of doors for us to open up and even just look through."
+
+That is right and the measurement was wrong-headed. `/prd` could only close nine forks with
+reasoning attached because scope had already framed them as forks. Google-as-upgrade, the
+1 → 2 → 3 reorder off the mechanical `check_scene` dependency, and the cut line written down
+before anyone was under pressure all happened at scope. By `/build` they were not citations,
+they were the terrain. A cut that was considered and rejected is still load-bearing, because
+it is the one nobody reopens under deadline.
+
+### The diagnosis worth carrying to the next cycle
+
+Asked whether the workflow's blindness to "what we said does not serve the user" was general
+or specific to this run, the builder named the variable directly: **it scales with domain
+distance.** On a familiar subject his own instincts stand where that check belongs and fire
+for free. On an unfamiliar one — a hackathon subject he had not worked in — nothing stands
+there, and the artifacts specify the wrong thing in great detail without anything objecting.
+
+That reframes when Cart pays. His standing pattern is spec-prep upstream and Cart wrapping
+the build, with zero deepening rounds when the substrate is understood. The corollary is that
+the rounds he skips are worth most precisely when the substrate is *not* understood, which is
+the same condition that made this cycle's blind spots worse.
+
+### The next instrument, and why it is a different one
+
+The builder's plan: adversarial persona runs through MCP, driving a screenwriter hostile to AI
+tools. Worth naming that this is a different axis from what `harness/` currently tests. The
+three shipped personas test the **tool surface** — can an agent work out what to call, and can
+it tell why a call failed. An adversarial screenwriter tests the **premise**: whether a stamped
+citation earns trust from someone who arrived expecting slop.
+
+The voice already exists in `docs/design/critique-adversarial.md`, and until now it has only
+ever run against mockups. Pointing it at the shipped thing, with the same transcript-committing
+discipline, closes a loop open since the design phase. Predicted first finding, recorded so it
+can be checked: it will not argue with the verdicts, it will argue with `UNVERIFIABLE` — a
+writer who wanted an answer and got "we looked and could not settle it" reads that as the
+product failing, and the honest response is that the alternative was lying.
+
+### Where the builder put the goal
+
+99.8%. The missing fraction is the MCP server not yet connected from a desktop client, which
+is the deferred OAuth 2.1 authorization server being felt for the first time rather than a
+build failure. At scope time that cut was free against every judging criterion and it still
+is. It was not free against the experience, and that only became visible by reaching for the
+thing.
+
+### Calibration check-in
+
+Skipped — no `friction.jsonl` exists on disk, so there was nothing to calibrate. No friction
+was logged this cycle: the cross-artifact drift measurement came back 0% on `scope.md` and
+`prd.md`, 1% on `spec.md`, and 9% on `checklist.md`, all far under the 50% rewrite threshold.
