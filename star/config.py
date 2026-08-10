@@ -70,6 +70,37 @@ def check_timeout_seconds() -> int:
     return int(os.environ.get("STAR_CHECK_TIMEOUT_SECONDS", "180"))
 
 
+# The two origins this service is actually served from. There is no env var on
+# Cloud Run carrying a service's own URL, so the deployed one is a literal
+# here; if the service ever moves, this line moves with it or the browser is
+# refused at a door it never uses. The dev origin is listed because omitting it
+# is the failure that looks like a broken client on a laptop and works fine in
+# production — the same trap `spec.md > Deployment` names for the OAuth
+# client's redirect URIs.
+_DEFAULT_MCP_ORIGINS = (
+    "https://star-390753828501.us-central1.run.app",
+    "http://localhost:8000",
+)
+
+
+def mcp_allowed_origins() -> tuple[str, ...]:
+    """Origins the MCP door answers to when a browser names one.
+
+    Only a browser sends `Origin`, and an absent header passes — see
+    star/mcp/protocol.py's origin_allowed for why that is the point rather
+    than a hole. This list exists for the case where a browser IS the client,
+    which is where DNS rebinding lives.
+
+    An empty or whitespace-only env var falls back to the defaults rather than
+    to an empty list. An empty allow list would refuse every browser origin,
+    which is a defensible posture but not one that should be reachable by
+    setting a variable to the empty string by accident.
+    """
+    raw = os.environ.get("STAR_MCP_ALLOWED_ORIGINS", "")
+    origins = tuple(one.strip() for one in raw.split(",") if one.strip())
+    return origins or _DEFAULT_MCP_ORIGINS
+
+
 def max_rooms_per_ip_per_hour() -> int:
     """Per-caller ceiling on a public endpoint that spends money to answer."""
     return int(os.environ.get("STAR_MAX_ROOMS_PER_IP_PER_HOUR", "5"))

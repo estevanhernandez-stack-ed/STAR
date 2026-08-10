@@ -36,6 +36,7 @@ from tests.test_store import _FakeClient
 
 AUTH = {"Authorization": "Bearer good.token.here"}
 UID = "uid-one"
+OTHER_UID = "uid-two"
 ROOM = "room-1"
 FILED = "2026-08-10T00:00:00+00:00"
 
@@ -572,6 +573,123 @@ def test_an_empty_scene_is_refused_rather_than_checked_as_a_scene_of_nothing():
 
     assert response.status_code == 400
     assert runner.messages == []
+
+
+# -- the ceiling a check is admitted under -----------------------------------
+#
+# Until item 10 there was none. `_ip_limiter` and `_daily_cap` both count
+# ROOMS, so neither one ever saw a scene, and a check spends up to
+# config.max_searches_per_check() live searches. Anonymous accounts are free
+# and zero-click, so the shape was: mint an account, build one room, then check
+# unlimited scenes against it forever.
+#
+# The ceiling lives inside `_run_check`, which is what makes it both doors'
+# ceiling rather than this endpoint's — the MCP `check_scene` tool reaches the
+# same function object, and tests/test_mcp_protocol.py asserts that identity
+# directly.
+
+
+def test_a_check_is_admitted_under_a_ceiling_rather_than_on_the_token_alone():
+    store, _ = a_store()
+    store.save(UID, ROOM, filed_room())
+    ceiling = config.max_rooms_per_ip_per_hour()
+
+    with checking(store):
+        client = TestClient(server.app)
+        allowed = [post(client) for _ in range(ceiling)]
+        refused = post(client)
+
+    assert [response.status_code for response in allowed] == [200] * ceiling
+    assert refused.status_code == 429
+    detail = refused.json()["detail"]
+    assert str(ceiling) in detail
+    assert "hour" in detail
+    assert "not limited" in detail
+
+
+def test_a_check_the_ceiling_refuses_never_reaches_the_pipeline():
+    """The point of a ceiling on this endpoint is the searches behind it. A
+    refusal that still ran the pipeline would cost exactly what it exists to
+    stop."""
+    store, _ = a_store()
+    store.save(UID, ROOM, filed_room())
+
+    with mock.patch.object(
+        server, "_uid_limiter", server.RateLimiter(max_per_window=1, window_seconds=3600)
+    ), checking(store) as runner:
+        client = TestClient(server.app)
+        post(client)
+        refused = post(client)
+
+    assert refused.status_code == 429
+    assert len(runner.messages) == 1, "a refused check still started the pipeline"
+
+
+def test_a_room_that_does_not_exist_does_not_cost_a_check_slot():
+    """The limiter records on the allow path — it is a spend, not a peek, the
+    same property Finding 3 turned on. Charging an hour's check budget for a
+    404 would ration the wrong thing: what is being rationed is searches, and
+    a room that is not there never reaches one."""
+    store, _ = a_store()
+    store.save(UID, ROOM, filed_room())
+
+    with mock.patch.object(
+        server, "_uid_limiter", server.RateLimiter(max_per_window=1, window_seconds=3600)
+    ), checking(store):
+        client = TestClient(server.app)
+        for _ in range(5):
+            assert post(client, run_id="never-existed").status_code == 404
+        assert post(client).status_code == 200
+
+
+def test_a_room_still_being_built_does_not_cost_a_check_slot():
+    store, _ = a_store()
+    store.save(UID, ROOM, room_to_document(ROOM, None, "running", FILED))
+    live = {ROOM: {"status": "running", "uid": UID}}
+
+    with mock.patch.object(
+        server, "_uid_limiter", server.RateLimiter(max_per_window=1, window_seconds=3600)
+    ), checking(store, runs=live):
+        client = TestClient(server.app)
+        assert post(client).status_code == 409
+
+    store.save(UID, ROOM, filed_room())
+    with mock.patch.object(
+        server, "_uid_limiter", server.RateLimiter(max_per_window=1, window_seconds=3600)
+    ), checking(store):
+        assert post(TestClient(server.app)).status_code == 200
+
+
+def test_one_accounts_checks_do_not_throttle_another():
+    """Keyed on the account, not the address, for the reason the agent door
+    is: a desktop agent behind CGNAT shares one address with strangers."""
+    store, _ = a_store()
+    store.save(UID, ROOM, filed_room())
+    store.save(OTHER_UID, ROOM, filed_room())
+
+    with mock.patch.object(
+        server, "_uid_limiter", server.RateLimiter(max_per_window=1, window_seconds=3600)
+    ), checking(store):
+        client = TestClient(server.app)
+        assert post(client).status_code == 200
+        assert post(client).status_code == 429
+        with mock.patch("star.server.verify_token", return_value=OTHER_UID):
+            assert post(client).status_code == 200
+
+
+def test_a_writers_builds_and_their_checks_hold_separate_windows():
+    """One limiter, two key spaces. Five builds an hour must not cost a writer
+    their checks, and five checks must not cost them a build."""
+    store, _ = a_store()
+    store.save(UID, ROOM, filed_room())
+
+    with mock.patch.object(
+        server, "_uid_limiter", server.RateLimiter(max_per_window=1, window_seconds=3600)
+    ), checking(store):
+        # The build window for this account, spent.
+        assert server._uid_gate(UID) is None
+        assert server._uid_gate(UID) is not None
+        assert post(TestClient(server.app)).status_code == 200
 
 
 # -- Decision 5: a check is one request ---------------------------------------

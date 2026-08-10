@@ -8,11 +8,13 @@ Run from the repo root:
 """
 
 import asyncio
+import functools
 import json
 import logging
 import os
 import secrets
 import uuid
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -39,6 +41,7 @@ from star.auth import linked_provider, verify_claims, verify_token  # noqa: E402
 from star.findings import parse_findings  # noqa: E402
 from star.guards import DailyCap, RateLimiter  # noqa: E402
 from star.ledger import SourceLedger, ledger_from_room  # noqa: E402
+from star.mcp.router import build_mcp_router  # noqa: E402
 from star.models import Category, ClaimSet, ScriptCheckResult  # noqa: E402
 from star.store import (  # noqa: E402
     RoomStore,
@@ -92,6 +95,29 @@ _token_store = TokenStore()
 # module docstring for why, and what breaks if this ever runs on more than
 # one instance.
 _ip_limiter = RateLimiter(
+    max_per_window=config.max_rooms_per_ip_per_hour(),
+    window_seconds=3600,
+    max_keys=config.max_rate_limiter_keys(),
+)
+# The agent door's limiter, and the browser's limiter for scene checks. Same
+# class, same ceiling, same key bound as `_ip_limiter` — what differs is what
+# a key IS.
+#
+# `_ip_limiter`'s key is the rightmost X-Forwarded-For entry (see _caller_key),
+# and for an MCP client that is one address for as long as the agent runs. A
+# desktop agent behind CGNAT shares that address with strangers, so keying the
+# agent door on it would let a stranger's traffic throttle a paying caller,
+# while one address would also buy every account behind it a single shared
+# budget. A token maps to exactly one uid, so the agent door has a better key
+# available and uses it.
+#
+# `max_keys` is not decoration here. RateLimiter.check() sweeps every tracked
+# key on every call, O(n), on the single-threaded loop every open SSE stream on
+# the instance shares — star/guards.py:31-54 records why the bound stopped
+# being incidental once Finding 3 reordered the admission checks. Two key
+# spaces below ("build:" and "check:") mean up to two keys per account rather
+# than one, which is why the bound matters more here and not less.
+_uid_limiter = RateLimiter(
     max_per_window=config.max_rooms_per_ip_per_hour(),
     window_seconds=3600,
     max_keys=config.max_rate_limiter_keys(),
@@ -594,12 +620,76 @@ async def _execute(run_id: str, treatment: str) -> None:
     _evict_old_runs(exclude=run_id)
 
 
-@app.post("/api/rooms")
-async def create_room(
-    req: RoomRequest, request: Request, authorization: str | None = Header(None)
+# --- Admission: the one path both doors take --------------------------------
+#
+# `_start_build` is transport-free, and both doors call this same function
+# object. `POST /api/rooms` calls it directly; the MCP `build_room` tool calls
+# it through `_mcp_start_build` at the foot of this file, which is a
+# functools.partial over it and reports `.func is _start_build`. That is what
+# makes "one budget, one ceiling, one kill switch" a property of the wiring
+# rather than a claim a comment makes (spec.md's Decision 4).
+#
+# The doors differ in exactly one thing: which free per-caller check runs
+# before the shared daily budget is touched. A gate returns None to admit, or
+# the sentence the caller should read. Returning the message rather than a bool
+# keeps door-specific copy at the door — the browser's caller is an address and
+# the agent's is an account, and those two refusals do not read the same —
+# while `_start_build` stays the only place the ORDER is written down.
+
+
+def _ip_gate(request: Request) -> Callable[[str], str | None]:
+    """The browser door's per-caller check, keyed on the caller's address.
+
+    Built per request because the key is read off the request; see
+    `_caller_key` for why it is the rightmost X-Forwarded-For entry and for
+    the honest account of how weak an identity that is. The uid is ignored
+    here on purpose: a browser caller's ceiling has always been per address,
+    and moving it to the account would let anyone mint a fresh anonymous uid
+    for a fresh budget with one page load.
+    """
+
+    def gate(_uid: str) -> str | None:
+        if _ip_limiter.check(_caller_key(request)):
+            return None
+        return (
+            "That is a lot of rooms in one hour. Give the department a moment "
+            "and try again shortly."
+        )
+
+    return gate
+
+
+def _uid_gate(uid: str) -> str | None:
+    """The agent door's per-caller check, keyed on the account.
+
+    Same ceiling as the browser's, keyed on the one identity an MCP call
+    actually carries. The key is namespaced so a writer's builds and their
+    scene checks hold separate windows inside the same limiter: two different
+    spends against one ceiling each, rather than one shared allowance where a
+    build eats a check's slot.
+    """
+    if _uid_limiter.check(f"build:{uid}"):
+        return None
+    return (
+        f"Builds are capped at {config.max_rooms_per_ip_per_hour()} an hour "
+        "per account, and this account has reached that. The window is a "
+        "rolling hour, so the next build is admitted an hour after the "
+        "earliest one that counted. Reading rooms you have already filed "
+        "costs nothing and is not limited."
+    )
+
+
+async def _start_build(
+    uid: str, treatment: str, gate: Callable[[str], str | None]
 ) -> dict:
-    uid = _require_uid(authorization)
-    treatment = req.treatment.strip()
+    """Admit a build, start it, and hand back what the caller needs to follow it.
+
+    Everything `POST /api/rooms` used to do below `_require_uid`, moved here
+    unchanged so the agent door reaches it without reimplementing a line of
+    it. Nothing about the run lifecycle moved: `_runs`, the guards, `_execute`,
+    and `_persist` all stay exactly where they were.
+    """
+    treatment = treatment.strip()
     if len(treatment) < 40:
         raise HTTPException(400, "Give the research department a bit more to work with.")
     if len(treatment) > config.max_treatment_chars():
@@ -611,24 +701,25 @@ async def create_room(
     # One room build spends real money — a dozen or more live web searches
     # plus several Gemini calls. Refuse before any of that runs, not after.
     #
-    # Order matters (Finding 3): the per-IP check must run first, and
+    # Order matters (Finding 3): the free per-caller check must run first, and
     # DailyCap.check() must be the last thing before this request is
     # actually allowed to run. DailyCap.check() increments on the allow
-    # path — it is a spend, not a peek — so checking it before the per-IP
-    # limiter meant every request the IP limiter went on to refuse had
+    # path — it is a spend, not a peek — so checking it before the per-caller
+    # limiter meant every request that limiter went on to refuse had
     # already spent a daily slot. Verified: 10 POSTs from one IP against a
     # per-IP limit of 1 produced one build and consumed all 10 daily slots;
     # at production settings (5/hour, 100/day) that is the whole day's
     # budget gone in about two seconds, from one caller, before a single
-    # legitimate user is served. Checking the free, in-memory per-IP limiter
-    # first means only a request that is actually going to run ever touches
-    # the shared daily budget.
-    if not _ip_limiter.check(_caller_key(request)):
-        raise HTTPException(
-            429,
-            "That is a lot of rooms in one hour. Give the department a moment "
-            "and try again shortly.",
-        )
+    # legitimate user is served. Checking the free, in-memory per-caller
+    # limiter first means only a request that is actually going to run ever
+    # touches the shared daily budget.
+    #
+    # The gate is the only thing the two doors do differently, and it is the
+    # cheap half. Which limiter answers changes; that it answers FIRST does
+    # not, and neither does `_daily_cap` being the single thing behind it.
+    refusal = gate(uid)
+    if refusal is not None:
+        raise HTTPException(429, refusal)
     if not _daily_cap.check():
         raise HTTPException(
             429, "STAR has hit its daily research limit. Try again tomorrow."
@@ -678,6 +769,15 @@ async def create_room(
     # in-flight pipeline (asyncio keeps only weak refs to bare tasks).
     _runs[run_id]["task"] = asyncio.create_task(_execute(run_id, treatment))
     return {"run_id": run_id, "stream_key": _runs[run_id]["stream_key"]}
+
+
+@app.post("/api/rooms")
+async def create_room(
+    req: RoomRequest, request: Request, authorization: str | None = Header(None)
+) -> dict:
+    """The browser door onto a build. Auth, then the shared admission path."""
+    uid = _require_uid(authorization)
+    return await _start_build(uid, req.treatment, gate=_ip_gate(request))
 
 
 @app.get("/api/rooms/{run_id}/events")
@@ -749,21 +849,36 @@ async def stream_events(
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 
+async def _list_rooms_for(uid: str) -> list[dict]:
+    """Every room filed under one account. Transport-free; both doors call it.
+
+    Not rate-limited, here or at either door, and that is deliberate rather
+    than an omission: a list costs one Firestore query and no searches, so
+    rationing it would ration the one call an agent makes to find out what it
+    already owns.
+    """
+    # Off the event loop: the Firestore client is blocking, and this runs on
+    # the same single-threaded loop as every other request and every open SSE
+    # stream on the instance. Left inline, a slow list call stalls all of
+    # them, not just this caller.
+    return await asyncio.to_thread(_store.list_rooms, uid)
+
+
 @app.get("/api/rooms")
 async def list_rooms(authorization: str | None = Header(None)) -> dict:
     uid = _require_uid(authorization)
-    # Off the event loop: the Firestore client is blocking, and this handler
-    # runs on the same single-threaded loop as every other request and every
-    # open SSE stream on the instance. Left inline, a slow list call stalls
-    # all of them, not just this caller.
-    rooms = await asyncio.to_thread(_store.list_rooms, uid)
-    return {"rooms": rooms}
+    return {"rooms": await _list_rooms_for(uid)}
 
 
-@app.get("/api/rooms/{run_id}")
-async def get_room(run_id: str, authorization: str | None = Header(None)) -> dict:
-    uid = _require_uid(authorization)
+async def _read_room(uid: str, run_id: str) -> dict:
+    """One room, live or filed. Transport-free; both doors call it.
 
+    This is also `build_room`'s poll over MCP, which is why there is no fifth
+    tool: a run still in flight answers `running` with whatever progress
+    exists, a run that did not survive a restart answers `interrupted`, and
+    neither is an error. Not rate-limited, for the reason `_list_rooms_for`
+    gives.
+    """
     run = _runs.get(run_id)
     if run is not None and run.get("uid") == uid:
         # `created_at` is merged in rather than left to the pipeline, because
@@ -799,6 +914,13 @@ async def get_room(run_id: str, authorization: str | None = Header(None)) -> dic
         document["status"] = "interrupted"
 
     return {"status": document.get("status", "complete"), "result": document_to_room(document)}
+
+
+@app.get("/api/rooms/{run_id}")
+async def get_room(run_id: str, authorization: str | None = Header(None)) -> dict:
+    """The browser door onto one room. Auth, then the shared read."""
+    uid = _require_uid(authorization)
+    return await _read_room(uid, run_id)
 
 
 # --- Pipeline B: Script Check ----------------------------------------------
@@ -1004,6 +1126,46 @@ async def _run_check(uid: str, run_id: str, scene: str) -> ScriptCheckResult:
             "finish filing, then check the scene against it.",
         )
 
+    # The check's own ceiling, and the reason it is HERE rather than at either
+    # endpoint. Both doors reach a check through this one function, so a
+    # limiter inside it is a limiter on both by construction, which is the same
+    # property `_start_build` buys for a build.
+    #
+    # It closes a real hole rather than tidying one. Until this line, a check
+    # was admitted on `_require_uid` alone: `_ip_limiter` and `_daily_cap` both
+    # count ROOMS, so neither one saw a scene, and one check spends up to
+    # config.max_searches_per_check() live searches. Anonymous accounts are
+    # free and zero-click, so the shape was: mint an account, build one room,
+    # then check unlimited scenes against it forever.
+    #
+    # The ceiling is the same 5/hour a build gets, because it is the same
+    # limiter and a limiter carries one ceiling — a second RateLimiter for
+    # checks would be a second thing to keep in step with the first, and this
+    # is not a second kind of spend. The key is namespaced instead, so the two
+    # windows are independent: five builds an hour do not cost a writer their
+    # checks, and five checks do not cost them a build. At production settings
+    # that bounds one account at 5 * 30 search-equivalents of build and 5 * 8
+    # of check per hour. Five checks an hour is the tight end of defensible for
+    # a writer working through a script, and it is chosen over unbounded rather
+    # than over a measured number; if the harness runs show it biting, the fix
+    # is a config knob on this limiter's ceiling, not a second limiter.
+    #
+    # It runs AFTER the two refusals above and before anything is spent. A
+    # RateLimiter.check() records on the allow path — it is a spend, not a peek,
+    # the same property Finding 3 turned on — so charging a caller's hourly
+    # window for a room that does not exist, or for one still being built,
+    # would ration the wrong thing. What this is rationing is searches, and
+    # neither of those branches reaches one.
+    if not _uid_limiter.check(f"check:{uid}"):
+        raise HTTPException(
+            429,
+            f"Scene checks are capped at {config.max_rooms_per_ip_per_hour()} "
+            "an hour per account, and this account has reached that. The "
+            "window is a rolling hour, so the next check is admitted an hour "
+            "after the earliest one that counted. Reading rooms and filed "
+            "checks costs nothing and is not limited.",
+        )
+
     room_files = _room_files(document)
     run_ledger = SourceLedger()
     timeout = config.check_timeout_seconds()
@@ -1121,10 +1283,11 @@ async def create_scene(
             f"Scenes are capped at {config.max_scene_chars()} characters — "
             "send the department a scene, not the script.",
         )
-    # Note what is NOT here: a rate limiter. A check spends real searches, but
-    # `_ip_limiter` and `_daily_cap` both count rooms, and the per-uid limiter
-    # the MCP door needs does not exist yet. Admission for a check is
-    # `_require_uid` alone today, and that is a gap rather than a decision.
+    # The rate limiter this endpoint used to lack is not here either, and that
+    # is now deliberate: it lives inside `_run_check`, keyed on the account, so
+    # the browser and the agent door are limited by one object rather than by
+    # two that have to be kept in step. See the comment against
+    # `_uid_limiter.check` there for the ceiling and why it sits where it does.
     return jsonable_encoder(await _run_check(uid, run_id, scene))
 
 
@@ -1295,6 +1458,57 @@ async def browser_config() -> Response:
         media_type="application/javascript",
     )
 
+
+# --- The agent door ---------------------------------------------------------
+#
+# Included BEFORE the StaticFiles mount below, and that ordering is not style.
+# The mount matches every path under `/`, so Starlette finds it first for any
+# route registered after it: `/mcp` would come back as a 404 from the static
+# handler, with nothing in the log to say the router existed. GET and DELETE on
+# /mcp are registered explicitly by the router for the same reason — without
+# them the mount would answer, and the 405 the transport spec requires would
+# arrive as a 404 instead.
+#
+# Five callables and no state. Three of them are the same function objects the
+# handlers above call, so the agent door cannot drift from the browser door
+# without the drift being visible as a second function. spec.md's Decision 4
+# argues why the dependencies move rather than the run registry.
+
+
+# The agent door's build. A functools.partial rather than a wrapper function,
+# so what the router holds reports `.func is _start_build` — "one budget, one
+# ceiling, one kill switch" is then a fact a test can assert about the object
+# graph rather than a claim a comment makes. Binding the gate here is also
+# what keeps the router from having to know that a limiter exists at all.
+_mcp_start_build = functools.partial(_start_build, gate=_uid_gate)
+
+
+async def _resolve_mcp_token(authorization: str | None):
+    """Turn the agent door's Authorization header into a uid, or a refusal.
+
+    `tokens.resolve` takes its store explicitly rather than holding module
+    state, so something has to supply `_token_store`. A function reading the
+    module global at call time rather than a partial binding the instance at
+    import time, and the difference is not cosmetic: every other route in this
+    file reaches Firestore through a name the whole test suite already patches,
+    and a partial would hold the one TokenStore nothing could stand in for.
+
+    It is the same store `/api/tokens` writes through, which is what makes a
+    token issued in the browser resolve here to the account that issued it —
+    one ledger, two doors.
+    """
+    return await tokens.resolve(authorization, _token_store)
+
+
+app.include_router(
+    build_mcp_router(
+        start_build=_mcp_start_build,
+        read_room=_read_room,
+        list_rooms_for=_list_rooms_for,
+        run_check=_run_check,
+        resolve_token=_resolve_mcp_token,
+    )
+)
 
 _WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 app.mount("/", StaticFiles(directory=str(_WEB_DIR), html=True), name="web")

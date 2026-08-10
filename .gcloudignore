@@ -36,3 +36,7 @@ star-*.png
 docs/
 tests/
 scripts/
+# The persona harness drives the deployed service from outside it; the
+# Dockerfile already copies only star/, research_dept/, and web/, so it never
+# reaches the image. This keeps it out of the source upload too.
+harness/

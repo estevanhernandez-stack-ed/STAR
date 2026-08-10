@@ -314,7 +314,7 @@ three tools and note the fourth as next. **Pipeline B and the video never go.**
   owns more than 40% of the room's filed-state pixel area — the card and the marked scene are new
   pixels and must not dilute it.
 
-- [ ] **10. The MCP transport — `star/mcp/`, bearer auth, and one code path for two doors**
+- [x] **10. The MCP transport — `star/mcp/`, bearer auth, and one code path for two doors**
   Spec ref: `spec.md > The department over MCP > Transport` + `> Authorization` + `> Rate limiting: per uid, not per IP` + `> How the two doors share one code path` + `spec.md > Stack > The one packaging change`
   Depends on: 3 (bearer resolution), 7 (`_run_check` is one of the four injected callables). Effort: **L**.
   What to build: new `star/mcp/` package. `protocol.py`, pure: JSON-RPC envelope, version negotiation

@@ -42,4 +42,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["star", "star.agents", "star.tools", "research_dept"]
+# EXPLICIT, not `find`. A package missing from this list is not a build error:
+# `pip install .` inside the Cloud Build simply omits it, the local venv keeps
+# working because it resolves the package off the source tree, and the deployed
+# image 500s on the first import. "star.mcp" is here for that reason and for no
+# other.
+packages = ["star", "star.agents", "star.mcp", "star.tools", "research_dept"]
