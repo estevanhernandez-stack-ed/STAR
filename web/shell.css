@@ -58,14 +58,22 @@ a {
      #build-btn     global focus ring           1.88:1  (Task 6)
      .bible-body a  global focus ring           2.76:1  (Task 6)
 
-   FIVE elements are the whole set of paper surfaces this app mounts, and
+   SIX elements are the whole set of paper surfaces this app mounts, and
    everything on paper is inside one of them: .intake (manila, holds the
    onionskin retention slip), .docket (manila, holds the onionskin chips),
    .drawer (manila, holds the onionskin clips and the manila receipts inside
-   them), .bible (onionskin), and .banner (onionskin, below). So the defaults
-   are set once, HERE, for those subtrees — a control or a link that lands on
-   paper tomorrow inherits a ratio that already clears the floor, instead of
-   inheriting a dark-ground value and waiting to be measured.
+   them), .check (manila, holds the onionskin scene page and rail cards, and
+   the manila citation fragments inside those), .bible (onionskin), and
+   .banner (onionskin, below). So the defaults are set once, HERE, for those
+   subtrees — a control or a link that lands on paper tomorrow inherits a
+   ratio that already clears the floor, instead of inheriting a dark-ground
+   value and waiting to be measured.
+
+   .check joined in Task 9 and is the reason to keep the count in this comment
+   honest rather than approximate: it mounts the app's first focusable element
+   on onionskin that is not a <summary> (the <mark>s in the scene page), and
+   the ring it needs is the one this rule already hands it — --ink at 12.70:1
+   on onionskin, where the global --pencil ring is 2.76:1.
 
    .banner joined the list in Task 7's fix round, in the same pass that
    repainted it onionskin — the list said "four" while the line below it made
@@ -108,6 +116,7 @@ a {
 .intake,
 .docket,
 .drawer,
+.check,
 .bible,
 .banner {
   color: var(--ink);
@@ -115,7 +124,7 @@ a {
 
 /* --ink is 8.63:1 on --manila and 12.70:1 on --onionskin. Both clear the 3:1
    non-text floor a focus indicator has to meet, against either paper. */
-:is(.intake, .docket, .drawer, .bible, .banner) :focus-visible {
+:is(.intake, .docket, .drawer, .check, .bible, .banner) :focus-visible {
   outline-color: var(--ink);
 }
 
@@ -124,7 +133,7 @@ a {
    manila and 8.10:1 on onionskin. Still one pad, still a flat solid, still
    derived from the token — the rule DIRECTION.md sets is against washes and
    gradients, not against deriving a shade for the surface it lands on. */
-:is(.intake, .docket, .drawer, .bible, .banner) a {
+:is(.intake, .docket, .drawer, .check, .bible, .banner) a {
   color: color-mix(in srgb, var(--aniline) 70%, var(--ink));
 }
 
@@ -719,7 +728,20 @@ button {
   margin-top: 0.5rem;
 }
 
-/* The one control on the cover sheet. Bordered rather than filled so it does
+/* The cover sheet's controls, as a group. `justify-content: space-between` on
+   .docket-head puts the title left and this cluster right; without the wrapper
+   a second button becomes a third flex item and the space-between distributes
+   the title, one control and the other control evenly across the row, which
+   reads as three unrelated things rather than a heading and its two views. */
+.docket-controls {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* The controls on the cover sheet. Bordered rather than filled so they do
    not compete with a stamp, and --ink on --manila is 8.6:1. */
 .docket-btn {
   flex: none;

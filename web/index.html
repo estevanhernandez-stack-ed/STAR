@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/drawer.css" />
   <link rel="stylesheet" href="/clip.css" />
   <link rel="stylesheet" href="/bible.css" />
+  <link rel="stylesheet" href="/scene.css" />
   <script src="/vendor/marked.min.js"></script>
   <script src="/vendor/purify.min.js"></script>
 </head>
@@ -116,8 +117,15 @@
         <div class="docket">
           <div class="docket-head">
             <h2 id="result-title">Your research room</h2>
-            <button id="bible-btn" class="docket-btn" type="button"
-              aria-expanded="false" aria-controls="bible-surface">The bible</button>
+            <!-- The room's two other views, both reached from its own head.
+                 A script check is not a separate place: what makes it worth
+                 anything is that it runs against THIS room. -->
+            <div class="docket-controls">
+              <button id="check-btn" class="docket-btn" type="button"
+                aria-expanded="false" aria-controls="check-panel">Check a scene</button>
+              <button id="bible-btn" class="docket-btn" type="button"
+                aria-expanded="false" aria-controls="bible-surface">The bible</button>
+            </div>
           </div>
           <p id="result-stats" class="meter"></p>
           <div id="docket-body"></div>
@@ -125,6 +133,40 @@
         <!-- app.js mounts drawer.js's four-drawer grid here. -->
         <div id="room-grid"></div>
         <section id="bible-surface" class="bible hidden"></section>
+
+        <!-- Script Check. The retention notice stays ABOVE the textarea for
+             the same reason the intake's does — research obligation 5 is
+             "state what happens BEFORE the paste" — and it is the more
+             load-bearing of the two: the intake promises the treatment
+             itself is not stored, and a scene IS stored with its room
+             (star/store.py's scene_to_document). Delete is what makes that
+             defensible, and the control is on every filed check. -->
+        <section id="check-panel" class="check hidden" aria-labelledby="check-heading">
+          <h3 id="check-heading" class="check-heading">Check a scene against this room</h3>
+          <p class="check-hint">
+            Paste a scene. The department pulls out the claims it makes about
+            the world, answers what this room's own files already cover, and
+            searches only for what they do not.
+          </p>
+          <p class="check-retention">
+            The scene you paste is stored with this room. It has to be — a
+            filed check marks the scene itself, so the text is what the marks
+            sit on. Delete the check and the scene text goes with it.
+          </p>
+          <label class="check-label" for="scene">Your scene</label>
+          <textarea id="scene" rows="8"
+            placeholder="INT. STUDIO B — NIGHT&#10;&#10;She threads tape onto the Ampex, thumbs a Zippo, and waits for the red light."></textarea>
+          <div class="actions">
+            <button id="check-run-btn" type="button">Check this scene</button>
+            <span id="check-status" class="check-status" role="status"></span>
+            <span id="check-error" class="error"></span>
+          </div>
+          <div id="check-filed-row" class="check-filed-row hidden">
+            <span class="check-filed-label">Checks filed on this room</span>
+            <span id="check-filed-list"></span>
+          </div>
+          <div id="check-result" class="check-result hidden"></div>
+        </section>
       </section>
     </main>
   </div>

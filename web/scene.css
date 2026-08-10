@@ -1,0 +1,834 @@
+/* THE MORGUE — Script Check: the marked scene and the citation rail.
+   Tokens only, from web/tokens.css. No raw hex, no rgba() literals — every
+   shade is derived with color-mix() from a token, the precedent web/shell.css
+   set for .rail-room:hover and web/clip.css for the stamp's letterforms.
+
+   NOTHING IS ADDED TO THE PALETTE. The three verdicts take the three meanings
+   docs/design/DIRECTION.md already assigns:
+
+     confirmed      --aniline   "filed and verified" — the first pad
+     anachronism    --oxide     "and later the anachronism verdict"
+     unverifiable   --pencil    "a clip nobody got around to stamping"
+     UNSOURCED      --oxide     the same stamp Pipeline A already presses
+
+   The GUI spec's "confirmed green, anachronism red, unverifiable dim"
+   (docs/superpowers/specs/2026-08-09-star-gui-design.md:265) is stale.
+   DIRECTION.md's palette contains no green, DIRECTION supersedes the spec
+   wherever they disagree, and prd.md > Decisions this PRD makes #5 closes it.
+
+   SURFACES. The check panel is one manila card on the cabinet, and everything
+   that has to be READ AT LENGTH inside it is onionskin — the scene page and
+   each rail card. That is the drawer > clip relationship exactly: onionskin is
+   a component inside a manila card and never a page ground (DIRECTION.md's
+   third rule). The manila that keeps its share is the card's own padding, the
+   gap between the two columns, and the space between rail cards.
+
+   CONTRAST, measured with the helper calibrated against web/clip.css's
+   recorded table (it reproduces 8.63 / 12.70 / 4.75 / 4.37 / 2.76 / 5.48
+   exactly), never eyeballed:
+
+     --ink on --onionskin                              12.70:1
+     --ink on --manila                                  8.63:1
+     --ink on mix(<any pad> 18%, --onionskin)     9.67-10.82:1   <- a mark
+     --ink on mix(<any pad> 30%, --onionskin)      8.00-9.71:1   <- selected
+     --aniline on --onionskin                           6.43:1   <- rule + letters
+     --oxide on --onionskin                             4.75:1   <- rule + letters
+     --pencil on --onionskin                            2.76:1   <- CANNOT carry
+     mix(--pencil 60%, --ink) on --onionskin            5.01:1   <- so this does
+     --ink at 0.75 on --onionskin                       6.24:1
+     --ink at 0.75 on --manila                          4.93:1
+
+   The pencil line is the one asymmetry in this file and it is worth naming:
+   web/clip.css already records --pencil as a rule-and-glyph colour that cannot
+   carry text on paper, and on onionskin it misses even the 3:1 non-text floor
+   a 2px rule has to meet. So where aniline and oxide use the raw token for the
+   mark's rule and the stamp's border (clip.css's convention), pencil uses a
+   mix toward --ink for BOTH. Still one pad, still a flat solid, still derived
+   from the token — the rule DIRECTION.md sets is against washes and gradients.
+
+   MOTION. One animation, the verdict stamp's press, and it is the same event
+   the drawer's FILED stamp is: a verdict landing on a line, once, when the
+   check comes back. It runs on --stamp-duration (already 0ms under
+   prefers-reduced-motion, web/tokens.css:110) AND is killed outright by an
+   explicit rule in the media query at the foot of this file — the same
+   belt-and-braces web/drawer.css and web/clip.css both carry, because Task 1
+   found a reduced-motion rule that looked correct and silently lost until it
+   was emulated in a real browser. Nothing here needs motion to read.
+*/
+
+/* ---------------------------------------------------------------------
+   The panel. One manila card, below the docket, in the room's own stage
+   state — not a separate place, because the whole value of a check is that
+   it is against THIS room (spec.md > The marked scene > Where it lives).
+--------------------------------------------------------------------- */
+
+.check {
+  background: var(--manila);
+  color: var(--ink);
+  border-radius: 4px;
+  padding: 1.5rem 1.75rem 1.6rem;
+  box-shadow: 0 1px 0 var(--manila-edge);
+  margin: 1.5rem 0 2.5rem;
+}
+
+.check-heading {
+  margin: 0;
+  font-family: var(--label);
+  font-size: var(--text-lg);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.check-hint {
+  margin: 0.6rem 0 1rem;
+  max-width: 68ch;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+}
+
+/* ABOVE the textarea, and it stays above it.
+   Research obligation 5 is "state what happens to the paste BEFORE the
+   paste", and this paste is the more sensitive of the two: the intake
+   promises the treatment itself is not stored, and a scene IS stored — it
+   has to be, or a filed check has nothing to mark (star/store.py's
+   scene_to_document). Delete is what makes that defensible, which is why the
+   control is not optional and why this slip names it.
+
+   Same onionskin-on-manila slip the intake's .retention uses, deliberately:
+   a reader who has seen one recognises the other as the same kind of
+   statement rather than as a new kind of warning. */
+.check-retention {
+  margin: 0 0 1.1rem;
+  max-width: 68ch;
+  padding: 0.85rem 1rem;
+  background: var(--onionskin);
+  border-left: 3px solid var(--pencil);
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+.check-label {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink);
+  opacity: 0.75; /* 4.93:1 on manila — the one value this codebase uses. */
+}
+
+/* The paste box is set in the same face the marked scene comes back in, and
+   capped to the same measure. Two reasons, and neither is decoration: a
+   screenplay is fixed-pitch paperwork and Newsreader at full card width made
+   the box read as a comment field, and a slug line that wraps differently in
+   the box than on the page it produces makes the mark look like it moved. The
+   global `textarea` rule (web/shell.css) still supplies the drawer-shadow
+   ground, the border, and the focus ring. */
+#scene {
+  max-width: 74ch;
+  font-family: var(--slug);
+  font-size: var(--text-sm);
+  line-height: 1.7;
+}
+
+#check-run-btn {
+  background: var(--cabinet);
+  color: var(--manila);
+  border: 1px solid var(--cabinet);
+  border-radius: 3px;
+  padding: 0.7rem 1.5rem;
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+#check-run-btn:hover:not(:disabled) {
+  background: var(--drawer-shadow);
+}
+
+#check-run-btn:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+/* The working state. No ETA, no bar, no total — research obligation 6, and
+   the same discipline web/app.js's elapsedLabel() already keeps for a build.
+   A check is one extraction plus one verification with at most eight
+   searches, and the honest thing to say is that it is happening. The
+   animated ellipsis is .ellipsis from web/shell.css, which already carries
+   its own reduced-motion path. */
+.check-status {
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+  color: var(--ink);
+  opacity: 0.75; /* 4.93:1 */
+}
+
+/* ---------------------------------------------------------------------
+   The result: the cover note, the counts, then the two columns.
+--------------------------------------------------------------------- */
+
+/* The department's own line about a thin result (star/models.py's
+   cover_note). Two results are legitimately thin and neither is a failure —
+   a scene that asserts nothing about the world, and a room that filed no
+   sources of its own. Styled as a statement, NOT as an alert: no oxide, no
+   border colour that means "flagged". It is the same .docket-note register
+   web/app.js's partial room already uses, for the same reason. */
+.check-cover {
+  margin: 1.25rem 0 0;
+  max-width: 74ch;
+  padding-left: 0.85rem;
+  border-left: 3px solid var(--manila-edge);
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+/* Research obligation 4 — the real uncertainty numbers, in the slug face
+   the room's own counts line uses. Each piece is DROPPED rather than
+   defaulted when it is missing, the rule web/app.js's statsLine follows:
+   "? claims" is a shrug printed where a number belongs. */
+.check-meter {
+  margin: 1rem 0 0;
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+  color: var(--ink);
+  opacity: 0.75; /* 4.93:1 */
+}
+
+.check-uncertainty {
+  margin: 0.5rem 0 0;
+  max-width: 74ch;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--ink);
+  opacity: 0.85; /* 6.28:1 */
+}
+
+.check-columns {
+  display: grid;
+  /* minmax(0, …) on both, not 1fr, for the reason web/drawer.css records at
+     length: `1fr` is `minmax(auto, 1fr)` and that auto floor resolves to
+     min-content, so one unbreakable string — a URL in the rail, a slug line
+     in the scene — sets a width the column cannot go below and the grid
+     pushes past the viewport. */
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+  margin-top: 1.25rem;
+}
+
+/* ---------------------------------------------------------------------
+   The scene page — the writer's own paste, marked in place.
+
+   Sligoil rather than Newsreader, and this is the one place in the app where
+   the utility face carries a long read. A scene is film-adjacent paperwork
+   set in a fixed-pitch face, which is what Sligoil was drawn for
+   (DIRECTION.md's type note), and setting it in the body serif would make a
+   script page look like an article. --text-sm rather than --label-sm because
+   this is read, not scanned.
+
+   white-space: pre-wrap is load-bearing rather than cosmetic: the claims are
+   exact substrings of THIS text, and a scene whose line breaks collapse is a
+   scene whose slug lines and dialogue blocks stop being where the writer put
+   them.
+--------------------------------------------------------------------- */
+
+.scene-page {
+  background: var(--onionskin);
+  border-radius: 3px;
+  border-left: 3px solid var(--manila-edge);
+  padding: 1.05rem 1.2rem 1.15rem;
+  font-family: var(--slug);
+  font-size: var(--text-sm);
+  line-height: 1.75;
+  color: var(--ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  /* A scene runs to config.max_scene_chars() — 8000 characters, roughly four
+     script pages. Capped and scrolled so the rail beside it stays on screen
+     instead of ending up four pages above the line it belongs to. */
+  max-height: 32rem;
+  overflow-y: auto;
+}
+
+/* THE MARK. A real <mark> element carrying real text nodes — never a string
+   assembled around scene text, which is where the H1 XSS returns through a
+   different door (web/anchor.js's header, and the reason it returns segments
+   as data). The UA sheet paints <mark> yellow-on-black by default and every
+   declaration below overrides it deliberately.
+
+   Default is the unverifiable case, so a mark with no recognised verdict
+   lands on the state that claims least rather than on the state that claims
+   most. */
+.mark {
+  background: color-mix(in srgb, var(--pencil) 18%, var(--onionskin));
+  color: var(--ink);
+  border-bottom: 2px solid color-mix(in srgb, var(--pencil) 60%, var(--ink));
+  border-radius: 2px;
+  padding: 0.05em 0.15em;
+  cursor: pointer;
+}
+
+.mark[data-verdict="confirmed"] {
+  background: color-mix(in srgb, var(--aniline) 18%, var(--onionskin));
+  border-bottom-color: var(--aniline);
+}
+
+.mark[data-verdict="anachronism"] {
+  background: color-mix(in srgb, var(--oxide) 18%, var(--onionskin));
+  border-bottom-color: var(--oxide);
+}
+
+/* The selected mark. Colour is not the only cue — aria-pressed is the state
+   AT reads, and the rule thickens from 2px to 3px so the selection survives
+   a reader who cannot tell an 18% tint from a 30% one. */
+.mark[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--pencil) 30%, var(--onionskin));
+  border-bottom-width: 3px;
+}
+
+.mark[aria-pressed="true"][data-verdict="confirmed"] {
+  background: color-mix(in srgb, var(--aniline) 30%, var(--onionskin));
+}
+
+.mark[aria-pressed="true"][data-verdict="anachronism"] {
+  background: color-mix(in srgb, var(--oxide) 30%, var(--onionskin));
+}
+
+/* The focus ring is NOT declared here. web/shell.css's paper-surface rule
+   gives every :focus-visible inside .check an --ink outline, which is
+   12.70:1 against the onionskin the mark sits on and 8.63:1 against the
+   manila the 2px offset can reach. That rule is the structural fix Task 7
+   made after five separate controls each inherited a --pencil ring at
+   1.88:1; adding a sixth copy here is exactly what it exists to stop. */
+
+/* ---------------------------------------------------------------------
+   The citation rail — follows the selected mark.
+--------------------------------------------------------------------- */
+
+.check-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  /* Sticks beside a scrolling scene at desktop width. Turned off below 900px
+     with the column drop, where the rail sits under the scene and a sticky
+     element would pin it over the page it belongs to. */
+  position: sticky;
+  top: 0.5rem;
+}
+
+.rail-legend {
+  margin: 0;
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink);
+  opacity: 0.75; /* 4.93:1 on manila — .drawer-legend's own value. */
+}
+
+.rail-card {
+  background: var(--onionskin);
+  border-radius: 3px;
+  border-left: 3px solid var(--manila-edge);
+  padding: 0.95rem 1.1rem 1rem;
+}
+
+.rail-card[data-verdict="confirmed"] {
+  border-left-color: var(--aniline);
+}
+
+.rail-card[data-verdict="anachronism"] {
+  border-left-color: var(--oxide);
+}
+
+.rail-card[data-verdict="unverifiable"] {
+  border-left-color: color-mix(in srgb, var(--pencil) 60%, var(--ink));
+}
+
+/* The verdict stamp. Typographic, bordered rather than filled, rotation well
+   under DIRECTION.md's 2.5deg ceiling — the same shape web/clip.css's
+   .receipt-stamp and .clip-stamp already press. No texture, no gradient, no
+   image; aniline appears here as flat stamp ink and nowhere else on this
+   surface. */
+.verdict-stamp {
+  display: inline-block;
+  border: 2px solid color-mix(in srgb, var(--pencil) 60%, var(--ink));
+  border-radius: 2px;
+  padding: 0.2rem 0.7rem;
+  transform: rotate(-2deg);
+  font-family: var(--label);
+  font-size: var(--label-md);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--pencil) 60%, var(--ink)); /* 5.01:1 */
+  animation: verdict-press var(--stamp-duration) ease-out;
+}
+
+/* Raw token for the rule (6.43:1, well past the 3:1 non-text floor) and for
+   the letters (6.43:1, past the 4.5:1 text floor) — unlike manila, onionskin
+   is light enough that aniline needs no mix to be read on it. */
+.verdict-stamp[data-verdict="confirmed"] {
+  border-color: var(--aniline);
+  color: var(--aniline);
+}
+
+.verdict-stamp[data-verdict="anachronism"] {
+  border-color: var(--oxide);
+  color: var(--oxide); /* 4.75:1 — the same pair the UNSOURCED stamp carries. */
+}
+
+/* The press: scale and opacity only, rotation fixed at the resting -2deg for
+   the whole animation, so it reads as a stamp coming down and never as a
+   spin. Lifted from web/drawer.css's stamp-press rather than reinvented. */
+@keyframes verdict-press {
+  0% {
+    transform: rotate(-2deg) scale(1.5);
+    opacity: 0;
+  }
+  55% {
+    transform: rotate(-2deg) scale(0.94);
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(-2deg) scale(1);
+    opacity: 1;
+  }
+}
+
+/* Stamp and claim type on one line, baseline-aligned, so the stamp's -2deg
+   rotation does not push the type label off the row it belongs to. */
+.rail-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.35rem 0;
+  margin: 0;
+}
+
+.rail-type {
+  margin-left: 0.6rem;
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--ink);
+  opacity: 0.75; /* 6.24:1 on onionskin */
+}
+
+/* The line itself, quoted back. Body face at reading size: this is what the
+   verdict is ABOUT, so it outranks everything else on the card. */
+.rail-claim {
+  margin: 0.75rem 0 0;
+  max-width: 46ch;
+  padding-left: 0.8rem;
+  border-left: 2px solid color-mix(in srgb, var(--ink) 35%, var(--onionskin));
+  font-family: var(--body);
+  font-size: var(--text-md);
+  font-style: italic;
+  line-height: 1.45;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.rail-line {
+  margin: 0.65rem 0 0;
+  max-width: 52ch;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+/* The caveat that keeps a verdict from reading as a fact about the world.
+   Quieter than the note above it, never hidden: the aversion research is
+   explicit that a citation is a trust signal independent of accuracy, so the
+   sentence scoping what a verdict is has to sit next to the verdict. */
+.rail-caveat {
+  margin: 0.65rem 0 0;
+  max-width: 52ch;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--ink);
+  opacity: 0.85; /* 8.36:1 on onionskin */
+}
+
+.rail-sublegend {
+  margin: 0.9rem 0 0;
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink);
+  opacity: 0.75; /* 6.24:1 on onionskin */
+}
+
+.rail-citations {
+  list-style: none;
+  margin: 0.45rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+/* One citation, as a manila fragment on the onionskin card — the same
+   receipt-on-a-clip relationship web/clip.css builds, and the same thing it
+   buys: the manila that a card full of evidence would otherwise spend. */
+.rail-citation {
+  background: var(--manila);
+  border: 1px solid var(--manila-edge);
+  border-radius: 2px;
+  padding: 0.55rem 0.7rem 0.6rem;
+}
+
+/* Obligation 7 — source TYPE, not source count. Here the type that matters
+   is which of the two answered, and it is computed rather than asserted:
+   star/verdicts.py resolves each URL against the room's ledger first and the
+   check's own search ledger second, and records which one held it. A model
+   never reports this about itself. */
+.cite-origin {
+  display: block;
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink);
+  opacity: 0.75; /* 4.93:1 on manila */
+}
+
+.cite-title {
+  display: block;
+  margin-top: 0.3rem;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.cite-excerpt {
+  margin: 0.4rem 0 0;
+  max-width: 46ch;
+  padding-left: 0.7rem;
+  border-left: 2px solid color-mix(in srgb, var(--ink) 35%, var(--manila));
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  font-style: italic;
+  line-height: 1.5;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.cite-excerpt-empty {
+  font-style: normal;
+  opacity: 0.75; /* 4.93:1 */
+}
+
+/* The link colour is NOT declared here either — web/shell.css's paper-surface
+   rule gives every link inside .check the same
+   color-mix(--aniline 70%, --ink) it gives .intake / .docket / .drawer /
+   .bible, which is 5.48:1 on the manila this one sits on. Obligation 2 says
+   the reader must be able to reach the real excerpt, and this is the target. */
+.cite-url {
+  display: inline-block;
+  margin-top: 0.4rem;
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+/* The second pad, on this surface as on every other: oxide, angled,
+   typographic, and the claim stays on screen. star/verdicts.py puts a URL
+   here when NEITHER ledger holds it, which means nothing about that link was
+   ever checked — a stronger and more specific statement than uncertainty,
+   and web/clip.js's unsourcedCopy makes the same one. */
+.rail-unsourced {
+  margin-top: 0.9rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid color-mix(in srgb, var(--oxide) 45%, var(--onionskin));
+}
+
+.rail-unsourced-stamp {
+  display: inline-block;
+  border: 2px solid var(--oxide);
+  border-radius: 2px;
+  padding: 0.2rem 0.7rem;
+  transform: rotate(-2deg);
+  font-family: var(--label);
+  font-size: var(--label-md);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--oxide); /* 4.75:1 on onionskin */
+}
+
+.rail-unsourced-urls {
+  list-style: none;
+  margin: 0.45rem 0 0;
+  padding: 0;
+}
+
+/* Deliberately not a link, and deliberately still shown — star/models.py's
+   own words about the same field on Pipeline A: "Rendered as a warning,
+   never as a source." An anchor here would send a reader to a page nothing
+   in this system ever saw. */
+.rail-unsourced-url {
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+  line-height: 1.55;
+  color: var(--ink);
+  opacity: 0.75; /* 6.24:1 */
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------------
+   Claims that could not be placed in the scene.
+
+   A verdict is never lost because the anchor matcher could not find its
+   quote (prd.md > Script Check — The Marked Scene). They are listed under
+   the rail as controls, so the same card that a mark opens is one click away
+   for a claim with no mark.
+--------------------------------------------------------------------- */
+
+.rail-unplaced-list {
+  list-style: none;
+  margin: 0.45rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.rail-unplaced-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--onionskin);
+  color: var(--ink);
+  border: 1px solid var(--manila-edge);
+  border-left-width: 3px;
+  border-radius: 2px;
+  padding: 0.4rem 0.6rem;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.rail-unplaced-btn[data-verdict="confirmed"] {
+  border-left-color: var(--aniline);
+}
+
+.rail-unplaced-btn[data-verdict="anachronism"] {
+  border-left-color: var(--oxide);
+}
+
+.rail-unplaced-btn[data-verdict="unverifiable"] {
+  border-left-color: color-mix(in srgb, var(--pencil) 60%, var(--ink));
+}
+
+.rail-unplaced-btn:hover {
+  background: color-mix(in srgb, var(--ink) 6%, var(--onionskin));
+}
+
+.rail-unplaced-verdict {
+  display: block;
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  opacity: 0.75; /* 6.24:1 */
+}
+
+/* ---------------------------------------------------------------------
+   field_notes, and the foot of the check.
+--------------------------------------------------------------------- */
+
+.check-field-notes {
+  margin-top: 1.25rem;
+}
+
+.check-field-note {
+  margin: 0.4rem 0 0;
+  max-width: 80ch;
+  padding: 0.6rem 0.85rem;
+  background: var(--onionskin);
+  border-left: 2px solid var(--manila-edge);
+  border-radius: 2px;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+.check-foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem 1rem;
+  margin-top: 1.35rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--manila-edge);
+}
+
+.check-filed-slug {
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+  color: var(--ink);
+  opacity: 0.75; /* 4.93:1 */
+}
+
+/* The delete control. Bordered rather than filled and not painted oxide:
+   removing your own script pages is the promise this surface makes above the
+   paste box, not a destructive accident to be warned away from. The arming
+   step below is what protects a check that cost real searches. */
+.check-delete-btn {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--ink);
+  border-radius: 3px;
+  padding: 0.45rem 1rem;
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.check-delete-btn:hover {
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+/* Armed. Oxide mixed toward --ink for the same reason .error is: raw --oxide
+   is 3.23:1 on manila, and mixed 70% toward ink it is 4.57:1. */
+.check-delete-btn[data-armed="true"] {
+  color: color-mix(in srgb, var(--oxide) 70%, var(--ink));
+  border-color: color-mix(in srgb, var(--oxide) 70%, var(--ink));
+}
+
+.check-delete-note {
+  max-width: 46ch;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+/* The room's other filed checks, so a check that was paid for once can be
+   opened again without paying for it twice (star/store.py's document_to_scene:
+   "A filed check is replayable"). */
+.check-filed-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.6rem;
+  margin-top: 1.1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--manila-edge);
+}
+
+/* .check-label's own twin, minus the block display and the bottom margin it
+   carries as a form label — this one is a flex item on a row, not a caption
+   above a field. */
+.check-filed-label {
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink);
+  opacity: 0.75; /* 4.93:1 on manila */
+}
+
+.check-filed-btn {
+  background: var(--onionskin);
+  color: var(--ink);
+  border: 1px solid var(--manila-edge);
+  border-radius: 2px;
+  padding: 0.3rem 0.7rem;
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+  cursor: pointer;
+}
+
+.check-filed-btn[aria-current="true"] {
+  border-color: var(--ink);
+}
+
+.check-filed-btn:hover {
+  background: color-mix(in srgb, var(--ink) 6%, var(--onionskin));
+}
+
+/* ---------------------------------------------------------------------
+   NARROW VIEWPORTS. 900px, the same boundary where the drawer grid drops to
+   one column (web/drawer.css) and the rail becomes a top bar
+   (web/shell.css) — the scene and its rail stack with everything else rather
+   than at a breakpoint of their own.
+--------------------------------------------------------------------- */
+
+@media (max-width: 900px) {
+  .check-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Under the scene rather than beside it, so sticky would pin the rail over
+     the page it belongs to instead of alongside it. */
+  .check-rail {
+    position: static;
+  }
+
+  /* The scene no longer has a rail competing for the viewport, so it does not
+     need to be a short scrolling window inside a scrolling page. */
+  .scene-page {
+    max-height: none;
+    overflow-y: visible;
+  }
+}
+
+@media (max-width: 560px) {
+  .check {
+    padding: 1.15rem 1.1rem 1.25rem;
+  }
+
+  .scene-page {
+    padding: 0.85rem 0.9rem 0.95rem;
+  }
+
+  .rail-card {
+    padding: 0.8rem 0.75rem 0.85rem;
+  }
+}
+
+/* ---------------------------------------------------------------------
+   Reduced motion. --stamp-duration is already 0ms here (web/tokens.css:110),
+   which alone makes the press instant; this is the independent second path,
+   exactly as web/drawer.css and web/clip.css do it, because a rule that
+   looks correct once lost silently to specificity and was only caught by
+   emulating the setting in a real browser.
+--------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .verdict-stamp {
+    animation: none;
+  }
+}

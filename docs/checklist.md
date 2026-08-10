@@ -284,7 +284,7 @@ three tools and note the fourth as next. **Pipeline B and the video never go.**
   already asserts it is not silently empty. Each of the five cases is its own named test, and the
   overlap test asserts no two accepted spans intersect.
 
-- [ ] **9. The Script Check surface — the marked scene and the citation rail**
+- [x] **9. The Script Check surface — the marked scene and the citation rail**
   Spec ref: `spec.md > The marked scene` — Where it lives, Verdict colours, The citation rail
   Depends on: 7, 8. Effort: **L**. **← Checkpoint 3**
   What to build: a mode toggle in the room header, not a separate place — its value is being checked

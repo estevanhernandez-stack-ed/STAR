@@ -47,6 +47,12 @@ import {
   setDrawerState,
   tickDrawerClocks,
 } from "/drawer.js";
+import {
+  initScriptCheck,
+  openedCheck,
+  resetCheck,
+  setCheckRoom,
+} from "/scriptcheck.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -59,6 +65,8 @@ const progressPanel = $("progress-panel");
 const roomGrid = $("room-grid");
 const bibleSurface = $("bible-surface");
 const bibleBtn = $("bible-btn");
+const checkSurface = $("check-panel");
+const checkBtn = $("check-btn");
 const docketBody = $("docket-body");
 
 let searchCount = 0;
@@ -138,14 +146,43 @@ $("new-room-btn").addEventListener("click", () => {
 // declares `.tab` (the drawer's cut tab is `.drawer-tab`, renamed in Task 5
 // after these two collided — see web/drawer.css).
 bibleBtn.addEventListener("click", () => {
-  setBibleOpen(bibleBtn.getAttribute("aria-expanded") !== "true");
+  setRoomMode(roomMode === "bible" ? "drawers" : "bible");
 });
 
-function setBibleOpen(open) {
-  bibleBtn.setAttribute("aria-expanded", open ? "true" : "false");
-  bibleBtn.textContent = open ? "Back to the drawers" : "The bible";
-  bibleSurface.classList.toggle("hidden", !open);
-  roomGrid.classList.toggle("hidden", open);
+// The Script Check is the room's third view, reached the same way and from
+// the same head. Not a separate place, and not a separate stage state: what
+// makes a check worth anything is that it runs against THIS room, and a
+// surface you have to navigate away to reach says the opposite
+// (spec.md > The marked scene > Where it lives).
+checkBtn.addEventListener("click", () => {
+  setRoomMode(roomMode === "check" ? "drawers" : "check");
+});
+
+// One variable, three views, and exactly one visible at a time. It replaces
+// the boolean setBibleOpen carried, which could only ever describe two: with
+// a third surface a boolean becomes two booleans that have to be kept from
+// both being true, and "both are open" is a state nothing in the layout can
+// render.
+let roomMode = "drawers";
+
+function setRoomMode(mode) {
+  roomMode = mode;
+  roomGrid.classList.toggle("hidden", mode !== "drawers");
+  bibleSurface.classList.toggle("hidden", mode !== "bible");
+  checkSurface.classList.toggle("hidden", mode !== "check");
+
+  // Both controls carry aria-expanded AND change their own label — belt and
+  // braces, because a control whose only feedback is an ARIA attribute is a
+  // control most people cannot see change.
+  bibleBtn.setAttribute("aria-expanded", mode === "bible" ? "true" : "false");
+  bibleBtn.textContent = mode === "bible" ? "Back to the drawers" : "The bible";
+  checkBtn.setAttribute("aria-expanded", mode === "check" ? "true" : "false");
+  checkBtn.textContent = mode === "check" ? "Back to the drawers" : "Check a scene";
+
+  // The list of checks already filed on this room costs a request, so it is
+  // fetched when the mode is opened rather than on every room paint. A reader
+  // who never opens it never pays for it.
+  if (mode === "check") openedCheck();
 }
 
 /** The activity feed's own reduced-motion path.
@@ -546,11 +583,16 @@ function endRun(source) {
  *  alone: blank collapses the docket's heading row mid-navigation, and leaving
  *  the previous room's title is the leak itself. */
 function resetRoomView() {
-  setBibleOpen(false);
+  setRoomMode("drawers");
   bibleBtn.classList.add("hidden");
+  checkBtn.classList.add("hidden");
   bibleSurface.innerHTML = "";
   roomGrid.replaceChildren();
   docketBody.innerHTML = "";
+  // The same cross-room leak this function exists to close, on the surface
+  // where it would cost the most: a scene pasted against room A left sitting
+  // in the box under room B's title, over a marked scene citing A's ledger.
+  resetCheck();
   $("result-title").textContent = "Opening the room";
   $("result-stats").textContent = "";
 }
@@ -625,6 +667,14 @@ async function showResults(runId) {
     return;
   }
 
+  // Below the early return, deliberately, so the no-profile branch never gets
+  // here. A room with no story profile filed nothing to check a scene against,
+  // and offering a check there offers to spend live searches against an empty
+  // ledger — on the same screen whose copy has just told the reader to start a
+  // new room instead. `_run_check` would still accept it (star/server.py
+  // refuses only a build genuinely in flight), so this is the surface
+  // declining rather than the server.
+  setCheckRoom(runId);
   paintRoom(result, status);
 }
 
@@ -660,6 +710,7 @@ function paintRoom(result, status) {
   bibleSurface.innerHTML = renderBible(result, status);
   makeLinksSafe(bibleSurface);
   bibleBtn.classList.remove("hidden");
+  checkBtn.classList.remove("hidden");
 }
 
 /** Counts and provenance, in the slug face. Source count is the ledger's own
@@ -1070,6 +1121,12 @@ async function resumeStashedRun() {
 // would show later — no reason to wait for a build attempt to learn the
 // department can't be reached at all.
 setRoomRenderer(showResults);
+
+// The Script Check surface binds its own controls to index.html. Done here
+// rather than at that module's own load, so importing it costs nothing until
+// this file says the DOM is the app's — which is what lets its renderer be
+// tested in Node against a stubbed document.
+initScriptCheck();
 
 // auth.js asks for this on its way out to Google. Read at call time rather
 // than pushed on every event: the values are already tracked for the stream's
