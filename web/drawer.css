@@ -38,13 +38,38 @@
   max-width: 1120px;
 }
 
+/* --tab-rise is the one number the whole hanging-folder geometry depends on:
+   how far a cut tab sticks up above its card's top edge. .tab reads it as a
+   negative `top`, and the grid derives its own headroom and row gap from it
+   so the three can never drift apart.
+
+   They had drifted. Shipped first as three independent literals, and a live
+   run showed exactly what that costs: the h2's 1rem bottom margin was
+   smaller than the rise, so "THE DEPARTMENT IS WORKING" sat on top of the
+   SETTING & ATMOSPHERE tab, and `gap: 1.75rem` was EQUAL to the rise, so the
+   second row's tabs landed precisely on the first row's bottom edge. Both
+   read as one bug ("the tabs are broken") and were really one bug: a tab
+   escapes its card's box, so every neighbor has to be spaced against the
+   escape distance, not against the card. */
 .drawer-grid {
+  --tab-rise: 1.75rem;
+
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1.75rem;
+  column-gap: 1.75rem;
+  /* Clears the rise, plus room for the ::after folder edge (9px down) and
+     air besides — otherwise the tab technically fits but reads as jammed
+     against the card above it. */
+  row-gap: calc(var(--tab-rise) + 2rem);
   width: 100%;
   max-width: 1120px;
-  margin: 0 auto;
+  /* Top: the grid's own box starts BELOW the tabs, so the panel heading
+     needs the rise back. Adjacent-sibling margins collapse to the larger of
+     the two, so this wins over the h2's 1rem and leaves 1rem of real gap
+     above the tab line. Bottom: the activity feed and search meter follow
+     the grid in #progress-panel, and the bottom row's shadow and offset
+     folder edge both extend past the card. */
+  margin: calc(var(--tab-rise) + 1rem) auto 2.5rem;
   /* .stage (web/shell.css) is a flex row with the default align-items:
      stretch, so a direct child with no intrinsic height fills the stage's
      full viewport height — this grid included. Left in place deliberately:
@@ -123,10 +148,12 @@
    the text it exists to carry. The clip-path angles the cut corners, and
    it widens downward so the hidden base is the wider end, the way a real
    cut tab is scored. */
+/* Falls back to the same literal when a .drawer is used outside a grid, so a
+   standalone drawer still hangs correctly. */
 .tab {
   position: absolute;
   z-index: 0;
-  top: -1.75rem;
+  top: calc(var(--tab-rise, 1.75rem) * -1);
   left: 1.5rem;
   padding: 0.4rem 1.15rem 0.55rem;
   background: var(--manila-edge);
@@ -209,29 +236,85 @@
   line-height: 1.5;
 }
 
-.drawer-objective {
-  font-style: italic;
-}
+/* ---------------------------------------------------------------------
+   The search log — what the researcher has actually asked, while it is
+   still asking. Replaces Task 3's dot row, which a live run proved left
+   this card ~80% empty for the ~80 seconds a build spends in this state.
+   See web/drawer.js's renderSearching for the full reasoning.
 
-.drawer-dots {
+   The two voices are doing different jobs and must not blur: an objective
+   is the researcher's own sentence, so it takes --body italic, the same
+   voice a finding will take; a query is a machine string sent verbatim to
+   Parallel Search, so it takes --slug, the same voice every other piece
+   of literal metadata takes. Reading them in one face would imply the
+   researcher wrote the query strings as prose.
+--------------------------------------------------------------------- */
+.search-log {
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding: 0;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.4rem;
-  margin-top: 0.15rem;
+  flex-direction: column;
+  gap: 0.6rem;
 }
 
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--pencil);
-  flex: none;
+/* Names the log in the filed state, where the reader may never have watched
+   these questions being asked. Deliberately quiet: it is a caption on
+   evidence, not a heading competing with the stamp. */
+.drawer-legend {
+  margin: 1rem 0 0;
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink);
+  opacity: 0.55;
 }
 
-.dot-overflow {
+.search-entry {
+  padding-left: 0.85rem;
+  border-left: 2px solid var(--manila-edge);
+}
+
+/* The call in flight is the one the reader should land on. Marked by the
+   ink-weight rule alone — no glyph, no "in progress" word: the event fires
+   on the tool CALL, so the only thing actually known is that this is the
+   most recent one, not that the earlier ones came back. */
+.search-entry[data-current="true"] {
+  border-left-color: var(--ink);
+}
+
+.search-objective {
+  margin: 0;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  font-style: italic;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.search-queries {
+  list-style: none;
+  margin: 0.3rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+}
+
+.search-queries li {
   font-family: var(--slug);
   font-size: var(--label-sm);
+  line-height: 1.5;
+  color: var(--ink);
+  opacity: 0.7;
+}
+
+/* Marks these as sent strings rather than more prose, without spending a
+   glyph the screen reader would have to say out loud. */
+.search-queries li::before {
+  content: "→ ";
   color: var(--pencil);
 }
 

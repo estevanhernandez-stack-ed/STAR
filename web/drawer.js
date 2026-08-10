@@ -44,7 +44,6 @@ export const DRAWER_LABELS = {
 };
 
 const VALID_STATES = new Set(["idle", "searching", "filed", "failed", "expanded"]);
-const MAX_DOTS = 24; // beyond this, still-frame legibility loses to raw count fidelity
 
 function escapeHtml(s) {
   return String(s)
@@ -69,23 +68,79 @@ function renderIdle(body) {
   body.innerHTML = `<p class="drawer-status">Not yet started</p>`;
 }
 
-/** SEARCHING: the current objective in --slug beneath the tab, and one dot
- *  per landed search. No total is implied — research obligation 6 ("never
- *  promise a duration") applies just as much to an implied search count as
- *  to a promised finish time, so this is an open-ended tally, not a bar. */
+/** SEARCHING: the running log of what this researcher has actually asked.
+ *
+ *  Task 3 shipped this state as one objective line plus a row of anonymous
+ *  dots, one per landed search. A live run killed that design: the dots left
+ *  a 265px card holding about 55px of content for the ~80 seconds a build
+ *  spends in this state, which is most of what anyone watching ever sees.
+ *  Worse, a grey dot is the weakest possible claim — it asserts that work
+ *  happened without showing any of it, which is exactly the register this
+ *  whole direction exists to avoid.
+ *
+ *  What replaces it is strictly more honest, not just fuller: every objective
+ *  the researcher has issued, in order, and the literal query strings of the
+ *  one in flight (star/server.py forwards `search_queries` off the tool call
+ *  for this). Those strings went over the wire to Parallel Search verbatim.
+ *  Showing them is the cheapest proof available that the search is real, and
+ *  it is available while the run is still going rather than only after.
+ *
+ *  Only the newest entry shows its queries — earlier ones collapse to their
+ *  objective. That keeps the card's height bounded as a category runs 2-6
+ *  calls, and it reads correctly: here is everything asked, here is exactly
+ *  what is being searched right now.
+ *
+ *  Still no total and still no bar — research obligation 6 ("never promise a
+ *  duration") applies to an implied search count as much as to a promised
+ *  finish time. The tally counts up from what already happened.
+ *
+ *  `searches` is [{ objective, queries }], oldest first.
+ *
+ *  Shared with FILED below, which shows the same log with the queries left
+ *  off. Both states drawing from one builder is what stops a card from
+ *  emptying out at the moment it succeeds: the searching card fills with the
+ *  work, and filing adds a stamp to it rather than replacing it. The first
+ *  cut of this had FILED render a stamp alone, which read on screen as the
+ *  drawer throwing away everything it had just shown you.
+ *
+ *  `withQueries` marks the newest entry current and prints its query strings;
+ *  a filed category has no call in flight, so it passes false. */
+function buildSearchLog(searches, { withQueries }) {
+  const entries = searches
+    .map((search, i) => {
+      const objective = String(search?.objective || "").trim();
+      const isNewest = withQueries && i === searches.length - 1;
+      const queries = isNewest && Array.isArray(search?.queries) ? search.queries : [];
+      const queryList = queries.length
+        ? `<ul class="search-queries">${queries
+            .map((q) => `<li>${escapeHtml(q)}</li>`)
+            .join("")}</ul>`
+        : "";
+      // A call whose objective came through empty still happened, and its
+      // queries may not have. Drop the entry entirely rather than render a
+      // pair of empty quotes.
+      if (!objective && !queryList) return "";
+      const objectiveLine = objective
+        ? `<p class="search-objective">&ldquo;${escapeHtml(objective)}&rdquo;</p>`
+        : "";
+      return `<li class="search-entry"${isNewest ? ' data-current="true"' : ""}>${objectiveLine}${queryList}</li>`;
+    })
+    .join("");
+  return entries
+    ? `<ol class="search-log" aria-label="Searches this researcher issued">${entries}</ol>`
+    : "";
+}
+
 function renderSearching(body, data = {}) {
-  const { objective = "", searchCount = 0 } = data;
-  const count = Math.max(0, Math.floor(searchCount));
-  const shown = Math.min(count, MAX_DOTS);
-  const dots = Array.from({ length: shown }, () => '<span class="dot"></span>').join("");
-  const overflow = count > shown ? `<span class="dot-overflow">+${count - shown}</span>` : "";
-  const objectiveLine = objective
-    ? `<p class="drawer-meta drawer-objective">&ldquo;${escapeHtml(objective)}&rdquo;</p>`
+  const searches = Array.isArray(data.searches) ? data.searches : [];
+  const log = buildSearchLog(searches, { withQueries: true });
+  const tally = searches.length
+    ? `<p class="drawer-meta drawer-counts">${plural(searches.length, "search")} landed</p>`
     : "";
   body.innerHTML = `
     <p class="drawer-status">Searching</p>
-    ${objectiveLine}
-    <div class="drawer-dots" aria-label="${plural(count, "search")} landed">${dots}${overflow}</div>
+    ${log}
+    ${tally}
   `;
 }
 
@@ -122,12 +177,19 @@ function renderFiled(body, data = {}) {
     : searchCount !== undefined
       ? `${plural(searchCount, "search")} completed`
       : "";
+  // Carried over from the searching state so the card does not empty at the
+  // moment it succeeds. Labelled, because a filed room reached from the rail
+  // never saw these questions being asked — without the label a bare list of
+  // quotes under a FILED stamp reads as findings, which they are not.
+  const searches = Array.isArray(data.searches) ? data.searches : [];
+  const log = buildSearchLog(searches, { withQueries: false });
   body.innerHTML = `
     <div class="stamp">
       <span class="stamp-word">Filed</span>
       ${stampDetail}
     </div>
     ${countsLine ? `<p class="drawer-meta drawer-counts">${countsLine}</p>` : ""}
+    ${log ? `<p class="drawer-legend">What this researcher asked</p>${log}` : ""}
   `;
 }
 

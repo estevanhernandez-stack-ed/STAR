@@ -299,13 +299,28 @@ async def _run_pipeline(run_id: str, treatment: str) -> None:
         category = _CATEGORY_BY_AUTHOR.get(author)
 
         for call in event.get_function_calls() or []:
-            objective = (call.args or {}).get("objective", "")
+            args = call.args or {}
+            objective = args.get("objective", "")
+            # The literal query strings this call sent to Parallel Search.
+            # star/tools/parallel_search.py's contract is one objective plus
+            # 2-4 supporting queries, so these are the most concrete evidence
+            # the run can offer while it is still running: not "searching…"
+            # but the exact words that went over the wire. The model fills
+            # `search_queries`, so its type is not guaranteed — anything that
+            # is not a list of strings is dropped rather than trusted.
+            raw_queries = args.get("search_queries")
+            queries = (
+                [q for q in raw_queries if isinstance(q, str) and q.strip()]
+                if isinstance(raw_queries, list)
+                else []
+            )
             run["search_count"] += 1
             _push(
                 run,
                 "search",
                 agent=label,
                 objective=objective,
+                queries=queries,
                 category=category.value if category else None,
             )
 

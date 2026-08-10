@@ -216,9 +216,18 @@ async function buildRoom() {
       searchCount += 1;
       const category = ev.category;
       if (category && drawerEls.has(category)) {
-        const s = categorySearch.get(category) || { objective: "", count: 0 };
+        // Accumulate rather than replace: the searching drawer now shows the
+        // whole run of objectives this researcher has issued, not just the
+        // latest one, plus the literal queries of the call in flight. See
+        // web/drawer.js's renderSearching for why the previous dot row was
+        // replaced. `count` stays a separate integer because the filed stamp
+        // reads it after the searches array has served its purpose.
+        const s = categorySearch.get(category) || { searches: [], count: 0 };
         s.count += 1;
-        if (ev.objective) s.objective = ev.objective;
+        s.searches.push({
+          objective: ev.objective || "",
+          queries: Array.isArray(ev.queries) ? ev.queries : [],
+        });
         categorySearch.set(category, s);
         // A category that already filed must never visually un-stamp back
         // to "searching" — found by testing a stray/duplicate "search"
@@ -230,8 +239,7 @@ async function buildRoom() {
         // per-search progress.
         if (!filedCategories.has(category)) {
           setDrawerState(drawerEls.get(category), "searching", {
-            objective: s.objective,
-            searchCount: s.count,
+            searches: s.searches,
           });
         }
       }
@@ -249,11 +257,12 @@ async function buildRoom() {
         // rule out) filing — and re-animating — the same drawer twice.
         if (!filedCategories.has(category)) {
           filedCategories.add(category);
-          const s = categorySearch.get(category) || { count: 0 };
+          const s = categorySearch.get(category) || { count: 0, searches: [] };
           setDrawerState(drawerEls.get(category), "filed", {
             code: CATEGORY_CODE[category],
             date: stampDate(),
             searchCount: s.count,
+            searches: s.searches,
           });
         }
       } else {
