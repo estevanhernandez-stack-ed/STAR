@@ -1199,12 +1199,31 @@ From the architecture self-review, plus what `prd.md` left open. None block `/ch
    authorization server, so a client that insists on discovery will refuse. The harness does not, and
    the harness is the evidence the PRD asks for. Worth one attempt with a real client during harness
    week, and worth recording the result either way rather than leaving it as an assumption.
+   **ANSWERED, item 12** — yes for any client configurable with a static bearer header, no for a
+   discovery-first client, and browser-based clients are additionally gated by `Origin`. The 401
+   challenge is a bare `WWW-Authenticate: Bearer` with no `resource_metadata`, and all four
+   well-known discovery paths 404. No third-party client was configured, on purpose: every route to
+   one writes a live token into plaintext config, which this repo has shipped once already. Probe
+   table in `process-notes.md`.
 5. **Room payload size over MCP.** Bibles have run 11,000-17,000 characters, and `get_room` returns
    the bible plus four drawers. Measure during harness runs before deciding whether `get_room` needs
    a way to ask for less. `prd.md > Open questions` #2, unchanged.
+   **ANSWERED, item 12** — **152,007 bytes** on the complete room, roughly 37,000 tokens. The bible
+   is 16,183 of it and is not the problem; the four drawers are 127,090, and citation excerpts are
+   why. `get_room` gets no way to ask for less before 2026-09-07: the shape that would fix it is a
+   fifth tool by another name. Breakdown in `process-notes.md`.
 6. **`check_scene` against a scene from a different story than the room.** Every claim comes back
    unverifiable-by-way-of-irrelevant, which is technically correct and probably a bad answer. Not
    blocking; watch it during harness runs. `prd.md > Open questions` #4, unchanged.
+   **ANSWERED, item 12, and this prediction was wrong.** Every claim came back *`confirmed`*, on
+   fresh searches, because the verifier falls through to search and answers correctly about the
+   world. The bad answer is a clean pass that means nothing about the story: the room supplies the
+   era, so with the room contributing nothing a 1998 phone is confirmed in a scene that never stated
+   a year. Fixed as far as it should be by `_provenance()` in `star/mcp/tools.py`, which says in
+   words how many sources came from the room and how many from a search, and names the
+   zero-from-the-room case. Refusing an off-story scene outright is not on the table: it would make
+   the department judge whether a scene belongs to a room, which is a model's opinion about a
+   writer's intent.
 7. **The harness spends real money against a cap shared with the live demo.** Three personas driving
    real builds against a 100/day ceiling. The cap is a real ceiling in the meantime; if harness week
    collides with rehearsal week, the personas run against already-built rooms and only `check_scene`

@@ -829,3 +829,214 @@ at the door. **Any maintenance script that touches this repo's Firestore must ca
 `load_dotenv()` before importing `star.store`**, or it is talking to a different database
 than the service is. `star/server.py` gets this right at line 21 and that is the only reason
 the service does.
+
+## Item 12 — the persona harness, and the audit that is the point
+
+Three personas, three committed transcripts in `harness/runs/`, driven by `gemini-3.6-flash`
+through `google-genai` against the live service on `http://127.0.0.1:8000`. The client is
+`harness/client.py` on `urllib.request` and the standard library: no new dependency, nothing
+third-party in the frame, and nothing on screen a Google-track submission has to explain.
+
+The personas differ in the two things that actually change what an agent experiences here —
+**what it already has** and **how well it is wired**. A third persona that only asked
+different questions would have been one persona run three times.
+
+| Persona | Wiring | Account | Turn cap | Turns used | What it did |
+| --- | --- | --- | --- | --- | --- |
+| `writer` | real `inputSchema` from `tools/list` | one filed room | 8 | 5 | `list_rooms`, `get_room`, two `check_scene` calls, then reported |
+| `fumbler` | one generic passthrough; it writes its own argument JSON | one filed room | 12 | 3 | guessed `room_id`, was corrected, got it right, reported |
+| `newcomer` | real `inputSchema` | a real uid with nothing filed | 8 | 2 | `list_rooms` on an empty account, `get_room` on somebody else's id, reported |
+
+**The `fumbler`'s wiring is the load-bearing design call.** A model handed a correct
+`FunctionDeclaration` cannot easily send `roomId` — the API fences it into the declared
+shape — so the wrong-arguments posture is unreachable through the front door. Taking the
+schema away and making the model write its own argument JSON is what a lot of real MCP
+integrations look like anyway, and it is the only way to put the argument refusals under
+load. It worked on the first turn of both runs.
+
+**The `newcomer`'s account is real.** A fresh anonymous account was created through the same
+`accounts:signUp` call `web/auth.js` makes, and its token was minted straight through
+`star/tokens.py`. `POST /api/tokens` refuses an anonymous `sign_in_provider` by design and
+that refusal is correct for the browser; the thing under test here is the MCP door, not the
+issuing policy, so the token was written directly. Building a room and deleting it to
+manufacture an empty state would have spent money to produce a worse fixture.
+
+### The audit — every failure a persona hit, and what happened to it
+
+Six failures across the runs. **Five were diagnosable from the response alone, and each
+persona said so in its own closing report without being asked which ones were.** The sixth
+was the harness's, not the department's.
+
+| # | Persona | What it called | What came back | Diagnosable alone? |
+| --- | --- | --- | --- | --- |
+| 1 | `newcomer` | `list_rooms` on an empty account | "No rooms are filed under this account yet. That is not an error: the account is real and the token works, there is just nothing in it." | Yes. It reported the account as valid-and-empty rather than as broken |
+| 2 | `newcomer` | `get_room` with a colleague's id | `ROOM_NOT_FOUND`, including the sentence saying a room under somebody else's account answers identically | Yes, and it restated the no-oracle property back in its report unprompted |
+| 3 | `fumbler` | `check_scene` with `room_id` | "`check_scene` does not take an argument called `room_id`. It takes arguments `run_id` and `scene`." | Yes. Corrected on the next turn and succeeded |
+| 4 | `fumbler` (first run) | `get_room` with `room_id` | Same shape, naming the one argument that tool takes | Yes |
+| 5 | `writer` | `check_scene` on a scene from a different story | Four claims, four `confirmed`, and nothing saying the room had answered none of them | **No. Fixed, see below** |
+| 6 | `fumbler` (first run) | `check_scene`, second attempt | A **harness** block, not a service response | N/A. Harness defect, fixed in `harness/run.py` |
+
+**Failure 5 is the finding, and it is fixed in `star/mcp/tools.py`.** An off-story scene
+checked against a room that knows nothing about it comes back four-for-four `confirmed`,
+because the verifier falls through to a live search and answers correctly about the world.
+Nothing malfunctioned and the answer was worthless: the room is what supplies the era, so
+with the room contributing nothing, a phone released in 1998 is `confirmed` in a scene that
+never says what year it is. The tally line read as a clean pass. The per-citation `source`
+fields said `search`, `search`, `search`, `search`, and only a model that parsed 10KB of
+JSON would have known.
+
+`_cover_note` does not cover this. It fires when the room filed **no sources at all**, and
+its own docstring hands the per-claim question to `citation_sources`. A room full of sources
+that answer none of this scene is the case neither of them was watching.
+
+The fix is `_provenance()` in `star/mcp/tools.py`: one sentence in the `check_scene` summary
+counting the sources behind the verdicts by which ledger produced them, with a distinct
+sentence for the zero-from-the-room case that names what it means. Exercised directly
+against both stored results:
+
+- on-story: *"Of the 6 sources behind these verdicts, 5 came out of this room's own files
+  and 1 from a search this check ran just now."*
+- off-story: *"None of the 8 sources behind these verdicts came out of this room's own
+  files. Every one of them is from a search this check ran just now, so the room contributed
+  nothing. That happens when a scene covers ground the room does not hold, including when the
+  scene belongs to a different story than the room was built for, and it means these claims
+  were judged against the world at large rather than against this room's era and setting."*
+
+It lands in the tool layer and not in `star/server.py`, deliberately. The browser has a
+citation rail that shows provenance next to every source; the agent has a paragraph, and
+this is the half of the department that only the agent was missing.
+
+**Verified by direct exercise rather than by a live re-run**, because the server on port 8000
+runs without `--reload` and restarting it was out of bounds for this item. `_check_scene` was
+driven against both persisted `ScriptCheckResult` documents with a stub `Calls`, which proves
+the string deterministically and spends nothing. It reaches the wire at item 13's deploy, and
+the three committed transcripts are honest records of the string as it stood when they ran.
+
+**Failure 6 was the harness's own, and the way it failed is worth keeping.** The spend guard
+originally charged a persona's `check_scene` allowance on the *attempt*. The `fumbler`'s
+first attempt was refused on `room_id`, which never reaches the pipeline and buys nothing, so
+the one call it was going to get right was the one it was denied. Told it could not call the
+tool, the persona **wrote five verdicts straight off the research bible instead**, three of
+them flatly contradicting what the real check returned, under headings reading "Research
+Bible Grounding". That is exactly the unearned confidence this project's whole architecture
+exists to refuse, produced in one turn by a model with a room payload in its context and no
+way to check. The guard now charges only when the department accepts the call
+(`harness/client.py`'s `was_refused`), and the re-run went fumble, correction, success in
+three turns.
+
+### The `check_scene` fix from Checkpoint 2 held
+
+Checkpoint 2 left a defect open: the verifier read its own certainty as an answer, spent 1 of
+8 searches, and the most obvious anachronism in the scene came back `unverifiable` because
+the downgrade rule correctly refused a verdict with nothing behind it. The instruction fix
+landed before this item. Under the harness the same shape came back right: the planted Moog
+synthesizer in a 1962 scene returned **`anachronism`, cited, noted "invented in 1964 and
+first commercially produced in 1965"**, on runs that spent 3 and 5 searches rather than 1.
+
+### Open issue #4 — can any MCP client other than the harness connect?
+
+**Answered: yes for any client configurable with a static bearer header, no for a client that
+insists on OAuth discovery, and browser-based clients are additionally gated by `Origin`.**
+Measured against the live service rather than reasoned about:
+
+| Probe | Answer |
+| --- | --- |
+| `GET /.well-known/oauth-protected-resource` | 404 from the static mount |
+| `GET /.well-known/oauth-protected-resource/mcp` | 404 |
+| `GET /.well-known/oauth-authorization-server` | 404 |
+| `GET /.well-known/openid-configuration` | 404 |
+| `POST /mcp` with no credential | 401, `WWW-Authenticate: Bearer` with **no `resource_metadata` parameter** |
+| `POST /mcp` with a foreign `Origin` | 403 |
+| `POST /mcp` with `Origin: http://127.0.0.1:8000` | **403**. The default allow list is the Cloud Run URL and `http://localhost:8000`, and `127.0.0.1` is not `localhost` as an origin |
+| `tools/list` with no prior `initialize` | 200, the four tools. The 2026-07-28 handshake-free shape is served |
+| `MCP-Protocol-Version: 2026-07-28` | 200 |
+| `MCP-Protocol-Version: 2024-11-05` | 400, naming the four revisions it does speak |
+| `resources/list`, `prompts/list` | `-32601`, naming what it does offer |
+| `Accept: text/event-stream` alone | 200 with JSON. `Accept` is not inspected at all |
+
+A discovery-first client stops at the challenge: there is no `resource_metadata` to follow
+and nothing at any of the four well-known paths. A static-header client connects, and the
+proof is that the harness is one and there is nothing harness-shaped in the server.
+`star/mcp/router.py` reads one header and never looks at `clientInfo`.
+
+**No third-party client was configured, and that is a decision rather than a gap.** Every
+route to one puts a live bearer token into a plaintext client config on disk. This repo has
+already shipped a live token in `.mcp.json` once, the environment keystone bars the pattern
+outright, and `prd.md > The Submission Surface` requires no third-party client chrome
+anywhere near this artifact. The probes above answer the question mechanically without buying
+that risk, so the risk was not bought.
+
+Two things fell out of the probes and neither is a defect in the deployed path. `127.0.0.1`
+being refused where `localhost` is allowed is correct per RFC 6454 and only reachable by a
+browser-based client on a dev origin; the deployed browser's origin matches. `Accept` going
+uninspected is within the transport spec, which requires the client to accept both content
+types and lets the server pick.
+
+### Open issue #5 — room payload size over MCP
+
+**Answered, and the estimate in `spec.md` was low by an order of magnitude. `get_room` on the
+complete room returns 152,007 bytes.**
+
+| Section | Bytes |
+| --- | --- |
+| `categories`, four drawers, 31 findings | 127,090 |
+| `research_bible` | 16,183 |
+| `research_plan` | 3,898 |
+| `story_profile` | 523 |
+
+The open issue framed this around the bible at 11,000 to 17,000 characters. The bible is
+16,183 bytes and is **not the problem**: the drawers are five sixths of the payload, and the
+reason is citation excerpts. One finding runs about 2,700 bytes because its excerpt is a real
+slab of the page a search returned, which is exactly the property that makes a citation
+trustworthy and exactly what makes it large.
+
+What that costs an agent, measured rather than guessed: roughly 37,000 tokens for one read,
+re-sent on every subsequent turn of a tool loop. The `writer` run pulled 184,810 bytes from
+the department in total and 152,007 of it was one call. Both personas that read a room did it
+once and worked from context afterwards, and neither degraded, so this is a cost and not a
+break today.
+
+The decision it was supposed to inform: **`get_room` does not get a way to ask for less
+before 2026-09-07.** A room read is the one call that carries the whole point of the product,
+an agent that gets a summary has to call again for the thing it wanted, and the shape that
+would fix it properly is a `detail` argument plus a per-finding read, which is a fifth tool by
+another name and is ruled out by both `spec.md` and `prd.md`. Recorded here so the number is on
+the record and the successor has it. If it is ever paid down, the cut is the citation
+excerpts, not the bible.
+
+### Open issue #6 — `check_scene` against a scene from a different story
+
+**Answered, and the prediction in `spec.md` was wrong in a more interesting direction.** The
+issue expected every claim to come back unverifiable-by-way-of-irrelevant. What actually
+happens is the opposite: an Icelandic trawler scene checked against the 1962 Memphis room came
+back **4 claims, 4 `confirmed`, 0 anachronism, 0 unverifiable**, `search_count: 2`,
+`cover_note: ""`, every `citation_sources` entry reading `search`.
+
+The verifier falls through to a live search, answers correctly about the world, and every
+verdict is defensible on its own terms. The bad answer is not irrelevance, it is **a clean
+pass that means nothing about the story**. The room is what supplies the era; with the room
+contributing nothing, "Nokia 5110" is `confirmed` in a scene that never stated a year, and the
+tally reads like a scene that checked out.
+
+The `writer` persona reached that on its own, *"it cannot check whether your Icelandic trawler
+story is set in the right year for that phone"*, and it reached it from the story profile it
+had read earlier rather than from the check's own answer. That is the gap `_provenance()` now
+closes. **Not fixed beyond the sentence, and the reason stands:** refusing an off-story scene
+would require the department to judge whether a scene belongs to a room, which is a model's
+opinion about a writer's intent and precisely the kind of judgment this project keeps out of
+the pipeline. Naming what the check actually leaned on lets the reader draw the conclusion
+from a fact instead.
+
+### What item 12 spent
+
+- **3 `check_scene` calls** that the department accepted, against a ceiling of 5: two in the
+  `writer` run (3 and 2 searches) and one in the `fumbler` re-run (5 searches). **10 live
+  searches, about $0.05.** Two further `check_scene` calls were refused on their arguments and
+  spent nothing.
+- **0 `build_room` calls.** The personas ran against room `92f7835ac882`, built before this
+  item, which is `spec.md > Open issues` #7's own mitigation.
+- **13 Gemini turns** across four persona runs (5 + 5 + 3, plus the 5-turn first `fumbler` run
+  that the guard fix retired), on `gemini-3.6-flash`. Turn caps were 8 / 12 / 8 and none was
+  reached.
+- Three scenes stored with room `92f7835ac882` by the checks, as `check_scene`'s own
+  description says they would be. Deletable from the room's script-check panel.

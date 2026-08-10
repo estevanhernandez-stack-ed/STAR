@@ -647,6 +647,76 @@ async def _build_room(arguments: dict, calls: Calls, identity) -> dict:
 _VERDICTS = ("confirmed", "anachronism", "unverifiable")
 
 
+def _provenance(claims: list[dict]) -> str:
+    """Which of the two answered, in the prose rather than only in the JSON.
+
+    `citation_sources` already carries this per citation, and on the browser's
+    side of the department a rail shows it next to every source. An agent gets
+    a paragraph, and the payload design here is explicit that a model reading
+    top-down should know what it is looking at before it reaches the data — so
+    a fact that lives only in the data is a fact half the readers of this
+    surface will not have.
+
+    Added because a persona run found the case that makes it matter. A scene
+    from a different story checked against a room that knows nothing about it
+    comes back four-for-four `confirmed`, because the verifier falls through to
+    a fresh search and answers correctly about the world. Nothing was wrong and
+    the answer was worthless: the room is what supplies the era, so with the
+    room contributing nothing, a phone released in 1998 is `confirmed` in a
+    scene that never said what year it was. The tally alone reads as a clean
+    pass, and only the per-citation `source` fields said otherwise.
+
+    `_cover_note` does not cover this. It fires when the room filed no sources
+    at all, and its own docstring hands the per-claim question here. A room
+    full of sources that answer none of this scene is the case neither of them
+    was watching.
+
+    Counted over citations rather than over claims because a single claim can
+    be answered by both, and a count that can exceed its own total is a
+    sentence a reader has to distrust.
+    """
+    room = sum(
+        1
+        for claim in claims
+        for source in claim.get("citation_sources") or []
+        if source == "room"
+    )
+    search = sum(
+        1
+        for claim in claims
+        for source in claim.get("citation_sources") or []
+        if source == "search"
+    )
+    total = room + search
+    if not total:
+        # Every verdict came back with nothing behind it. The per-claim notes
+        # already say what was looked for and not found, and a sentence about
+        # the split between two ledgers that both answered nothing would be
+        # arithmetic about an empty set.
+        return ""
+    if not room:
+        return (
+            f"None of the {total} sources behind these verdicts came out of "
+            "this room's own files. Every one of them is from a search this "
+            "check ran just now, so the room contributed nothing. That happens "
+            "when a scene covers ground the room does not hold, including "
+            "when the scene belongs to a different story than the room was "
+            "built for, and it means these claims were judged against the "
+            "world at large rather than against this room's era and setting."
+        )
+    if not search:
+        return (
+            f"All {total} sources behind these verdicts came out of this "
+            "room's own files. This check bought nothing it did not already "
+            "have."
+        )
+    return (
+        f"Of the {total} sources behind these verdicts, {room} came out of "
+        f"this room's own files and {search} from a search this check ran "
+        "just now."
+    )
+
+
 async def _check_scene(arguments: dict, calls: Calls, identity) -> dict:
     values = _arguments(_TOOLS_BY_NAME["check_scene"], arguments)
     scene = values["scene"]
@@ -676,6 +746,9 @@ async def _check_scene(arguments: dict, calls: Calls, identity) -> dict:
     ]
     if result.get("cover_note"):
         lines.append(result["cover_note"])
+    provenance = _provenance(claims)
+    if provenance:
+        lines.append(provenance)
     unsourced = result.get("unsourced_count") or 0
     if unsourced:
         lines.append(

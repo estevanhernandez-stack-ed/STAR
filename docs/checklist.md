@@ -387,7 +387,7 @@ three tools and note the fourth as next. **Pipeline B and the video never go.**
   tool descriptions and error strings for the bare word "verified" — zero hits, the same rule that
   binds every other surface.
 
-- [ ] **12. The persona harness, and the evidence it produces**
+- [x] **12. The persona harness, and the evidence it produces**
   Spec ref: `spec.md > The persona harness`
   Depends on: 11. Effort: **M**.
   What to build: `harness/client.py` — a minimal MCP client over HTTPS on `urllib.request` from the
