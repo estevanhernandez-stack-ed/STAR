@@ -323,7 +323,20 @@ async def _run_pipeline(run_id: str, treatment: str) -> None:
             )
             is_final = getattr(event, "is_final_response", lambda: True)()
             if text.strip() and is_final:
-                _push(run, "agent_done", agent=label)
+                # Carries `category` for the same reason "search" does: the
+                # browser routes this to one of four drawers, and without it
+                # the client has to reverse-map the friendly English label
+                # back to a category. That made _FRIENDLY's wording a load-
+                # bearing API contract — rewording "Props researcher" would
+                # silently stop that drawer ever filing, with nothing to
+                # catch it. `agent` stays for display; `category` is what
+                # the UI routes on.
+                _push(
+                    run,
+                    "agent_done",
+                    agent=label,
+                    category=category.value if category else None,
+                )
 
     _maybe_warn_empty_ledger(run)
 

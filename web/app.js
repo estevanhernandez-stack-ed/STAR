@@ -237,7 +237,12 @@ async function buildRoom() {
       }
       updateMeter();
     } else if (ev.type === "agent_done") {
-      const category = AGENT_TO_CATEGORY[ev.agent];
+      // The server now sends `category` on agent_done, the same way it
+      // always has on search. Prefer it. AGENT_TO_CATEGORY stays only as a
+      // fallback for an event from an older server, and is no longer the
+      // primary path — reverse-mapping display prose back to a routing key
+      // made _FRIENDLY's exact wording an API contract nobody was guarding.
+      const category = ev.category ?? AGENT_TO_CATEGORY[ev.agent];
       if (category && drawerEls.has(category)) {
         // Defends against a researcher whose turn produces more than one
         // "final" text part in one run (an ADK behavior this file cannot

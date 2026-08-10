@@ -1148,3 +1148,24 @@ async def test_execute_evicts_old_runs_once_it_reaches_a_terminal_status():
     fake_evict.assert_called_once_with(exclude="evict-trigger")
 
     del server._runs["evict-trigger"]
+
+
+def test_agent_done_carries_the_category_so_the_ui_need_not_parse_prose():
+    """Without this, the browser reverse-maps _FRIENDLY's English wording
+    back to a category, which makes that wording a load-bearing API
+    contract — rewording a label would silently stop a drawer filing."""
+    run = {"events": []}
+
+    for category in Category:
+        server._push(run, "agent_done", agent="ignored", category=category.value)
+
+    assert [e["category"] for e in run["events"]] == [c.value for c in Category]
+
+
+def test_agent_done_from_a_non_researcher_has_a_null_category():
+    """intake, planner and synthesis file no drawer."""
+    run = {"events": []}
+
+    server._push(run, "agent_done", agent="Editor", category=None)
+
+    assert run["events"][0]["category"] is None
