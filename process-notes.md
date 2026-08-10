@@ -1040,3 +1040,37 @@ from a fact instead.
   reached.
 - Three scenes stored with room `92f7835ac882` by the checks, as `check_scene`'s own
   description says they would be. Deletable from the room's script-check panel.
+
+### Item 13 — what was verified, and what is deliberately not done
+
+**Verified by probe, not by assertion.** These were run rather than reasoned about:
+
+- **Credential sweep over the whole history**, not the working tree, because the visibility
+  flip is irreversible in the sense that matters. `.env` and `.mcp.json` never entered
+  history and both are gitignored. No credential-shaped file is tracked. Two pattern hits,
+  both benign: a synthetic token fixture in `tests/js/test_account_card.mjs`, and the
+  Firebase web key in `.env.example`, which is public by design and already served to every
+  visitor by `/config.js`.
+- **`pip-audit`: zero vulnerabilities in the pinned runtime set.** Six findings, all in
+  `pip` itself in the local venv — the installer, not a runtime dependency, and not what the
+  image ships, since the Dockerfile takes whatever `python:3.12.12-slim` carries. **No pin
+  moves before 2026-09-07**, and none needed to.
+- **`maxScale` and `minScale` both read `1`** on the serving revision `star-00004-4nq`,
+  read off the *revision* rather than the service YAML, which lies (`INFRASTRUCTURE.md:213-236`).
+- **`/docs`, `/redoc`, `/openapi.json` all answer 404.** Secrets come from Secret Manager
+  via `--set-secrets`; only public identifiers are in `--set-env-vars`.
+- **No Firestore ruleset is deployed**, which is the correct posture rather than an omission.
+- **Every `/api` route is guarded.** One correction to my own first audit: it reported
+  `stream_events` as `_require_uid`-guarded, which was a grep matching a docstring. That
+  route cannot read an Authorization header — an `EventSource` sends none — and is guarded by
+  `compare_digest` on a per-run capability key. The code was right; the audit was naive, and
+  it is worth recording that the audit was the thing that nearly shipped a false clean.
+- **A fresh clone of `HEAD`** carries 122 files, an MIT `LICENSE` GitHub will detect, no
+  `.env`, and a `pyproject.toml` whose explicit package list includes `star.mcp`.
+
+**Deliberately not done, and not because it was forgotten.** Push, visibility flip, deploy,
+video, and Devpost submission are outward-facing or irreversible, and the builder's approval
+of "items 12 and 13" is not the same as authorising a private repo to go public. Every gate
+in front of them is verified and the evidence is above; the acts themselves are the
+builder's. The README screenshot needs a logged-in browser session that owns a filed room,
+which is the builder's session and a ten-second job there.

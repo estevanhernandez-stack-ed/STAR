@@ -467,10 +467,25 @@ the guards, the runner, and the `_execute` / `_run_pipeline` / `_salvage` / `_pe
 better architecture and it is the wrong call 26 days out — it churns the most heavily reviewed code
 in the repo and a 1,406-line test file for zero behavioural gain. First refactor after 2026-09-07.
 
-## Assumptions still open
+## Assumptions still open — both closed by the build, 2026-08-10
 
-Both inherited unchanged from `/prd` and `/spec`, both marked, neither blocking:
+Both were inherited unchanged from `/prd` and `/spec` and marked
+*(default — confirm on next interactive run)*. Neither needs that run any more:
 
-- The **8,000-character scene cap**, assumed to match the treatment cap. *(default — confirm on next
-  interactive run)*
-- **Three personas** in the harness. *(default — confirm on next interactive run)*
+- **The 8,000-character scene cap — closed by construction.** It shipped as
+  `STAR_MAX_SCENE_CHARS`, matching the treatment cap, and was exercised live: the refusal
+  names the cap and the count sent, and a scene exactly at the cap runs. The number was
+  never load-bearing, only its being *stated* was, and it is stated in the tool description,
+  the browser copy, and the refusal. Tunable by env var if a real scene ever needs more.
+- **Three personas — closed by existing.** `writer`, `fumbler`, and `newcomer` are built and
+  three transcripts are committed to `harness/runs/`. The count was the assumption; the
+  postures turned out to be the part that mattered, and they differ on the two things that
+  actually change an agent's experience: what it already has, and how well it is wired.
+
+**One assumption the build replaced with a measurement.** `spec.md > Open issues` #5 put a
+room payload at 11,000-17,000 characters. Measured over MCP: **152,007 bytes, roughly 37,000
+tokens** — an order of magnitude past the estimate, and in the wrong place. The bible is
+16,183 of it. The four drawers are 127,090, because citation excerpts are real slabs of the
+pages search returned, which is the property that makes a citation checkable. Recorded as a
+cost rather than a defect; no `get_room` selector before 2026-09-07, because the shape that
+fixes it properly is a fifth tool by another name.
