@@ -1,70 +1,225 @@
 # STAR — Story & Treatment Agentic Research
 
-**Every studio has a research department. Now every writer does.**
+**Every studio has a research department. Now every writer has one, and so does every agent they run.**
 
-STAR is a multi-agent research department for screenwriters, built with
-**Google ADK (`google-adk`)** and **Gemini** on Google Cloud, using
-**Parallel's Search API** (via the official **`parallel-web`** SDK) for live,
-cited web research at runtime.
+STAR is a multi-agent research department for screenwriters, built with **Google ADK
+(`google-adk`)** and **Gemini** on Google Cloud, using **Parallel's Search API** (via the
+official **`parallel-web`** SDK) for live web research at runtime.
 
-Give STAR a treatment or logline and it builds your research bible — setting
-& atmosphere, objects & props, logistics, forces & conflicts — with every
-fact cited to a live web source. Then upload a scene, and STAR keeps your
-script honest: every real-world claim is verified and flagged as confirmed,
-anachronism, or unverifiable, with receipts.
+Paste a treatment and STAR builds a research room: setting and atmosphere, objects and
+props, logistics, forces and conflicts. Every finding carries the sources it came from,
+with the domain, the retrieval date, and the search's own excerpt. Paste a scene and STAR
+checks the claims it makes about the world against that room's files first, then against a
+fresh search, and hands the scene back marked in place.
 
-Built for the **Agentic Cinema: The Blockbuster Hackathon** (Parallel track).
+Nothing in this app says a source was "verified." It says what was actually checked, and
+what it could not settle.
+
+Built for **Agentic Cinema: The Blockbuster Hackathon** (Parallel track).
+
+## What it does
+
+**Pipeline A — Build the Room.** A treatment becomes a story profile, a research plan, four
+categories of researched findings, and a synthesised research bible. The four researchers
+run in parallel and the browser watches them work over SSE.
+
+**Pipeline B — Script Check.** A scene becomes a list of claims about the world, each
+quoted exactly from the page, each carrying a verdict of `confirmed`, `anachronism`, or
+`unverifiable`, the sources behind it, and **whether the room's own files or a fresh search
+answered**. The scene comes back marked in place with a citation rail.
+
+**The agent door.** The same department over MCP, so an agent can build a room and check a
+scene without a browser. Four tools, per-user bearer tokens, one shared budget with the
+browser.
+
+## The thing this is actually built around
+
+A model authors the verdict, because a verdict is a judgment. It never authors a title, an
+excerpt, or a claim about where something came from. Those are computed on the server from
+a ledger of what search actually returned:
+
+- Every citation is hydrated from that ledger. A URL a model cites that appears in no search
+  result is stamped **UNSOURCED** and left on screen rather than quietly dropped.
+- A `confirmed` or `anachronism` whose every cited source fails to resolve is **downgraded**
+  to `unverifiable`, because a stamp with nothing behind it is the overclaim the whole design
+  exists to refuse.
+- "The room answered this, a fresh search answered that" is decided by which of two ledgers
+  holds the URL, never by asking the model what it did.
+- Running out of search budget is reported as *budget*, never as *not found*.
 
 ## Architecture
 
-Deterministic multi-step pipelines built as ADK workflow agents — not a
-free-roaming chat loop:
+Deterministic multi-step pipelines built as ADK workflow agents, not a free-roaming chat
+loop.
 
 ```
 Pipeline A · Build the Room  (SequentialAgent)
-  IntakeAgent      treatment → StoryProfile               [Gemini]
-  PlannerAgent     StoryProfile → ResearchPlan            [Gemini]
-  ResearchFanout   ParallelAgent: 4 category researchers,
-                   each calling Parallel Search API       [Gemini + parallel-web]
-  SynthesisAgent   excerpts → cited research bible        [Gemini]
+  intake        treatment → StoryProfile                  [Gemini, schema'd]
+  planner       StoryProfile → ResearchPlan               [Gemini, schema'd]
+  researchers   ParallelAgent: 4 categories, each calling
+                the Parallel Search API                   [Gemini + parallel-web]
+  synthesis     excerpts → cited research bible           [Gemini]
+  findings.py   parse + hydrate against the run's ledger  [pure Python]
 
-Pipeline B · Script Check  (SequentialAgent — coming in week 3)
-  ClaimExtractor → Verifier (room lookup + turbo search) → Annotator
+Pipeline B · Script Check  (SequentialAgent)
+  claim_extractor  scene → ClaimSet, exact quotations     [Gemini, schema'd, no tools]
+  verifier         claims + the room's files → verdicts   [Gemini + parallel-web]
+  verdicts.py      hydrate against room ledger, then run
+                   ledger; downgrade; stamp UNSOURCED     [pure Python]
+
+The agent door
+  star/mcp/     Streamable HTTP, hand-written against the transport spec.
+                list_rooms · get_room · build_room · check_scene
 ```
+
+Both doors call the **same** function objects for admission and for running a build, so
+"one budget, one ceiling, one kill switch" is mechanical rather than asserted.
+
+## Stack
+
+| Layer | Choice |
+| --- | --- |
+| Language | Python 3.12 |
+| Agents | `google-adk`, `google-genai` — Gemini only, no other provider at runtime |
+| Search | `parallel-web` — called at runtime by both pipelines |
+| Web | `fastapi`, `uvicorn` |
+| Identity | `firebase-admin` server-side; raw Identity Toolkit REST in the browser |
+| Persistence | `google-cloud-firestore` via Application Default Credentials |
+| Frontend | Native ES modules and plain CSS. No build step, no bundler, no CDN request |
+| MCP | Hand-written. No MCP SDK dependency |
+
+Every version is pinned exactly. A Cloud Build runs a fresh install and would otherwise
+take whatever shipped that morning.
 
 ## Quickstart
 
 ```bash
-# 1. Environment (Python 3.11+)
+# 1. Environment (Python 3.12)
 python -m venv .venv
-.venv\Scripts\activate          # Windows   (source .venv/bin/activate on mac/linux)
+.venv\Scripts\activate            # Windows; source .venv/bin/activate elsewhere
 pip install -e .
 
-# 2. Keys
-copy .env.example .env          # then fill in:
-#   GOOGLE_API_KEY   — Google AI Studio (Gemini)
-#   PARALLEL_API_KEY — platform.parallel.ai
+# 2. Configuration
+copy .env.example .env            # cp on mac/linux, then fill it in
 
 # 3. Smoke-test the Parallel Search integration
 python scripts/try_search.py
 
-# 4. Run the agent in the ADK dev UI
-adk web                          # open the URL it prints, pick "research_dept"
+# 4. Run the app
+uvicorn star.server:app --reload   # http://127.0.0.1:8000
 
-# 5. Or run the full web app (FastAPI + live progress UI)
-uvicorn star.server:app --reload # then open http://127.0.0.1:8000
+# 5. Or run the pipeline in the ADK dev UI
+adk web                            # pick "research_dept"
 ```
 
-In the ADK web UI, paste a short treatment (era, place, genre, premise) and
-watch the pipeline run — the trace inspector shows each agent step and every
-Parallel Search call with its arguments and results.
+Firestore reads and writes use Application Default Credentials, so `gcloud auth
+application-default login` once against the project in `.env`.
+
+### Tests
+
+```bash
+python -m pytest -q                        # Python + the Node suites under tests/js/
+ruff check star tests scripts harness
+```
+
+The browser modules are tested through Node: `tests/test_js_auth.py` globs `tests/js/*.mjs`
+and shells out, and it asserts the glob is not silently empty.
+
+## Environment
+
+Values live in `.env`, which is gitignored. `.env.example` documents each one.
+
+**Required.** The app refuses to boot without these, because each fails closed but silently:
+
+| Variable | What it is |
+| --- | --- |
+| `GOOGLE_API_KEY` | Gemini, via Google AI Studio |
+| `PARALLEL_API_KEY` | Parallel Search API |
+| `GOOGLE_CLOUD_PROJECT` / `FIREBASE_PROJECT_ID` | The project Firestore and Auth live in |
+| `FIREBASE_API_KEY` | Public web key. Identifies the project to the browser; not a secret |
+
+**Optional.** All have working defaults:
+
+| Variable | What it changes |
+| --- | --- |
+| `GOOGLE_OAUTH_CLIENT_ID` | Enables Google account linking. Absent, linking reads as unavailable and every other path works |
+| `STAR_MAX_SEARCHES_PER_BUILD` | Search ceiling for one room build |
+| `STAR_MAX_SCENE_CHARS`, `STAR_MAX_SEARCHES_PER_CHECK`, `STAR_CHECK_TIMEOUT_SECONDS` | Script Check limits |
+| `STAR_MCP_ALLOWED_ORIGINS` | Origins the MCP door accepts |
+| `STAR_FAST_MODEL`, `STAR_SMART_MODEL` | Pinned Gemini model ids |
+
+No secret is ever served to the browser. `/config.js` carries the public Firebase key and
+the public OAuth client id, and a test asserts the exact set of exports so an added key
+fails rather than ships.
+
+## The MCP server
+
+`POST /mcp`, Streamable HTTP, on the same origin as the app. Authenticate with a per-user
+token issued from **Your card** in the web app:
+
+```
+Authorization: Bearer star_<token_id>.<secret>
+```
+
+Tokens are stored as sha256, shown once at issue, never recoverable, and revocable. A token
+can only be issued to an account with a linked identity, because an anonymous account's only
+proof of ownership is a `localStorage` entry.
+
+Four tools and no fifth: `list_rooms`, `get_room`, `build_room`, `check_scene`. `get_room`
+**is** `build_room`'s poll. Every description is written for a reader who cannot see a
+screen, and every refusal names what failed and what to do next.
+
+**Known limitation.** MCP's authorization spec expects OAuth 2.1 with protected-resource
+metadata discovery, and STAR ships none. Any client that can be configured with a static
+bearer header works; a client that insists on discovering an authorization server will not.
+
+## The persona harness
+
+`harness/` drives Gemini-backed personas against the MCP surface and records what each one
+did, so "synthetic user testing" is an artifact in the repo rather than a claim in a
+writeup. The client is `urllib.request` from the standard library: no new dependency, and
+nothing third-party in the frame. Transcripts live in `harness/runs/`.
+
+The bar it measures: **every failure a persona could not diagnose from the response alone is
+either fixed or written down with the reason it stands.**
+
+`harness/` is not deployed. It is excluded from both the image and the source upload.
+
+## Deployment
+
+One Cloud Run service, one instance, serving the API, the SSE stream, the static app, and
+the MCP endpoint from the same process.
+
+```bash
+GOOGLE_OAUTH_CLIENT_ID=... FIREBASE_API_KEY=... bash scripts/deploy.sh
+```
+
+`--max-instances=1 --min-instances=1 --no-cpu-throttling` are load-bearing rather than
+tuning. The run registry and both abuse guards are in-memory module state; anything that
+scales past one instance has to move all three to a shared store in the same change.
+`scripts/deploy.sh` explains each flag and what breaks without it.
+
+**No Firestore ruleset is deployed, and that is deliberate.** With none deployed Firestore
+denies all client access, so the server holding Application Default Credentials is the only
+path to the data and every read is scoped by uid. One boundary rather than two. Deploying
+permissive test-mode rules would silently void it.
+
+## Design
+
+The interface is **THE MORGUE** — the newspaper clipping library behind the newsroom, where
+nothing gets filed without a stamp saying who found it, where, and when. The metaphor was
+chosen on one test: it *describes* the system rather than dressing it. A ledger entry is a
+clipping file, an unsourced URL is an unstamped clip, a category is a subject drawer.
+
+Full direction, palette, type stack, and the behavioural obligations that bind every
+surface: [`docs/design/DIRECTION.md`](docs/design/DIRECTION.md).
 
 ## Runtime services (hackathon compliance)
 
-- `google-adk` / `google-genai` — imported and called: `star/agents/*.py`
-- `parallel-web` (Parallel **Search API**) — imported and called at runtime:
-  `star/tools/parallel_search.py`
-- All AI at runtime is Gemini on Google Cloud. No other AI models or APIs.
+- `google-adk` / `google-genai` — imported and called at runtime: `star/agents/*.py`
+- `parallel-web` (Parallel **Search API**) — imported and called at runtime by **both**
+  pipelines: `star/tools/parallel_search.py`
+- All AI at runtime is Gemini on Google Cloud. No other AI model, API, or framework.
 
 ## License
 

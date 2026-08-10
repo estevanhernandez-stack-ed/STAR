@@ -8,6 +8,24 @@ PROJECT="${PROJECT:-star-research-dept}"
 REGION=us-central1
 SERVICE=star
 
+# GOOGLE_OAUTH_CLIENT_ID is optional at boot and the app degrades honestly
+# without it: /config.js serves "", the card renders linking as unavailable and
+# says why, and every other path works. It is NOT optional here in the same way,
+# because --set-env-vars REPLACES the service's whole variable set. Deploying
+# without it silently REMOVES it from a service that had it, and the only symptom
+# is that linking quietly stops being offered — on a surface nobody checks after
+# a deploy, because the room still builds and the rail still fills.
+#
+# So: warn loudly, do not fail. Failing would block a deploy for a feature the
+# design says is allowed to be absent.
+if [[ -z "${GOOGLE_OAUTH_CLIENT_ID:-}" ]]; then
+  echo "WARNING: GOOGLE_OAUTH_CLIENT_ID is not set." >&2
+  echo "         Google account linking will be UNAVAILABLE on the deployed service," >&2
+  echo "         and if the running service currently has it, this deploy REMOVES it." >&2
+  echo "         Export it (it lives in .env) if that is not what you want." >&2
+  echo >&2
+fi
+
 # --max-instances=1 AND --min-instances=1 are both load-bearing, not tuning —
 # neither alone is enough. `_runs` and the abuse guards in star/guards.py
 # (_ip_limiter, _daily_cap) are per-process module-level state.
@@ -57,7 +75,7 @@ gcloud run deploy "$SERVICE" \
   --no-cpu-throttling \
   --memory=2Gi \
   --timeout=900 \
-  --set-env-vars="GOOGLE_CLOUD_PROJECT=$PROJECT,FIREBASE_PROJECT_ID=$PROJECT,GOOGLE_GENAI_USE_VERTEXAI=FALSE,FIREBASE_API_KEY=${FIREBASE_API_KEY:?set FIREBASE_API_KEY in the environment before deploying}" \
+  --set-env-vars="GOOGLE_CLOUD_PROJECT=$PROJECT,FIREBASE_PROJECT_ID=$PROJECT,GOOGLE_GENAI_USE_VERTEXAI=FALSE,FIREBASE_API_KEY=${FIREBASE_API_KEY:?set FIREBASE_API_KEY in the environment before deploying}${GOOGLE_OAUTH_CLIENT_ID:+,GOOGLE_OAUTH_CLIENT_ID=$GOOGLE_OAUTH_CLIENT_ID}" \
   --set-secrets="GOOGLE_API_KEY=star-google-api-key:latest,PARALLEL_API_KEY=star-parallel-api-key:latest"
 
 gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" \
