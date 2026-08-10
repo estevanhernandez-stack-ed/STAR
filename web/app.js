@@ -667,9 +667,17 @@ function mountRoomDrawer(el, doc, plan, filed) {
   // (star/models.py), so a non-empty one is proof something was written even
   // when nothing in it parsed — that case stays FILED, and clip.js already
   // has the copy for it.
+  // Says only what the payload proves — that nothing was filed — and not WHY.
+  // The earlier wording ("when the run stopped") smuggled in a second claim,
+  // that the run ended early. True for the salvaged case this branch was
+  // written for, but the gate is not scoped to `partial`: a "complete" room
+  // reaches it too if a researcher's turn ever commits an empty output_key
+  // while its siblings finish. Nobody has produced that state and it may not
+  // be reachable, which is exactly why the copy should not bet on it. An
+  // interface that explains a cause it cannot see is guessing out loud.
   if (!categoryFiled(doc)) {
     setDrawerState(el, "failed", {
-      message: "This researcher had not filed anything when the run stopped.",
+      message: "This researcher filed nothing for this room.",
     });
     return;
   }
