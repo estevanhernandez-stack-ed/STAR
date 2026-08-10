@@ -1074,3 +1074,50 @@ of "items 12 and 13" is not the same as authorising a private repo to go public.
 in front of them is verified and the evidence is above; the acts themselves are the
 builder's. The README screenshot needs a logged-in browser session that owns a filed room,
 which is the builder's session and a ten-second job there.
+
+### /build — autonomous run summary
+
+**12 of 13 items complete.** Item 13's ship half (push, visibility flip, deploy, video,
+Devpost) is the builder's and is deliberately not done. 473 tests green,
+`ruff check star tests scripts harness` at 0, 36 commits ahead of `origin/main`.
+
+**The checklist was not revised.** Its sequence held from first item to last, with one
+scheduling deviation taken on purpose: item 1 is a browser-and-console step only the builder
+can run, and its failure reshapes items 2-4 and nothing else, so Gate B ran in parallel with
+it rather than idling. Item 1 still landed before a line of Gate A code was written, which is
+the whole of the ordering argument `/checklist` made.
+
+**Four checkpoints, all passed.** Checkpoint 2 was the one that earned its place: Pipeline B
+ran live against a real room, `parallel_search` genuinely executed (`search_count > 0`, the
+partner-track pass/fail), and `parse_rate` came back 1.0, which retired the schema'd-structurer
+fallback the spec had held in reserve.
+
+**Six defects found that no unit test would have caught**, each in a different way:
+
+1. **The search budget inverted at its safest setting.** `state.get(...) or default` meant
+   `STAR_MAX_SEARCHES_PER_CHECK=0` handed a run the build's 30. Found by reading a subagent's
+   own honest flag rather than by a test.
+2. **The anchor matcher silently lost a mark.** An occurrence scan advancing by the needle's
+   length cannot find a repeat hiding under an accepted span. Found by mutation-testing a
+   suite that had passed on the first run.
+3. **A partial room threw a `ReferenceError`** and took the whole docket with it, because
+   `renderDocket` read a free variable on the one branch that evaluates it. Shipped, and
+   invisible to every complete run.
+4. **The verifier answered from memory.** It spent 1 of 8 searches and stamped nothing on the
+   most obvious anachronism in the scene. Found by a live run, not by a fixture.
+5. **An off-story scene read as a clean pass.** Four confirmed, nothing saying the room had
+   answered none of them. Found by a persona, which is exactly what the harness is for.
+6. **The harness's own spend guard charged refusals**, and the starved persona wrote five
+   verdicts off the research bible, three of them wrong. The single sharpest artifact this
+   cycle produced: the failure mode the whole architecture exists to refuse, reproduced in one
+   turn by the same class of model the pipeline runs on.
+
+**Three claims in the written record turned out to be false**, all of the same shape — copy
+asserting a control the code did not have. `.env.example` said security came from "Firestore
+rules" this project deliberately does not deploy. The README said STAR "verifies" claims, in
+the first paragraph a judge reads. The intake said "nothing is visible without your sign-in
+token", which a long-lived MCP credential makes false. Each was cut or corrected rather than
+softened.
+
+**And one of mine.** The first route audit reported the SSE stream as `_require_uid`-guarded
+by matching a docstring. The code was right; the audit nearly shipped a false clean.
