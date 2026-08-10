@@ -131,11 +131,53 @@ function buildSearchLog(searches, { withQueries }) {
     : "";
 }
 
+/** How long ago the newest search landed, as M:SS — the same shape the run
+ *  meter uses, so the two clocks on screen read as the same kind of number.
+ *  A future or nonsense `since` clamps to 0:00 rather than rendering a
+ *  negative age. */
+function ageText(since, now) {
+  const secs = Math.max(0, Math.floor((now - since) / 1000));
+  return `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
+}
+
+/** Re-times every visible search clock under `root`. Called once a second by
+ *  the same interval that drives the run meter (web/app.js) rather than by a
+ *  timer of its own — one clock source, and it stops when the run stops.
+ *
+ *  Rewrites one span's text instead of re-rendering the drawer: a full
+ *  re-render every second would drop the user's text selection mid-read, and
+ *  these cards are full of URLs and quotes worth selecting. The timestamp
+ *  lives on the element as a data attribute so it survives whatever the last
+ *  render wrote. */
+export function tickDrawerClocks(root, now = Date.now()) {
+  for (const el of root.querySelectorAll(".search-age[data-since]")) {
+    const since = Number(el.dataset.since);
+    if (Number.isFinite(since)) {
+      el.textContent = ` · last search ${ageText(since, now)} ago`;
+    }
+  }
+}
+
 function renderSearching(body, data = {}) {
   const searches = Array.isArray(data.searches) ? data.searches : [];
   const log = buildSearchLog(searches, { withQueries: true });
+  // A stalled researcher and a working one look identical without this: the
+  // card sits on "Searching" either way, and nothing resolves it until the
+  // run ends and sweepUnfiledDrawers (web/app.js) marks the stragglers.
+  //
+  // Deliberately a number and not a warning state. We have no honest
+  // threshold for "stuck" — a researcher can legitimately go a long while
+  // between calls while the model reasons — so this states the fact and
+  // lets the reader judge, rather than inventing a cutoff and crying wolf
+  // at an agent that was working the whole time. Same discipline as the run
+  // meter: it counts up from what already happened and predicts nothing.
+  const newest = searches[searches.length - 1];
+  const since = Number(newest?.at);
+  const age = Number.isFinite(since)
+    ? `<span class="search-age" data-since="${since}"> &middot; last search ${ageText(since, Date.now())} ago</span>`
+    : "";
   const tally = searches.length
-    ? `<p class="drawer-meta drawer-counts">${plural(searches.length, "search")} landed</p>`
+    ? `<p class="drawer-meta drawer-counts">${plural(searches.length, "search")} landed${age}</p>`
     : "";
   body.innerHTML = `
     <p class="drawer-status">Searching</p>

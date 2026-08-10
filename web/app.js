@@ -22,7 +22,7 @@ import {
   refreshRail,
   setRoomRenderer,
 } from "/shell.js";
-import { createDrawerGrid, setDrawerState } from "/drawer.js";
+import { createDrawerGrid, setDrawerState, tickDrawerClocks } from "/drawer.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -115,6 +115,10 @@ function elapsedLabel() {
 
 function updateMeter() {
   $("search-meter").textContent = `${searchCount} cited searches so far · ${elapsedLabel()}`;
+  // One interval drives both clocks, so a drawer's "last search N ago" can
+  // never disagree with the run meter beside it, and both stop the moment
+  // the run does.
+  tickDrawerClocks(progressPanel);
 }
 
 function startElapsedTimer() {
@@ -227,6 +231,12 @@ async function buildRoom() {
         s.searches.push({
           objective: ev.objective || "",
           queries: Array.isArray(ev.queries) ? ev.queries : [],
+          // Client arrival time, not a server timestamp. The drawer only
+          // ever renders this as an age relative to the same clock, so the
+          // two never have to agree — and an SSE event's arrival is when
+          // the viewer actually learned of the search, which is what the
+          // line on screen claims.
+          at: Date.now(),
         });
         categorySearch.set(category, s);
         // A category that already filed must never visually un-stamp back
