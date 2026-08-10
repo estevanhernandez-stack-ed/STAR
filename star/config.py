@@ -77,8 +77,18 @@ def check_timeout_seconds() -> int:
 # is the failure that looks like a broken client on a laptop and works fine in
 # production — the same trap `spec.md > Deployment` names for the OAuth
 # client's redirect URIs.
+# BOTH Cloud Run hostnames, because the service genuinely answers on both and a
+# reader can arrive at either. `gcloud run deploy` prints the project-number form
+# and the hash form, and as of the 2026-08-10 deploy `gcloud run services
+# describe --format='value(status.url)'` reports the HASH form as canonical while
+# the project-number form keeps serving 200. Registering one and not the other is
+# not a hypothetical: it is what made the account-linking button fail with
+# redirect_uri_mismatch on the live site while the same flow passed by hand, and
+# the OAuth client's Authorized redirect URIs need both for the same reason this
+# list does.
 _DEFAULT_MCP_ORIGINS = (
     "https://star-390753828501.us-central1.run.app",
+    "https://star-cdhog5ebsq-uc.a.run.app",
     "http://localhost:8000",
 )
 
