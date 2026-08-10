@@ -11,6 +11,7 @@ import asyncio
 import json
 import logging
 import os
+import secrets
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -85,7 +86,16 @@ _daily_cap = DailyCap(max_per_day=config.max_rooms_per_day())
 
 
 def _require_uid(authorization: str | None) -> str:
-    """Every /api route is scoped to a caller. No token, no data."""
+    """Scope a request to its caller. No token, no data.
+
+    Every /api route calls this EXCEPT stream_events, which cannot: an
+    EventSource sends no custom headers, so there is no Authorization to
+    read. That route is guarded by a per-run capability instead — see its
+    docstring. This docstring used to claim the universal, and that claim
+    is how the stream shipped with no check at all for most of this
+    project's life: it is the first thing anyone auditing the auth posture
+    reads, and it told them the answer they were looking for.
+    """
     uid = verify_token(authorization)
     if uid is None:
         raise HTTPException(401, "Sign-in required.")
@@ -203,6 +213,21 @@ def _persist(run: dict, run_id: str, status: str) -> None:
     """Best-effort persistence. Must never affect the in-memory run state:
     the outcome was already decided by the caller before this runs, and a
     Firestore hiccup here should cost only durability, never correctness.
+
+    `created_at` is read off the run rather than minted here, and that is a
+    correctness point, not tidiness. This function writes the same document
+    twice for every build — once at creation with status "running", once at
+    the terminal status — and `.set()` replaces the whole document, so a
+    fresh `now()` on the second write moved created_at to the moment the run
+    FINISHED. The browser stamps that value on every receipt as the day the
+    sources came back (web/clip.js's `RET`), and a build that starts at 23:58
+    and lands at 00:03 would have stamped the wrong date on real sources.
+    One timestamp, taken once, at creation.
+
+    The fallback exists for a run dict assembled outside create_room (the
+    tests do this). Stamping now is worse than stamping the creation time and
+    better than raising out of a function whose whole contract is that it
+    never costs anything but durability.
     """
     try:
         _store.save(
@@ -212,7 +237,8 @@ def _persist(run: dict, run_id: str, status: str) -> None:
                 run_id,
                 run.get("result"),
                 status,
-                datetime.now(timezone.utc).isoformat(),  # noqa: UP017
+                run.get("created_at")
+                or datetime.now(timezone.utc).isoformat(),  # noqa: UP017
             ),
         )
     except Exception:
@@ -299,13 +325,28 @@ async def _run_pipeline(run_id: str, treatment: str) -> None:
         category = _CATEGORY_BY_AUTHOR.get(author)
 
         for call in event.get_function_calls() or []:
-            objective = (call.args or {}).get("objective", "")
+            args = call.args or {}
+            objective = args.get("objective", "")
+            # The literal query strings this call sent to Parallel Search.
+            # star/tools/parallel_search.py's contract is one objective plus
+            # 2-4 supporting queries, so these are the most concrete evidence
+            # the run can offer while it is still running: not "searching…"
+            # but the exact words that went over the wire. The model fills
+            # `search_queries`, so its type is not guaranteed — anything that
+            # is not a list of strings is dropped rather than trusted.
+            raw_queries = args.get("search_queries")
+            queries = (
+                [q for q in raw_queries if isinstance(q, str) and q.strip()]
+                if isinstance(raw_queries, list)
+                else []
+            )
             run["search_count"] += 1
             _push(
                 run,
                 "search",
                 agent=label,
                 objective=objective,
+                queries=queries,
                 category=category.value if category else None,
             )
 
@@ -323,7 +364,20 @@ async def _run_pipeline(run_id: str, treatment: str) -> None:
             )
             is_final = getattr(event, "is_final_response", lambda: True)()
             if text.strip() and is_final:
-                _push(run, "agent_done", agent=label)
+                # Carries `category` for the same reason "search" does: the
+                # browser routes this to one of four drawers, and without it
+                # the client has to reverse-map the friendly English label
+                # back to a category. That made _FRIENDLY's wording a load-
+                # bearing API contract — rewording "Props researcher" would
+                # silently stop that drawer ever filing, with nothing to
+                # catch it. `agent` stays for display; `category` is what
+                # the UI routes on.
+                _push(
+                    run,
+                    "agent_done",
+                    agent=label,
+                    category=category.value if category else None,
+                )
 
     _maybe_warn_empty_ledger(run)
 
@@ -345,16 +399,35 @@ async def _run_pipeline(run_id: str, treatment: str) -> None:
 
 def _partial_message(cause: str) -> str:
     """Shared by both salvage sites so the promise stays consistent with what
-    the browser can actually show. `_salvage`'s payload does carry
-    `categories`, but web/app.js's showResults only ever renders
-    story_profile, research_plan, and research_bible — there is no tab for
-    categories yet. Claiming the findings are "here" overclaims what the
-    user can see right now; say what is true instead.
+    the browser can actually show.
+
+    Two rewrites, both for the same reason — this sentence keeps promising
+    more than the run can guarantee:
+
+    1. It used to end "they'll be readable here once the room view for them
+       ships", honest while `_salvage`'s `categories` had nowhere to render.
+       That view shipped in Task 6, so the deferral became the false part.
+    2. Its replacement said "Every researcher's findings and the sources
+       behind them were gathered". Neither half survives inspection. `_salvage`
+       returns True when ANY category has findings, so a ceiling that trips
+       while two researchers are still working produces this exact message
+       over two empty categories — "every researcher" is asserted, never
+       checked. And `parse_findings` keeps a Finding whose every cited URL
+       failed to resolve, with `citations=[]`; `_maybe_warn_empty_ledger`
+       above exists because a whole run can land that way, so "the sources
+       behind them" is not guaranteed for a single fact, let alone all of
+       them.
+
+    What is true without qualification, in every branch that reaches here, is
+    that whatever did get filed is saved and reachable. This says that and
+    stops. "did file" is doing the work: it scopes the sentence to what exists
+    instead of asserting a set. The room view itself counts the categories and
+    states the number (web/app.js's noBibleCopy), which is the right place for
+    a count: it has the payload, and this function has only a cause string.
     """
     return (
-        f"{cause} There is no research bible to read yet, but every "
-        "researcher's findings and sources were gathered and are safely "
-        "saved — they'll be readable here once the room view for them ships."
+        f"{cause} The findings the researchers did file are saved in this "
+        "room's drawers."
     )
 
 
@@ -530,9 +603,27 @@ async def create_room(
         "events": [],
         "status": "running",
         "result": None,
+        # The capability that guards this run's SSE stream. See stream_events
+        # for why the stream cannot use the Authorization header every other
+        # route does, and why this is a per-run secret rather than the
+        # caller's ID token. Full 32 hex characters, unlike run_id's truncated
+        # 12: run_id is an identifier that appears in URLs and logs, this is a
+        # secret, and they should not have the same entropy.
+        #
+        # Deliberately NOT persisted. _persist builds its document from
+        # room_to_document(run["result"], …), never from this dict, and
+        # get_room's in-memory branch returns only status and result — so this
+        # key lives and dies in this process, with the run it guards. If a
+        # future change ever serialises the run dict wholesale, this field is
+        # the one that must be stripped first.
+        "stream_key": secrets.token_hex(16),
         "search_count": 0,
         "ledger": SourceLedger(),
         "uid": uid,
+        # Taken once, here, and reused by every _persist call this run makes
+        # and by get_room's in-memory branch. See _persist for what a second
+        # timestamp cost.
+        "created_at": datetime.now(timezone.utc).isoformat(),  # noqa: UP017
     }
     # Best-effort, written before the task starts: if this Cloud Run instance
     # recycles mid-build, the run vanishes from memory but this document
@@ -551,14 +642,53 @@ async def create_room(
     # Hold a strong reference so the event loop can't garbage-collect the
     # in-flight pipeline (asyncio keeps only weak refs to bare tasks).
     _runs[run_id]["task"] = asyncio.create_task(_execute(run_id, treatment))
-    return {"run_id": run_id}
+    return {"run_id": run_id, "stream_key": _runs[run_id]["stream_key"]}
 
 
 @app.get("/api/rooms/{run_id}/events")
 async def stream_events(
-    run_id: str, last_event_id: str | None = Header(None, alias="Last-Event-ID")
+    run_id: str,
+    k: str | None = None,
+    last_event_id: str | None = Header(None, alias="Last-Event-ID"),
 ) -> StreamingResponse:
-    if run_id not in _runs:
+    """Stream one run's progress, to the caller who started it.
+
+    This is the only /api route that cannot use the Authorization header, and
+    that is a browser constraint rather than a choice: EventSource sends no
+    custom headers, so `_require_uid` has nothing to read. For most of this
+    project's life the route consequently checked nothing at all, while
+    `_require_uid`'s own docstring asserted the universal it was the sole
+    exception to — anyone holding a run_id could stream someone else's
+    research: their objectives, their query strings, their agents' progress.
+    That docstring now names this exception explicitly, because it is the
+    first thing anyone auditing the auth posture reads.
+
+    `k` is a per-run capability minted in create_room and returned to the
+    caller that started the run, alongside run_id. The alternative was passing
+    the Firebase ID token as a query parameter, which would have written a
+    live, replayable credential into Cloud Run's access logs and every
+    Referer header — the same class of mistake star/auth.py was being fixed
+    for in the same breath. A per-run key is narrower than the identity it
+    stands in for: it grants exactly one run's event stream, and it dies with
+    the process that holds the run.
+
+    It is a query parameter too, so it lands in Cloud Run's requestUrl field
+    like any other. That exposure is REDUCED, not avoided, and the difference
+    is the whole argument: a leaked ID token is a live credential for one
+    person's entire account until it expires, while a leaked stream key buys
+    one already-finished run's event log on an instance that has since
+    restarted.
+
+    A bad key 404s rather than 403ing, and with the same detail as an unknown
+    run. 403 would confirm that a guessed run_id exists, turning this check
+    into an oracle for the thing it protects.
+
+    compare_digest rather than `!=` because this is a secret comparison and
+    the timing of a mismatch should not describe the secret. `or ""` because
+    compare_digest raises on None.
+    """
+    run = _runs.get(run_id)
+    if run is None or not secrets.compare_digest(k or "", run["stream_key"]):
         raise HTTPException(404, "Unknown run")
 
     async def generate():
@@ -601,7 +731,20 @@ async def get_room(run_id: str, authorization: str | None = Header(None)) -> dic
 
     run = _runs.get(run_id)
     if run is not None and run.get("uid") == uid:
-        return {"status": run["status"], "result": run["result"]}
+        # `created_at` is merged in rather than left to the pipeline, because
+        # `run["result"]` is built from ADK session state (see _run_pipeline
+        # and _salvage) and that state has never held a wall-clock time. The
+        # stored branch below carries the field inside `result`
+        # (star/store.py's document_to_room), and these two branches serve the
+        # SAME room minutes apart — a just-finished build reads through here,
+        # the same room read from the rail tomorrow reads through Firestore.
+        # If only one of them carried the date, a receipt's `RET` stamp would
+        # appear or vanish depending on which path answered, which is the kind
+        # of drift a provenance claim cannot afford.
+        result = run["result"]
+        if result is not None:
+            result = {**result, "created_at": run.get("created_at") or ""}
+        return {"status": run["status"], "result": result}
 
     # Off the event loop; see list_rooms above for why.
     document = await asyncio.to_thread(_store.get, uid, run_id)

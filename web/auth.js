@@ -111,7 +111,20 @@ async function acquireToken() {
   }
 }
 
-export async function getIdToken() {
+/** The session's ID token.
+ *
+ *  `{ fresh: true }` discards the cached token first, so the next call goes
+ *  back to Identity Toolkit instead of handing back the one the server just
+ *  rejected. It does NOT bypass the concurrency guard: a caller asking for a
+ *  fresh token while an acquire is already in flight awaits that one, because
+ *  the in-flight request is itself producing a token newer than the rejected
+ *  one, and starting a second would be exactly the double-sign-up the guard
+ *  exists to prevent. */
+export async function getIdToken({ fresh = false } = {}) {
+  if (fresh) {
+    idToken = null;
+    expiresAt = 0;
+  }
   if (idToken && Date.now() < expiresAt) return idToken;
   if (pending) return pending;
 
@@ -123,9 +136,77 @@ export async function getIdToken() {
   }
 }
 
-export async function authedFetch(url, options = {}) {
-  const token = await getIdToken();
+function send(url, options, token) {
   const headers = { ...(options.headers || {}) };
   if (token) headers["Authorization"] = `Bearer ${token}`;
   return fetch(url, { ...options, headers });
+}
+
+/** One retry on 401, and only on 401.
+ *
+ *  THE BUG. Seen on cold loads since Task 2 and reproduced again in Task 7:
+ *  `GET /api/rooms` comes back 401 at roughly 393ms, with a real token in the
+ *  header, and the rail paints empty for a reader who has saved rooms. On demo
+ *  day that reader is a judge, whose first impression is a product that lost
+ *  their work.
+ *
+ *  WHAT IS ACTUALLY KNOWN, because the standing explanation turned out to be
+ *  wrong. It was assumed to be a propagation lag — a token too new for Google
+ *  to accept yet. Measured directly in Task 7: a token minted seconds earlier
+ *  and sent at an age of 0ms was accepted five times out of five. Token age is
+ *  not the cause, so a delay would not have fixed it and neither this retry nor
+ *  anything else on this side can be claimed to. What IS established is that the
+ *  refusal is intermittent and short-lived, that it is not a property of the
+ *  token, and that star/auth.py's verify_token returns None for EVERY failure
+ *  including a transient one in verification itself — so a forged token and a
+ *  server that could not verify a good one are the same 401 here.
+ *
+ *  WHY A RETRY AND NOT A DELAY. A delay is a guess about a window nobody has
+ *  measured, and now that the window is measured it is not about time-since-
+ *  minting at all. A retry costs one round trip in exactly the case that was
+ *  already broken and nothing at all otherwise, and it recovers every cause
+ *  that is transient — which, on the evidence, this one is.
+ *
+ *  WHY ONCE. Twice is a loop with a small number in it. If the second attempt
+ *  is also refused, the caller gets that response and says so: shell.js's
+ *  refreshRail draws the rail with "Your filed rooms could not be reached just
+ *  now. They are not lost — reload to try again.", and app.js's buildRoom shows
+ *  the banner. A wrong answer arriving honestly beats a spinner that never
+ *  resolves — but only if the answer is actually honest, and this comment used
+ *  to claim "draws an empty rail" while the rail said "Nothing filed yet. Paste
+ *  a treatment below and the department gets started." That is not empty, it is
+ *  an assertion that the reader has no saved work, on the exact screen where
+ *  this file has just established that we do not know. Fixed in shell.js's
+ *  renderRail, and the sentence above is what it now renders.
+ *
+ *  WHY RETRYING A POST IS SAFE HERE. `_require_uid` is the first statement of
+ *  create_room (star/server.py), ahead of the rate limiter, the daily cap,
+ *  and the run itself. It is NOT the first statement of every handler:
+ *  stream_events has no Authorization header to read (EventSource sends no
+ *  custom headers) and is guarded by a per-run key instead. The conclusion
+ *  below only ever rested on create_room, but a premise stated wider than it
+ *  holds is a premise the next reader will reuse somewhere it does not. A 401 from this origin therefore
+ *  means the request was refused before it could spend anything, so replaying
+ *  it cannot start a second build. This is a property of that server, not a
+ *  general truth about retrying POSTs, which is why it is written down here.
+ *
+ *  The retry re-mints rather than re-sending the same token. That covers the
+ *  one cause a client can actually fix — a token this browser believes is live
+ *  and the server does not — and it is not claimed to fix the cause measured
+ *  above, which is not on this side. A null from `getIdToken` means sign-in
+ *  itself is down, and the original 401 is returned untouched: inventing a
+ *  different failure would tell the caller a different story about the same
+ *  event.
+ *
+ *  WHAT THIS DOES NOT FIX, stated because one cold load in Task 7 did it: both
+ *  attempts can be refused, roughly a second apart, and then the rail is empty
+ *  and says so. This narrows the window; it does not close it. Closing it needs
+ *  to start on the server, where the cause is — see the note in star/auth.py. */
+export async function authedFetch(url, options = {}) {
+  const first = await send(url, options, await getIdToken());
+  if (first.status !== 401) return first;
+
+  const token = await getIdToken({ fresh: true });
+  if (!token) return first;
+  return send(url, options, token);
 }

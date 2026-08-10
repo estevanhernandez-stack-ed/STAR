@@ -4,67 +4,130 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>STAR — Story &amp; Treatment Agentic Research</title>
-  <link rel="stylesheet" href="/styles.css" />
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
+  <link rel="stylesheet" href="/tokens.css" />
+  <link rel="stylesheet" href="/shell.css" />
+  <link rel="stylesheet" href="/drawer.css" />
+  <link rel="stylesheet" href="/clip.css" />
+  <link rel="stylesheet" href="/bible.css" />
+  <script src="/vendor/marked.min.js"></script>
+  <script src="/vendor/purify.min.js"></script>
 </head>
 <body>
   <div id="auth-error" class="banner hidden">
-    Could not start a session. STAR needs Google sign-in to run. Check your connection and reload.
+    Could not start a session with the department. Check your connection and reload.
   </div>
-  <header>
-    <div class="brand">
-      <span class="star-mark">✶</span>
-      <div>
-        <h1>STAR</h1>
-        <p class="tagline">Story &amp; Treatment Agentic Research</p>
-      </div>
-    </div>
-    <p class="strap">Every studio has a research department. Now every writer does.</p>
-  </header>
 
-  <main>
-    <!-- Intake panel -->
-    <section id="intake-panel" class="panel">
-      <h2>Hand your treatment to the department</h2>
-      <p class="hint">
-        A logline works; a paragraph works better. Era, place, and what your
-        characters actually do gives the researchers the most to chase down.
-      </p>
-      <textarea id="treatment" rows="7"
-        placeholder="A period drama set in 1962 Memphis. A 19-year-old session guitarist talks her way into a recording studio's house band while moonlighting as a getaway driver for her brother's crew..."></textarea>
-      <div class="actions">
-        <button id="build-btn">Build the Room</button>
-        <span id="intake-error" class="error"></span>
+  <div class="cabinet">
+    <!-- The rail: every saved room, cheap by construction (room_summary
+         omits the bible and categories server-side). -->
+    <aside class="rail" id="rail" aria-label="Saved rooms">
+      <div class="rail-head">
+        <span class="star-mark" aria-hidden="true">✶</span>
+        <div class="rail-brand">
+          <h1>STAR</h1>
+          <p class="rail-tagline">Story &amp; Treatment Agentic Research</p>
+        </div>
       </div>
-    </section>
 
-    <!-- Live progress -->
-    <section id="progress-panel" class="panel hidden">
-      <h2>The department is working<span class="ellipsis"></span></h2>
-      <ul id="timeline"></ul>
-      <p id="search-meter" class="meter"></p>
-    </section>
+      <button id="new-room-btn" class="rail-new" type="button">New room</button>
 
-    <!-- Results -->
-    <section id="results-panel" class="panel hidden">
-      <div class="results-header">
-        <h2 id="result-title">Your research room</h2>
-        <span id="result-stats" class="meter"></span>
-      </div>
-      <nav class="tabs">
-        <button class="tab active" data-tab="bible">Research Bible</button>
-        <button class="tab" data-tab="profile">Story Profile</button>
-        <button class="tab" data-tab="plan">Research Plan</button>
+      <nav class="rail-list" id="rail-list" aria-label="Saved rooms list">
+        <!-- Rendered by shell.js's renderRail(). -->
       </nav>
-      <article id="tab-bible" class="tab-content markdown"></article>
-      <article id="tab-profile" class="tab-content hidden"></article>
-      <article id="tab-plan" class="tab-content hidden"></article>
-      <div class="actions">
-        <button id="new-room-btn" class="secondary">Start another project</button>
-      </div>
-    </section>
-  </main>
+    </aside>
+
+    <!-- The stage: intake, live progress, or a filed room. Exactly one
+         panel is visible at a time — shell.js owns the switch. -->
+    <main class="stage" id="stage">
+      <!-- The intake. Two columns: what you hand over on the left, what comes
+           back on the right. The retention notice stays ABOVE the textarea —
+           research obligation 5 is "state what happens to the treatment,
+           in the intake, before the paste", and its copy is verified
+           clause-by-clause against what star/store.py persists. -->
+      <section id="intake-panel" class="panel intake">
+        <div class="intake-paste">
+          <h2>Hand your treatment to the department</h2>
+          <p class="hint">
+            A logline works; a paragraph works better. Era, place, and what
+            your characters actually do is what turns a guess into a grounded
+            fact.
+          </p>
+          <p class="retention">
+            Your treatment itself is not stored — only the profile the
+            department extracts from it, and the research it produces. Both
+            are kept under this browser's identity, so you can come back to
+            them. Nothing is visible without your sign-in token.
+          </p>
+          <textarea id="treatment" rows="7"
+            placeholder="A period drama set in 1962 Memphis. A 19-year-old session guitarist talks her way into a recording studio's house band while moonlighting as a getaway driver for her brother's crew..."></textarea>
+          <div class="actions">
+            <button id="build-btn">Build the Room</button>
+            <span id="intake-error" class="error"></span>
+          </div>
+        </div>
+
+        <!-- The four plates, at index scale. Each remit is compressed from the
+             instruction its researcher actually runs on
+             (star/agents/researchers.py's _CATEGORY_BRIEFS). -->
+        <aside class="intake-index" aria-labelledby="intake-index-heading">
+          <h3 id="intake-index-heading" class="intake-index-heading">Four drawers come back</h3>
+          <ul class="plate-list">
+            <li>
+              <span class="plate-label">Setting &amp; Atmosphere</span>
+              <span class="plate-remit">Light, sound, weather, dress, money, food — the texture of a place in its period.</span>
+            </li>
+            <li>
+              <span class="plate-label">Objects &amp; Props</span>
+              <span class="plate-remit">What characters hold, drive and wear: makes, models, materials, and the era's own words for them.</span>
+            </li>
+            <li>
+              <span class="plate-label">Logistics</span>
+              <span class="plate-remit">How people and things move: routes, distances, travel times, schedules, procedures.</span>
+            </li>
+            <li>
+              <span class="plate-label">Forces &amp; Conflicts</span>
+              <span class="plate-remit">What stands in the way: institutions, authorities, rivals, laws, and how they actually operated.</span>
+            </li>
+          </ul>
+          <p class="intake-rule">
+            Every fact is filed with the sources that came back for it, the day
+            they were retrieved, and each source's own excerpt where there was
+            one. A cited link that never came back from a search is stamped,
+            not dropped.
+          </p>
+        </aside>
+      </section>
+
+      <section id="progress-panel" class="panel hidden">
+        <h2>The department is working<span class="ellipsis"></span></h2>
+        <ul id="timeline"></ul>
+        <p id="search-meter" class="meter"></p>
+      </section>
+
+      <!-- A filed room. The drawers ARE the room: four hanging folders on
+           the cabinet's own ground, each one openable into its clips. The
+           bible is a secondary surface behind the docket's button, per
+           docs/design/DIRECTION.md ("findings lead, the bible follows").
+           The panel itself is deliberately unpainted — the docket and the
+           drawers are the manila, the stage is the frame. -->
+      <section id="results-panel" class="panel hidden">
+        <!-- The docket: the department's read of the treatment, on the
+             cover sheet where a case file carries it. -->
+        <div class="docket">
+          <div class="docket-head">
+            <h2 id="result-title">Your research room</h2>
+            <button id="bible-btn" class="docket-btn" type="button"
+              aria-expanded="false" aria-controls="bible-surface">The bible</button>
+          </div>
+          <p id="result-stats" class="meter"></p>
+          <div id="docket-body"></div>
+        </div>
+        <!-- app.js mounts drawer.js's four-drawer grid here. -->
+        <div id="room-grid"></div>
+        <section id="bible-surface" class="bible hidden"></section>
+      </section>
+    </main>
+  </div>
 
   <footer>
     <p>

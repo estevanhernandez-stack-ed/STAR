@@ -1,0 +1,260 @@
+/* THE MORGUE — the bible, as a secondary surface.
+   Tokens only, from web/tokens.css. No raw hex, no rgba() literals — every
+   shade is derived with color-mix() from a token, the precedent web/shell.css
+   set for .rail-room:hover and web/clip.css for its own stamp letterforms.
+
+   Why this is not the room's front page (docs/design/DIRECTION.md): "findings
+   lead, the bible follows". Three independent research lines landed on the same
+   conclusion — the unit of value is one sourced clip, not the assembled
+   document — and the bible survived the cut for one reason, that it is the only
+   surface which reads well cold. So it stays, and it stays one control away.
+
+   Surface: --onionskin, and this is the file that has to be most careful about
+   it. tokens.css says out loud that onionskin becoming a page GROUND is how
+   this direction lands in the cream-and-serif default by the side door. It does
+   not become one here. The room's ground is --cabinet, the docket and the
+   drawers are --manila, and this is a component that is only on screen while a
+   reader has deliberately asked for it — the drawers are hidden behind it, not
+   under it, so the two surfaces are never both claiming to be the page.
+
+   Contrast. Every pair below is what this file SHIPS, computed with a helper
+   that refuses to report until it reproduces the six values web/clip.css
+   already recorded — this phase found one returning 11.04:1 for a true 4.37:1,
+   and the lesson is that a table is only worth what its instrument is.
+   An earlier draft of this header carried two numbers that did not match the
+   rules underneath it (0.72 for a note paragraph that ships at 0.85, and 6.7
+   for a link that measures 6.43); they are corrected here rather than left,
+   because a header that documents values the file does not ship is the same
+   defect as a stale comment, in the one file that invokes that lesson.
+     --ink on --onionskin                    12.70:1  body text, headings
+     --ink at 0.85 on --onionskin             8.45:1  .bible-note
+     mix(--aniline 70%, --ink) on --onionskin 8.10:1  links (was the raw
+                                                      token at 6.43:1; both
+                                                      clear AA, the mixed
+                                                      shade is what every
+                                                      paper surface now uses)
+     --ink on mix(--manila 45%, --onionskin) 10.77:1  code and pre
+     --ink on --onionskin (focus ring)       12.70:1  clears the 3:1 floor
+     --pencil on --onionskin                  2.76:1  <- why the ring is
+                                                        overridden, not
+                                                        inherited
+   Nothing here is small text on manila, which is the pair this codebase keeps
+   getting wrong; the surface is the lighter one and every value clears AA on
+   it with room to spare.
+*/
+
+.bible {
+  background: var(--onionskin);
+  color: var(--ink);
+  border-radius: 4px;
+  /* Full-width on the panel, which #results-panel widened to 1120px for the
+     drawer grid (web/drawer.css). The SURFACE takes all of it — a reading
+     surface that stops short of the cards it replaced would read as a
+     narrower thing than the room. The measure does not: see .bible-body. */
+  padding: 2rem 2.25rem 2.5rem;
+  margin-top: 1.75rem;
+}
+
+.bible-heading {
+  margin: 0 0 1.25rem;
+  font-family: var(--label);
+  font-size: var(--text-lg);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+/* The long read.
+
+   opsz is set explicitly rather than left to font-optical-sizing's automatic
+   tracking, and the value is pinned to the size this surface actually reads
+   at. Newsreader's fvar carries opsz 6-72 with a default of 18 (verified
+   against the vendored binary — see web/tokens.css), and every other use of
+   --body in this app is caption-scale: 14px excerpts, 17px findings, all of
+   them glanced at. This is the one surface someone reads for minutes, so it
+   picks its own size and states the optical size to match it, rather than
+   inheriting whatever axis value a future change to --text-md would imply.
+
+   wght is deliberately absent from the declaration. An axis left out of
+   font-variation-settings still takes its value from the corresponding
+   high-level property, so <strong> and the headings below stay bold; listing
+   wght here would freeze them all at one weight. Verified in a browser, not
+   assumed from the spec.
+
+   The measure is capped at 72ch while the surface stays full width. 19px
+   Newsreader across 1120px is roughly 145 characters a line, which is not a
+   reading measure by any account of one. */
+.bible-body {
+  max-width: 72ch;
+  font-family: var(--body);
+  font-size: 1.1875rem;
+  font-variation-settings: "opsz" 19;
+  line-height: 1.7;
+  color: var(--ink);
+}
+
+.bible-body > :first-child {
+  margin-top: 0;
+}
+
+.bible-body h1,
+.bible-body h2,
+.bible-body h3 {
+  font-family: var(--label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  margin: 2rem 0 0.6rem;
+  padding-bottom: 0.3rem;
+  /* The rule under a heading is the folder edge, not a generic hairline:
+     onionskin is a page in a manila folder, and manila-edge is the color of
+     what it is sitting in. */
+  border-bottom: 1px solid var(--manila-edge);
+}
+
+.bible-body h1 {
+  font-size: var(--text-lg);
+}
+
+.bible-body h2 {
+  font-size: var(--text-md);
+}
+
+.bible-body h3 {
+  font-size: var(--label-md);
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.bible-body p,
+.bible-body li {
+  margin: 0.85rem 0;
+}
+
+.bible-body blockquote {
+  margin: 1.2rem 0;
+  padding-left: 1rem;
+  border-left: 3px solid var(--manila-edge);
+  font-style: italic;
+}
+
+.bible-body code {
+  background: color-mix(in srgb, var(--manila) 45%, var(--onionskin));
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+  font-family: var(--slug);
+  font-size: 0.85em;
+}
+
+.bible-body pre {
+  overflow-x: auto;
+  padding: 0.9rem 1rem;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--manila) 45%, var(--onionskin));
+}
+
+.bible-body pre code {
+  background: none;
+  padding: 0;
+}
+
+/* Tables. The bible is model-generated markdown rendered by marked, so this
+   file does not get to decide what elements appear in it — a comparison table
+   is well within what a research editor writes, and `pre` above was the only
+   wide element with anywhere to go. A table has no intrinsic ceiling: it sizes
+   to its content and pushes the surface out, which at 390px is the one thing
+   that would break the no-horizontal-overflow result this task measured.
+
+   `display: block` on the table is what makes `overflow-x` apply at all — a
+   `table` box does not scroll — and it is why the wrapper is the element
+   itself rather than a div this file cannot inject into sanitised markup.
+   Cell padding and the rule under the header row use --manila-edge, the same
+   folder-edge colour every other divider on this surface uses. */
+.bible-body table {
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+  margin: 1.2rem 0;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.bible-body th,
+.bible-body td {
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--manila-edge);
+  text-align: left;
+  vertical-align: top;
+}
+
+.bible-body th {
+  font-family: var(--label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  font-size: var(--label-sm);
+}
+
+/* Images too, for the same reason and with less ceremony: nothing in the
+   pipeline forbids one, and an unconstrained img is the other way a
+   model-authored document blows out a column. */
+.bible-body img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* The bible is synthesised from live web pages, so its links point wherever
+   those pages pointed. They are opened through web/app.js's makeLinksSafe
+   (target=_blank plus rel=noopener noreferrer) and they are underlined here
+   rather than carried on color alone — color as the only signal fails anyone
+   who cannot separate --aniline from --ink.
+
+   Neither the colour nor the focus ring is declared here any more. Both come
+   from web/shell.css's paper-surface rule, which covers .bible along with the
+   three manila surfaces: the link colour is color-mix(--aniline 70%, --ink),
+   8.10:1 on onionskin against the raw token's 6.43:1, and the ring is --ink at
+   12.70:1 against the global --pencil's 2.76:1. This is the largest surface in
+   the app and it carries 17 aniline marks on the real Detroit room, so the
+   darker shade is worth having here for a second reason beyond the ratio. */
+.bible-body a {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  overflow-wrap: anywhere;
+}
+
+/* The DOMPurify-unavailable fallback (web/app.js's bibleHtml). Escaped text in
+   a <pre> rather than raw markup: a bible that renders as plain characters is
+   readable, and a bible that renders as unsanitised HTML is a hole. */
+.bible-raw {
+  max-width: 80ch;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  font-family: var(--slug);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--ink);
+}
+
+/* A room with no bible, in the department's voice. Body face at reading size,
+   not an alert box and not italicised apology text — web/app.js's noBibleCopy
+   carries the reasoning, and the styling has to agree with it: a partial room
+   is a complete outcome of a different shape, so its copy looks like copy. */
+.bible-note {
+  margin: 0 0 0.9rem;
+  max-width: 72ch;
+  font-family: var(--body);
+  font-size: var(--text-md);
+  line-height: 1.6;
+  color: var(--ink);
+  opacity: 0.85;
+}
+
+/* ---------------------------------------------------------------------
+   Narrow viewports. Task 7 owns the full responsive pass; this only stops
+   the surface's desktop padding from eating a phone-width column.
+--------------------------------------------------------------------- */
+
+@media (max-width: 560px) {
+  .bible {
+    padding: 1.25rem 1.1rem 1.75rem;
+  }
+}

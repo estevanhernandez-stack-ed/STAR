@@ -1,0 +1,954 @@
+/* THE MORGUE — cabinet shell: the rail, the stage, and the intake.
+   Tokens only, from web/tokens.css. No raw hex anywhere in this file.
+
+   Layout logic, verified against docs/design/DIRECTION.md's palette table:
+     - --cabinet is "Ground" — the page's base tone, body and stage.
+     - --drawer-shadow is explicitly named for "the treatment field, the
+       rail" — one step down, so the rail and the textarea both sit in it.
+     - --manila is a component surface, never the page: the intake card and
+       the room cards sit ON the cabinet, they are not the cabinet.
+   Nothing in this file is a stamp, so the typographic-stamp rule belongs to
+   web/drawer.css and web/clip.css. The manila >40% rule now partly does live
+   here: the room's docket (below) is manila, and it and the drawer grid are
+   what the filed state is measured across.
+*/
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--cabinet);
+  color: var(--ink);
+  font-family: var(--body);
+  display: flex;
+  flex-direction: column;
+}
+
+.hidden {
+  display: none !important;
+}
+
+a {
+  color: var(--aniline);
+}
+
+:focus-visible {
+  outline: 2px solid var(--pencil);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------------
+   THE PAPER SURFACES — the structural fix, and the reason it exists.
+
+   Five separate contrast bugs in this phase were the SAME bug: a token that
+   is correct on --cabinet or --drawer-shadow reaching a manila or onionskin
+   card by inheritance from the two global rules directly above. Each was
+   found late, fixed alone, and left the sixth free to happen silently:
+
+     .receipt-url   global `a` colour           4.37:1  (Task 5)
+     .receipt-face  global focus ring           1.88:1  (Task 5)
+     .docket-btn    global focus ring           1.88:1  (Task 6)
+     #build-btn     global focus ring           1.88:1  (Task 6)
+     .bible-body a  global focus ring           2.76:1  (Task 6)
+
+   FIVE elements are the whole set of paper surfaces this app mounts, and
+   everything on paper is inside one of them: .intake (manila, holds the
+   onionskin retention slip), .docket (manila, holds the onionskin chips),
+   .drawer (manila, holds the onionskin clips and the manila receipts inside
+   them), .bible (onionskin), and .banner (onionskin, below). So the defaults
+   are set once, HERE, for those subtrees — a control or a link that lands on
+   paper tomorrow inherits a ratio that already clears the floor, instead of
+   inheriting a dark-ground value and waiting to be measured.
+
+   .banner joined the list in Task 7's fix round, in the same pass that
+   repainted it onionskin — the list said "four" while the line below it made
+   the count five, which is precisely the drift this block exists to stop.
+   Nothing in #auth-error is focusable today, so it is latent rather than
+   broken; it is also exactly where the sixth instance lands, because a dismiss
+   button added there would take the global --pencil ring at 2.76:1 on
+   onionskin, which is the .bible-body a bug verbatim.
+
+   The global rules above are deliberately NOT weakened. --pencil is right
+   where --pencil is right: 4.07:1 on --cabinet and 4.80:1 on --drawer-shadow,
+   which is every surface these five do not cover, and #new-room-btn's ring
+   depends on it. This overrides by surface, not by lowering the default.
+
+   WHAT THIS RULE DOES AND DOES NOT GUARANTEE. The `outline-color` two thirds
+   genuinely covers every control on paper, because an outline colour is not
+   otherwise set by anyone: the UA sheet does not touch it, and it reaches
+   descendants through the descendant combinator rather than through
+   inheritance. The `color` third is weaker than it first reads, and the first
+   version of this comment overstated it. `color` here is INHERITED, and
+   inheritance loses to any directly-matching declaration — including the UA
+   stylesheet's own `button { color: buttontext }`. A bare <button> dropped on
+   manila tomorrow does NOT pick up --ink from this rule. Every such control in
+   the app sets its own colour today (.docket-btn, .drawer-toggle, #build-btn,
+   the textarea), so nothing is wrong; the rule is a correct default for
+   ordinary text and a partial one for form controls, and it should not be read
+   as more.
+
+   The blunt repair — adding `:is(button, input, textarea, select)` to the
+   selector — is deliberately NOT taken. At (0,2,0) it would beat the bare
+   `textarea` rule below at (0,0,1) and paint --ink over the textarea's
+   deliberate --manila-on---drawer-shadow, breaking a 9.01:1 pair to fix a
+   hypothetical one.
+
+   Specificity note: `:is(...)` takes its most specific argument, so these are
+   (0,2,0) and (0,1,1) — they beat the (0,0,0)/(0,1,0) globals above and tie
+   with a component's own scoped rule. drawer.css, clip.css and bible.css load
+   AFTER this file, so any future scoped override there still wins; nothing
+   here takes that away. What it takes away is the need to remember. */
+.intake,
+.docket,
+.drawer,
+.bible,
+.banner {
+  color: var(--ink);
+}
+
+/* --ink is 8.63:1 on --manila and 12.70:1 on --onionskin. Both clear the 3:1
+   non-text floor a focus indicator has to meet, against either paper. */
+:is(.intake, .docket, .drawer, .bible, .banner) :focus-visible {
+  outline-color: var(--ink);
+}
+
+/* The link colour on paper. Raw --aniline is 4.37:1 on --manila, under AA for
+   the small text every link in this app is; mixed toward --ink it is 5.50:1 on
+   manila and 8.10:1 on onionskin. Still one pad, still a flat solid, still
+   derived from the token — the rule DIRECTION.md sets is against washes and
+   gradients, not against deriving a shade for the surface it lands on. */
+:is(.intake, .docket, .drawer, .bible, .banner) a {
+  color: color-mix(in srgb, var(--aniline) 70%, var(--ink));
+}
+
+/* Auth failure banner — sits above everything, off by default.
+   Onionskin stock rather than --drawer-shadow, and the reason is measured:
+   --oxide on --drawer-shadow is 2.79:1, the worst text pair in the app, on the
+   one line that has to be read when nothing else works. Oxide on --onionskin
+   is 4.75:1 — the same pair the UNSOURCED stamp already uses, so the flagged
+   pad keeps its full strength instead of being diluted to survive a dark
+   ground. It reads as a slip pinned to the top of the cabinet, which is also
+   what it is. */
+.banner {
+  background: var(--onionskin);
+  color: var(--oxide);
+  border-bottom: 2px solid var(--oxide);
+  padding: 0.6rem 1.5rem;
+  font-family: var(--label);
+  font-size: var(--label-md);
+  text-align: center;
+}
+
+/* ---------------------------------------------------------------------
+   The cabinet: rail + stage, side by side, filling the viewport under the
+   banner. The footer sits below both.
+--------------------------------------------------------------------- */
+
+.cabinet {
+  display: flex;
+  align-items: stretch;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ---------------------------------------------------------------------
+   The rail — drawer-shadow, one step down from the cabinet. Persistent,
+   scrollable, cheap: it only ever holds what room_summary sends.
+--------------------------------------------------------------------- */
+
+.rail {
+  width: 300px;
+  flex: none;
+  background: var(--drawer-shadow);
+  display: flex;
+  flex-direction: column;
+  padding: 1.25rem 1rem;
+  gap: 1rem;
+  overflow-y: auto;
+}
+
+.rail-head {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.star-mark {
+  font-size: 1.7rem;
+  line-height: 1;
+  color: var(--manila);
+}
+
+.rail-brand h1 {
+  margin: 0;
+  font-family: var(--label);
+  font-size: var(--text-md);
+  letter-spacing: var(--track-label);
+  color: var(--manila);
+}
+
+.rail-tagline {
+  margin: 0.15rem 0 0;
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+  color: var(--pencil);
+}
+
+.rail-new {
+  background: var(--cabinet);
+  color: var(--manila);
+  border: 1px solid var(--pencil);
+  border-radius: 3px;
+  padding: 0.6rem 0.8rem;
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.rail-new:hover {
+  border-color: var(--manila);
+}
+
+.rail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  overflow-y: auto;
+}
+
+.rail-empty {
+  margin: 0.25rem 0 0;
+  color: var(--pencil);
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.rail-room {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  background: transparent;
+  border: none;
+  border-left: 3px solid transparent;
+  border-radius: 2px;
+  padding: 0.5rem 0.5rem 0.5rem 0.45rem;
+  text-align: left;
+  cursor: pointer;
+  color: var(--manila);
+}
+
+.rail-room:hover {
+  background: color-mix(in srgb, var(--cabinet) 60%, transparent);
+}
+
+.rail-room.active {
+  background: var(--cabinet);
+  border-left-color: var(--manila);
+}
+
+.rail-room-marker {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 0.35rem;
+  border-radius: 50%;
+  background: var(--manila-edge);
+}
+
+.rail-room.running .rail-room-marker {
+  background: var(--pencil);
+}
+
+.rail-room.flagged .rail-room-marker {
+  background: var(--oxide);
+}
+
+.rail-room-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.rail-room-title {
+  font-family: var(--label);
+  font-size: var(--label-md);
+  font-weight: 700;
+  color: var(--manila);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --pencil-text, not --pencil: this one line changes ground under itself. A
+   rail room sits on --drawer-shadow (pencil 4.80:1) until it goes .active, at
+   which point the row repaints --cabinet and the same colour is 4.07:1. One
+   value that clears AA on both is the only version of this that cannot rot. */
+.rail-room-meta {
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+  color: var(--pencil-text);
+  margin-top: 0.15rem;
+}
+
+/* ---------------------------------------------------------------------
+   The stage — cabinet-green ground. Everything on it is a component;
+   nothing on the stage itself is manila.
+--------------------------------------------------------------------- */
+
+.stage {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 2.5rem 2rem 3rem;
+  display: flex;
+  justify-content: center;
+}
+
+.panel {
+  width: 100%;
+  max-width: 760px;
+}
+
+/* Intake — the first screen anyone sees, a judge included.
+   It shipped as one 760px card with a heading, a paragraph, a textarea and a
+   button, which left roughly 40% of its own stock blank and the stage floating
+   in a large unexplained gap to the right of the rail. Task 2 flagged both and
+   said drawers would not fix them, correctly: the intake is permanently sparse
+   because pasting is a one-field act.
+
+   What fills it is not decoration, it is the thing the room is going to do.
+   The department files into four subject drawers, which is the whole reason
+   DIRECTION.md chose this metaphor over the other two — "four drawers are a
+   filing system, which a writer recognises, where 'four agents running
+   concurrently' is engineering self-regard." Saying that BEFORE the paste
+   costs a column and answers the only question a cold reader has.
+
+   The plate labels carry .drawer-tab's own clip-path (web/drawer.css) so they
+   are literally the tabs that come back, at index scale. The remits are
+   compressed from star/agents/researchers.py's _CATEGORY_BRIEFS — the actual
+   instruction each researcher runs on, not a marketing gloss of it. */
+#intake-panel.panel {
+  /* Same ceiling the room uses (web/drawer.css). Two columns of prose want it,
+     and it also closes Task 2's "the stage floats" note: at 1440 the card now
+     reaches within 20px of the stage's padding instead of leaving 380px of
+     unexplained cabinet beside the rail. */
+  max-width: 1120px;
+  /* The one panel that does NOT fill the stage's height.
+     .stage is a flex row at the default align-items: stretch, which is right
+     for the drawer grid — web/drawer.css explains why a tall manila card with
+     its content anchored under the tab reads as an actual folder. It is wrong
+     here. A stretched intake ends up as 220px of blank manila under the
+     button: not a folder with stock to spare, just a card that stopped. An
+     index card is as tall as what is written on it, and empty cabinet below it
+     is the frame doing its job rather than paper doing nothing. */
+  align-self: start;
+}
+
+.intake {
+  background: var(--manila);
+  border-radius: 4px;
+  padding: 1.75rem 2rem 2rem;
+  box-shadow: 0 1px 0 var(--manila-edge);
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 1.75rem 2.5rem;
+  align-items: start;
+}
+
+.intake h2 {
+  margin: 0 0 0.75rem;
+  font-family: var(--label);
+  font-size: var(--text-lg);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.hint {
+  margin: 0 0 1rem;
+  max-width: 60ch;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+/* Above the textarea, and it stays above it. Research obligation 5 is not
+   "state what happens to the treatment" but "state it BEFORE the paste" — a
+   retention notice a writer reads after handing over unprotected IP is a
+   receipt, not a disclosure. Every clause in the copy itself was checked
+   against what star/store.py actually persists; see the phase ledger. */
+.retention {
+  margin: 0 0 1.25rem;
+  max-width: 60ch;
+  padding: 0.85rem 1rem;
+  background: var(--onionskin);
+  border-left: 3px solid var(--pencil);
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+/* The index column — what comes back, before anything is sent. */
+.intake-index {
+  border-left: 1px solid var(--manila-edge);
+  padding-left: 2.5rem;
+}
+
+.intake-index-heading {
+  margin: 0 0 0.9rem;
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink);
+  /* 4.93:1. The one opacity this codebase uses for quiet text on manila. */
+  opacity: 0.75;
+}
+
+.plate-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+/* --ink on --manila-edge is 6.44:1, the same pair the real cut tab carries. */
+.plate-label {
+  display: inline-block;
+  background: var(--manila-edge);
+  padding: 0.2rem 0.75rem 0.25rem;
+  clip-path: polygon(4% 0%, 96% 0%, 100% 100%, 0% 100%);
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.plate-remit {
+  display: block;
+  margin-top: 0.35rem;
+  max-width: 46ch;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  color: var(--ink);
+  opacity: 0.85; /* 6.28:1 */
+}
+
+/* The trust argument, stated once, before the paste — and scoped to exactly
+   what the clips show. Every clause is checkable against web/clip.js:
+   renderReceipt stamps the domain, RET and FILED BY; renderExcerpt prints the
+   search's own words, or "There is nothing to quote"; renderUnsourced keeps a
+   link that never came back and marks it. Nothing here says "verified", which
+   is the claim the ledger check does not support.
+
+   Read the QUANTIFIER, not just the mechanism. This comment used to end at
+   the line above, and the copy it vouched for said "the source it came from"
+   — asserting that a source EXISTS for every fact. star/findings.py keeps a
+   Finding whose every cited URL failed the ledger check, with citations: [],
+   and star/server.py's _maybe_warn_empty_ledger exists because a whole run
+   can land that way. The mechanisms listed above were all real; the sentence
+   was still false, and checking each mechanism in turn is exactly how that
+   goes unnoticed. It now reads "the sources that came back for it", which
+   allows zero — the same scoped form app.js's noBibleCopy was rewritten to
+   after the identical defect was caught there. */
+.intake-rule {
+  margin: 1.25rem 0 0;
+  padding-top: 0.9rem;
+  max-width: 46ch;
+  border-top: 1px solid var(--manila-edge);
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--ink);
+  opacity: 0.85; /* 6.28:1 */
+}
+
+textarea {
+  width: 100%;
+  background: var(--drawer-shadow);
+  color: var(--manila);
+  border: 1px solid var(--pencil);
+  border-radius: 3px;
+  padding: 0.9rem;
+  font-family: var(--body);
+  font-size: var(--text-md);
+  line-height: 1.5;
+  resize: vertical;
+}
+
+textarea::placeholder {
+  color: var(--pencil);
+}
+
+textarea:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+.actions {
+  margin-top: 1rem;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+}
+
+button {
+  font-family: var(--label);
+  font-size: var(--label-md);
+}
+
+#build-btn {
+  background: var(--cabinet);
+  color: var(--manila);
+  border: 1px solid var(--cabinet);
+  border-radius: 3px;
+  padding: 0.7rem 1.5rem;
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+#build-btn:hover:not(:disabled) {
+  background: var(--drawer-shadow);
+}
+
+#build-btn:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+/* The intake's own error line, which sits on --manila where raw --oxide is
+   3.23:1 — Task 3's logged palette-inherent shortfall, and this is one of the
+   two places it reaches text. Mixed toward --ink it is 4.57:1 — the browser's
+   own composited value, which is what ships; 4.59 was this comment's first
+   number, computed off the mix by hand before the rule was measured in place.
+   The pad keeps
+   its meaning: this is oxide darkened for the paper it is printed on, not a
+   third colour, and the UNSOURCED stamp still carries the raw token on the
+   onionskin where it measures 4.75:1. */
+.error {
+  color: color-mix(in srgb, var(--oxide) 70%, var(--ink));
+  font-family: var(--body);
+  font-size: var(--text-sm);
+}
+
+/* ---------------------------------------------------------------------
+   Progress panel — the live run. The drawer grid (web/drawer.css) is
+   mounted above the timeline by web/app.js's resetProgress(); what remains
+   here is the heading, the activity feed for the agents that have no drawer
+   (intake, planning, synthesis), and the search meter.
+--------------------------------------------------------------------- */
+
+#progress-panel h2 {
+  font-family: var(--label);
+  font-size: var(--text-lg);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--manila);
+  margin: 0 0 1rem;
+}
+
+.ellipsis::after {
+  content: "…";
+  animation: pulse 1.4s infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.2;
+  }
+}
+
+/* Found while verifying Task 6: this was the one animation in the app with no
+   reduced-motion path — it predates the --stamp-duration token every later
+   component runs its motion through, so nothing switched it off. The ellipsis
+   is the content and the pulse is decoration on top of it, so killing the
+   animation costs the heading nothing: it still reads "The department is
+   working…". Verified with prefers-reduced-motion genuinely emulated, which is
+   the only way this phase has ever caught one of these. */
+@media (prefers-reduced-motion: reduce) {
+  .ellipsis::after {
+    animation: none;
+  }
+}
+
+#timeline {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+#timeline li {
+  padding: 0.45rem 0 0.45rem 1.4rem;
+  position: relative;
+  border-left: 1px solid var(--pencil);
+  margin-left: 0.5rem;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  color: var(--manila);
+}
+
+#timeline li::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: 0.85rem;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--pencil);
+}
+
+/* Both pads, lifted for the dark ground. Raw --aniline is 1.75:1 on --cabinet
+   and raw --oxide is 2.37:1 — a 9px mark at either value is not a quiet mark,
+   it is an absent one, and these two are the only thing that separates "filed"
+   from "broke" at a glance while a run is going. Mixed toward --manila they
+   measure 3.30:1 and 3.28:1, clearing the 3:1 non-text floor while still
+   reading as violet and as red. Same mechanism as the receipt stamp's
+   letterforms in web/clip.css, mirrored: there a pad had to survive a light
+   ground, here it has to survive a dark one. */
+#timeline li.done::before {
+  background: color-mix(in srgb, var(--aniline) 60%, var(--manila));
+}
+
+#timeline li.error::before {
+  background: color-mix(in srgb, var(--oxide) 70%, var(--manila));
+}
+
+#timeline li.warn::before {
+  background: var(--manila-edge);
+}
+
+#timeline li.warn {
+  color: var(--manila-edge);
+}
+
+#timeline .who {
+  color: var(--manila);
+  font-weight: 700;
+}
+
+/* Both of these sit on the stage, which is --cabinet, where raw --pencil is
+   4.07:1 at 11px. #results-panel .meter overrides the colour to --ink below;
+   this rule is the live run's. */
+.meter {
+  color: var(--pencil-text);
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+  margin-top: 0.8rem;
+}
+
+/* ---------------------------------------------------------------------
+   Results panel — a filed room: the docket, then the drawer grid, with the
+   bible one control away (web/bible.css).
+
+   THE PANEL ITSELF IS NOT PAINTED. It used to carry `background: var(--manila)`,
+   which was right while it held a tab strip over prose and became wrong the
+   moment it started holding cards: the drawers are manila, and manila cards on
+   a manila panel have no edges. The whole metaphor is that the cards ARE the
+   page and the cabinet is the frame, so the frame stays --cabinet (the stage's
+   own ground, inherited by not painting) and every manila surface in here is a
+   component sitting on it — the docket below, and the four drawers.
+
+   The intake card is unaffected: `.intake` paints its own manila, and it is
+   still correct there. One card on the cabinet is a card; five cards on one
+   card is a background.
+--------------------------------------------------------------------- */
+
+/* The docket — the case file's cover sheet, and the room's first manila.
+   Carries the title, the counts, and the department's read of the treatment
+   (the old Story Profile tab, which nobody who wanted their research ever
+   clicked). Sits ABOVE the grid, so the grid's own top margin — derived from
+   --tab-rise in web/drawer.css — is what keeps the first row's cut tabs off
+   this card's bottom edge. */
+.docket {
+  background: var(--manila);
+  color: var(--ink);
+  border-radius: 4px;
+  padding: 1.5rem 1.75rem 1.6rem;
+  box-shadow: 0 1px 0 var(--manila-edge);
+}
+
+.docket-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+#result-title {
+  margin: 0;
+  font-family: var(--label);
+  font-size: var(--text-lg);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+/* 0.75, not the 0.65 this rule shipped with. Composited over --manila that is
+   4.9:1; 0.65 measures 3.87:1, under AA for 11px slug text, and this line is
+   not decoration — it carries the search count, the source count, and the day
+   the room was filed. Same opacity web/drawer.css already uses for .drawer-meta
+   on the same surface, so "quiet on manila" has one value in this codebase
+   rather than three that each miss by a different amount. */
+#results-panel .meter {
+  color: var(--ink);
+  opacity: 0.75;
+  margin-top: 0.5rem;
+}
+
+/* The one control on the cover sheet. Bordered rather than filled so it does
+   not compete with a stamp, and --ink on --manila is 8.6:1. */
+.docket-btn {
+  flex: none;
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--ink);
+  border-radius: 3px;
+  padding: 0.45rem 1rem;
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.docket-btn:hover {
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+/* The focus ring on .docket-btn used to be declared here, and on #build-btn,
+   and again in web/drawer.css for .drawer-toggle, and twice in web/clip.css,
+   and once in web/bible.css — six copies of `outline-color: var(--ink)`, each
+   added the day someone measured the control that needed it. All six are gone;
+   the paper-surface rule at the top of this file covers every control inside
+   .intake / .docket / .drawer / .bible, which is all of them. The measurement
+   that justified them is unchanged and still worth keeping in view: --pencil is
+   1.88:1 on --manila against a 3:1 floor, --ink is 8.63:1. */
+
+.docket-slug {
+  margin: 0.9rem 0 0;
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--ink);
+  /* 4.9:1 on manila. See #results-panel .meter above for why 0.75 is the one
+     value this codebase uses for quiet text on this surface. */
+  opacity: 0.75;
+}
+
+/* The line that says what the room is FOR. Body face, full-strength ink: it
+   outranks everything else on the cover sheet except the title. */
+.docket-logline {
+  margin: 0.35rem 0 0;
+  max-width: 74ch;
+  font-family: var(--body);
+  font-size: var(--text-md);
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+/* A statement about the room's shape (a partial run), or about why there is
+   nothing in it (a room that never filed). Not an alert and not styled as one
+   — see web/app.js's noBibleCopy for why a partial room is not a failure. */
+.docket-note {
+  margin: 0 0 0.9rem;
+  max-width: 74ch;
+  padding-left: 0.85rem;
+  border-left: 3px solid var(--manila-edge);
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.kv {
+  margin: 0.7rem 0 0;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+}
+
+.kv .k {
+  color: var(--ink);
+  /* Was 0.6 while this lived in a tab nobody opened, which measures 3.41:1 on
+     manila. On the docket it is a permanent 11px label on the room's first
+     screen; 0.75 is 4.9:1 and matches every other quiet label on this surface. */
+  opacity: 0.75;
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+}
+
+.chip {
+  display: inline-block;
+  background: var(--onionskin);
+  border: 1px solid var(--manila-edge);
+  border-radius: 999px;
+  padding: 0.15rem 0.7rem;
+  margin: 0.2rem 0.25rem 0.2rem 0;
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+}
+
+/* ---------------------------------------------------------------------
+   Footer.
+--------------------------------------------------------------------- */
+
+footer {
+  text-align: center;
+  padding: 1rem;
+  color: var(--pencil);
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+  background: var(--drawer-shadow);
+}
+
+footer a {
+  color: var(--pencil);
+}
+
+/* ---------------------------------------------------------------------
+   NARROW VIEWPORTS.
+
+   One breakpoint does the structural work and one does the padding. 900px is
+   where the drawer grid drops to a single column (web/drawer.css), so it is
+   also where the 300px rail has to stop being a column: below it the rail was
+   taking most of the width and leaving the stage a sliver. Measured before
+   this rule, on the real stored room: at 430px the grid computed to 51px wide
+   inside a drawer whose own padding is 56px, and the stage overflowed
+   horizontally. At 390px it is worse.
+
+   The rail becomes a top bar rather than disappearing behind a control. It is
+   the only way back to a saved room, and a hamburger would put the app's one
+   piece of persistent state behind a tap on the screen size where people are
+   most likely to be returning to something they built earlier.
+--------------------------------------------------------------------- */
+
+@media (max-width: 900px) {
+  .cabinet {
+    flex-direction: column;
+  }
+
+  /* The drawer front: a bar across the top of the cabinet rather than a
+     column beside it. Still --drawer-shadow, still one step down. */
+  .rail {
+    width: auto;
+    flex: none;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.7rem 1.1rem;
+    padding: 0.8rem 1.25rem;
+    overflow-y: visible;
+  }
+
+  .rail-head,
+  .rail-new {
+    flex: none;
+  }
+
+  /* The saved rooms scroll sideways on their own line. `flex: 1 1 100%` puts
+     them below the brand and the button rather than competing with them for a
+     row that cannot hold all three at 390px. */
+  .rail-list {
+    flex: 1 1 100%;
+    flex-direction: row;
+    min-width: 0;
+    gap: 0.5rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 0.15rem;
+  }
+
+  /* The active marker moves from the left edge to the bottom one — in a row
+     of tabs, the left border of the second room reads as a divider between
+     two rooms rather than as a mark on one. */
+  .rail-room {
+    flex: none;
+    max-width: 15rem;
+    border-left: none;
+    border-bottom: 3px solid transparent;
+    border-radius: 2px 2px 0 0;
+    padding: 0.4rem 0.6rem 0.3rem;
+  }
+
+  .rail-room.active {
+    border-bottom-color: var(--manila);
+  }
+
+  .rail-empty {
+    margin: 0;
+  }
+
+  .stage {
+    padding: 1.75rem 1.5rem 2.5rem;
+  }
+
+  /* The index column goes under the paste column, and its divider turns with
+     it: a left border between two stacked blocks is a stray vertical line. */
+  .intake {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.5rem;
+  }
+
+  .intake-index {
+    border-left: none;
+    border-top: 1px solid var(--manila-edge);
+    padding-left: 0;
+    padding-top: 1.35rem;
+  }
+}
+
+/* Phone width. Nothing structural left to do — this is the padding that was
+   sized for a 1440px stage eating a 390px one. web/clip.css and web/bible.css
+   already carry their own rules at this same 560px boundary. */
+@media (max-width: 560px) {
+  .banner {
+    padding: 0.55rem 0.9rem;
+  }
+
+  .rail {
+    padding: 0.7rem 0.9rem;
+  }
+
+  .stage {
+    padding: 1.25rem 0.9rem 2rem;
+  }
+
+  .intake {
+    padding: 1.25rem 1.1rem 1.5rem;
+  }
+
+  .docket {
+    padding: 1.15rem 1.1rem 1.25rem;
+  }
+
+  footer {
+    padding: 0.9rem;
+  }
+}

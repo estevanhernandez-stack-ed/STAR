@@ -117,6 +117,26 @@ def test_document_to_room_round_trips_the_api_payload():
     assert room["search_count"] == 14
 
 
+def test_document_to_room_carries_created_at_for_the_retrieval_stamp():
+    """The room view stamps this on every citation receipt as the day those
+    sources came back from a search (`RET <date>`, web/clip.js). Until Task 6
+    this shape dropped it, and the browser had no honest value to print — it
+    refuses to reuse the filed date for a retrieval claim, so the stamp shipped
+    two thirds complete."""
+    doc = room_to_document("abc123", RESULT, "complete", "2026-08-09T12:00:00Z")
+
+    assert document_to_room(doc)["created_at"] == "2026-08-09T12:00:00Z"
+
+
+def test_document_to_room_leaves_created_at_empty_when_the_document_has_none():
+    """An older document, written before the field existed. Empty rather than
+    "now": the client drops the RET line for a falsy value, and a fabricated
+    retrieval date on a source is worse than no date at all."""
+    room = document_to_room({"story_profile": {"title": "1962 Memphis"}})
+
+    assert room["created_at"] == ""
+
+
 def test_room_summary_is_small_enough_for_a_rail():
     doc = room_to_document("abc123", RESULT, "complete", "2026-08-09T12:00:00Z")
 

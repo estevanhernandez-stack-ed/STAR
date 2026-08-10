@@ -1,0 +1,583 @@
+/* THE MORGUE — the drawer, in its five states.
+   Tokens only, from web/tokens.css. No raw hex, no rgba() literals — the one
+   shadow color is derived with color-mix() from a token, matching the
+   precedent web/shell.css already set for .rail-room:hover.
+
+   The hard rule this file exists to satisfy (docs/design/DIRECTION.md):
+   manila must own more than 40% of the room's pixel area in the filed
+   state. The cards are the page; --cabinet is the frame. Concretely, that
+   means .drawer-grid is sized to fill the stage as a composition, not to
+   sit as a small object centered in a large empty frame — the failure mode
+   Task 2 flagged in its own intake card and asked this task not to repeat.
+   .drawer-grid intentionally does NOT rely on .panel's 760px max-width
+   (web/shell.css) for this reason; it carries its own, wider ceiling.
+
+   The stamp stays typographic: no distress texture, no gradient, no image,
+   rotation never past 2.5deg. See drawer.js's header for why the FILED
+   stamp uses --ink rather than --aniline.
+
+   Task 4 adds the press: a short scale-and-settle over --stamp-duration
+   (0ms under prefers-reduced-motion — tokens.css already flips that token;
+   this file just consumes it) plus an explicit `animation: none` override
+   as a second guard, because Task 1's own report found a reduced-motion
+   rule that looked correct and silently lost to specificity until verified
+   in a real browser. Same lesson applied here without re-learning it.
+*/
+
+/* Both panels that host a .drawer-grid carry class="panel" (web/shell.css),
+   whose 760px reading-width ceiling is sized for the intake's prose column. A
+   760px parent would clip the grid's own 1120px ceiling below — a child's
+   max-width only caps an upper bound, it does not escape a narrower ancestor.
+   The ID selectors' specificity (1,1,0) beats the bare .panel rule (0,1,0)
+   regardless of stylesheet order, so no !important and no JS classList surgery
+   needed.
+
+   #results-panel joined this rule in Task 6, when the filed room stopped being
+   a tab strip over prose and became the same four drawers the live run shows.
+   It was excluded before that, and the exclusion said so in a comment that has
+   now been removed rather than left asserting a reason that stopped being
+   true. The bible surface inside that panel does not want 1120px of measure,
+   and does not take it: web/bible.css caps its own text column. */
+#progress-panel.panel,
+#results-panel.panel {
+  max-width: 1120px;
+}
+
+/* --tab-rise is the one number the whole hanging-folder geometry depends on:
+   how far a cut tab sticks up above its card's top edge. .drawer-tab reads it as
+   negative `top`, and the grid derives its own headroom and row gap from it
+   so the three can never drift apart.
+
+   They had drifted. Shipped first as three independent literals, and a live
+   run showed exactly what that costs: the h2's 1rem bottom margin was
+   smaller than the rise, so "THE DEPARTMENT IS WORKING" sat on top of the
+   SETTING & ATMOSPHERE tab, and `gap: 1.75rem` was EQUAL to the rise, so the
+   second row's tabs landed precisely on the first row's bottom edge. Both
+   read as one bug ("the tabs are broken") and were really one bug: a tab
+   escapes its card's box, so every neighbor has to be spaced against the
+   escape distance, not against the card. */
+.drawer-grid {
+  --tab-rise: 1.75rem;
+
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 1.75rem;
+  /* Clears the rise, plus room for the ::after folder edge (9px down) and
+     air besides — otherwise the tab technically fits but reads as jammed
+     against the card above it. */
+  row-gap: calc(var(--tab-rise) + 2rem);
+  width: 100%;
+  max-width: 1120px;
+  /* Top: the grid's own box starts BELOW the tabs, so the panel heading
+     needs the rise back. Adjacent-sibling margins collapse to the larger of
+     the two, so this wins over the h2's 1rem and leaves 1rem of real gap
+     above the tab line. Bottom: the activity feed and search meter follow
+     the grid in #progress-panel, and the bottom row's shadow and offset
+     folder edge both extend past the card. */
+  margin: calc(var(--tab-rise) + 1rem) auto 2.5rem;
+  /* No align-self here, and the reason recorded in Task 3 is no longer the
+     reason. That note said .drawer-grid was a direct child of .stage — a
+     flex row — so opting out with align-self: flex-start would trade dead
+     space inside the cards for a void below them. The grid has not been a
+     child of .stage since Task 4: the live run inserts it into
+     #progress-panel (web/app.js) and a filed room mounts it into #room-grid.
+     The flex item is .panel; align-self on this element is inert, so the
+     paragraph was explaining a deliberate non-decision about a mechanism
+     that is not wired.
+
+     What survives is the composition rule it was really about, which is
+     still load-bearing: a tall manila card with its content anchored under
+     the tab and blank stock below reads as an actual folder, while the same
+     card with content floating in the middle reads as an empty box. That is
+     enforced where it actually lives — .drawer-body's justify-content:
+     flex-start, below. */
+}
+
+/* The card is layered deliberately, because a hanging folder's cut tab is
+   part of the BACK panel: it rises above the front face and its base is
+   hidden behind it. A tab painted on top reads as a label stuck on a box.
+
+   Paint order inside this stacking context:
+     -1  ::after   the second folder edge, offset behind everything
+      0  .drawer-tab  the cut tab — only the part above the face survives
+      1  ::before  the manila front face, which covers the tab's base
+      2  content
+   The face therefore has to be a pseudo-element rather than this element's
+   own background: an element always paints its own background before its
+   positioned children, so a negative z-index on .drawer-tab could never be
+   covered by it. */
+.drawer {
+  position: relative;
+  z-index: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 260px;
+  color: var(--ink);
+  padding: 2.5rem 1.75rem 2rem;
+}
+
+.drawer::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: var(--manila);
+  border-radius: 3px;
+  box-shadow:
+    0 1px 0 var(--manila-edge),
+    0 16px 28px color-mix(in srgb, var(--drawer-shadow) 55%, transparent);
+}
+
+.drawer > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* A second folder edge peeking out behind the card — the drawer holds more
+   than one folder per category, even though only the top one is shown.
+   Geometric and flat, not a texture: a single offset rectangle, tokens
+   only. Not selected by the manila measurement (it targets .drawer/.clip/
+   .drawer-tab elements, not pseudo-elements), so it plays no part in clearing the
+   40% rule — it is read, not measured. */
+.drawer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--manila-edge);
+  border-radius: 3px;
+  transform: translate(7px, 9px);
+  z-index: -1;
+}
+
+/* The cut tab — a hanging-folder tab sticking up above the card's top edge,
+   carrying the plate label. clip-path gives the angled "cut" corners rather
+   than a plain rectangle.
+
+   NAMED .drawer-tab, not .tab, and the rename is not cosmetic. web/shell.css
+   declares a bare `.tab` for the results panel's tab strip at the same (0,1,0)
+   specificity, and index.html loads drawer.css SECOND — so these rules were
+   winning on the strip's three buttons. Measured on the live page before the
+   rename: "Research Bible" computed to position:absolute, top:-28px, left:24px,
+   background --manila-edge, with this clip-path, and .tabs collapsed to 1px
+   tall because all three buttons had left flow and stacked at one coordinate.
+   A component that styles by a generic English noun will collide with any
+   other component that reaches for the same noun; the drawer's tab is a
+   drawer part and now says so. */
+/* Sits at z-index 0 so the face (z-index 1) covers its base. Raised far
+   enough that the whole label clears the face — otherwise the face crops
+   the text it exists to carry. The clip-path angles the cut corners, and
+   it widens downward so the hidden base is the wider end, the way a real
+   cut tab is scored. */
+/* Falls back to the same literal when a .drawer is used outside a grid, so a
+   standalone drawer still hangs correctly. */
+.drawer-tab {
+  position: absolute;
+  z-index: 0;
+  top: calc(var(--tab-rise, 1.75rem) * -1);
+  left: 1.5rem;
+  padding: 0.4rem 1.15rem 0.55rem;
+  background: var(--manila-edge);
+  clip-path: polygon(6% 0%, 94% 0%, 100% 100%, 0% 100%);
+}
+
+.drawer-tab-label {
+  display: block;
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+/* IDLE — "tab pencil": the tab itself is rendered in the pencil color, not
+   just its label, so it reads as unmarked at a glance rather than merely
+   dim. --drawer-shadow on --pencil measures 4.8:1 (WCAG AA); the first
+   draft tried --pencil text directly on the default --manila-edge tab and
+   measured 1.4:1 — nowhere close, and a state built to look "quiet" is not
+   an excuse to make it unreadable. */
+.drawer[data-state="idle"] .drawer-tab {
+  background: var(--pencil);
+}
+
+.drawer[data-state="idle"] .drawer-tab-label {
+  color: var(--drawer-shadow);
+}
+
+/* "Not yet started". Found by Task 7's sweep, and it is the worst text pair
+   that survived to that point: --pencil on --manila is 1.88:1, the same value
+   this file's own header cites as the reason the focus ring had to be
+   overridden — used here as body text. It sat on the live run's first screen
+   for the ~80 seconds a build spends before the first drawer moves.
+
+   Not caught by the structural paper rule in web/shell.css, and worth naming
+   why: that rule fixes the INHERITED case, a token arriving from a dark-ground
+   default. This is an explicit declaration at (0,2,0) asking for pencil on
+   manila by name. The structural fix cannot save a rule that states the wrong
+   thing on purpose; only measuring can, which is what found it.
+
+   --ink at 0.75 is 4.93:1. The state signal does not live in this line anyway
+   — the TAB is rendered in pencil, which is what this file's IDLE comment says
+   it is for, and the italic body face still separates this from the bold
+   label voice every other state uses. */
+.drawer[data-state="idle"] .drawer-status {
+  color: var(--ink);
+  opacity: 0.75;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  font-family: var(--body);
+  font-style: italic;
+}
+
+/* FAILED — tab in --oxide, per the rule.
+   Both lines below were 3.23:1 until Task 7: --oxide against --manila, the
+   palette-inherent shortfall Task 3 logged and Task 6 made reachable from a
+   STORED room (a partial run mounts an unfiled category FAILED, so this is no
+   longer live-run-only furniture). Fixed on the two TEXT pairs without
+   touching what --oxide means — the tab's fill is still the raw pad, so the
+   flagged colour on screen is the flagged colour in the palette.
+
+     label on the tab   --manila on --oxide      3.23:1 -> --onionskin 4.75:1
+     the status line    --oxide on --manila      3.23:1 -> mixed 4.57:1
+
+   --onionskin is used here as a letterform colour, not as a ground; the rule
+   tokens.css states is that onionskin must never become a PAGE ground, and an
+   11px label printed on a stamp pad is the opposite of that. It is also the
+   same move the IDLE tab already makes — the label colour is chosen against
+   the tab's own fill, not against the card. */
+.drawer[data-state="failed"] .drawer-tab {
+  background: var(--oxide);
+}
+
+.drawer[data-state="failed"] .drawer-tab-label {
+  color: var(--onionskin);
+}
+
+.drawer[data-state="failed"] .drawer-status {
+  color: color-mix(in srgb, var(--oxide) 70%, var(--ink));
+}
+
+.drawer-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 0.55rem;
+}
+
+/* The open/close control on a filed room's drawer.
+   Lives here because it is a drawer part, and is CREATED by web/app.js rather
+   than by drawer.js: setDrawerState replaces .drawer-body's innerHTML on every
+   state change, so a control rendered into the body would be destroyed by the
+   click that used it. As a sibling of the body it survives filed <-> expanded
+   with its focus intact. The live run mounts no toggle — a drawer that is
+   still searching has nothing to open.
+
+   Quiet on purpose. It sits directly under the cut tab and directly above the
+   FILED stamp, and the stamp is the element that is meant to be seen first;
+   a filled button there would out-shout the signature of the whole direction.
+   --ink on --manila measures 8.6:1, so quiet costs nothing in legibility. */
+.drawer-toggle {
+  align-self: flex-start;
+  margin-bottom: 0.35rem;
+  background: transparent;
+  color: var(--ink);
+  border: none;
+  /* 60%, not 45%: composited over manila, 45% measures 2.40:1 against WCAG's
+     3:1 floor for a control's own visual boundary, and 60% measures 3.41:1.
+     The label above it is 8.6:1 and is what actually identifies the control,
+     but a rule that is there to be seen should be visible to everyone. */
+  border-bottom: 1px solid color-mix(in srgb, var(--ink) 60%, transparent);
+  border-radius: 0;
+  padding: 0 0 0.15rem;
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.drawer-toggle:hover {
+  border-bottom-color: var(--ink);
+}
+
+/* The focus ring used to be overridden here (--pencil is 1.88:1 on manila
+   against a 3:1 floor, --ink is 8.63:1). It is now set once for every control
+   on a paper surface by web/shell.css's `.intake, .docket, .drawer, .bible`
+   rule, so this copy is gone rather than kept as a second place to maintain
+   the same number. Task 7 removed six of these. */
+
+.drawer-status {
+  margin: 0;
+  font-family: var(--label);
+  font-size: var(--label-md);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+/* The count/objective/message line beneath the status — always --slug,
+   per the brief's "the count line in --slug". */
+.drawer-meta {
+  margin: 0;
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+  color: var(--ink);
+  opacity: 0.75;
+  line-height: 1.5;
+}
+
+/* ---------------------------------------------------------------------
+   The search log — what the researcher has actually asked, while it is
+   still asking. Replaces Task 3's dot row, which a live run proved left
+   this card ~80% empty for the ~80 seconds a build spends in this state.
+   See web/drawer.js's renderSearching for the full reasoning.
+
+   The two voices are doing different jobs and must not blur: an objective
+   is the researcher's own sentence, so it takes --body italic, the same
+   voice a finding will take; a query is a machine string sent verbatim to
+   Parallel Search, so it takes --slug, the same voice every other piece
+   of literal metadata takes. Reading them in one face would imply the
+   researcher wrote the query strings as prose.
+--------------------------------------------------------------------- */
+.search-log {
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+/* Names the log in the filed state, where the reader may never have watched
+   these questions being asked. Deliberately quiet: it is a caption on
+   evidence, not a heading competing with the stamp.
+
+   0.75, not the 0.55 this shipped with. Composited over --manila, 0.55 is
+   3.05:1 for 11px bold tracked caps — under AA, measured, and it stopped being
+   a corner case when Task 6 made renderSceneNeeds fire from renderFiled rather
+   than only renderExpanded: this label now appears FOUR TIMES on the room's
+   first screen, where before it took a click to reach. Re-measured here rather
+   than taken from the earlier note: 0.55 -> 3.05:1, 0.75 -> 4.93:1.
+
+   0.75 is not a new number either. It is the value .drawer-meta below already
+   uses on this surface, and #results-panel .meter, .docket-slug and .kv .k in
+   web/shell.css. "Quiet on manila" has one value in this codebase.
+
+   Five call sites, all of them inside a .drawer-body and therefore all on
+   manila: web/clip.js's renderSceneNeeds, renderUncertainty and
+   renderFieldNotes, and web/drawer.js's buildLabelledLog and renderExpanded's
+   "What was found". Checked before changing it — a shared class is only safe
+   to retune if every surface it lands on is the one it was measured against. */
+.drawer-legend {
+  margin: 1rem 0 0;
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink);
+  opacity: 0.75;
+}
+
+.search-entry {
+  padding-left: 0.85rem;
+  border-left: 2px solid var(--manila-edge);
+}
+
+/* The call in flight is the one the reader should land on. Marked by the
+   ink-weight rule alone — no glyph, no "in progress" word: the event fires
+   on the tool CALL, so the only thing actually known is that this is the
+   most recent one, not that the earlier ones came back. */
+.search-entry[data-current="true"] {
+  border-left-color: var(--ink);
+}
+
+.search-objective {
+  margin: 0;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  font-style: italic;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.search-queries {
+  list-style: none;
+  margin: 0.3rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+}
+
+/* 0.75, not 0.70: 4.34:1 against a 4.5 floor for 11px slug text, and these are
+   the literal strings that went over the wire — the cheapest proof in the app
+   that a search is real. Same value as every other quiet line on manila. */
+.search-queries li {
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+  line-height: 1.5;
+  color: var(--ink);
+  opacity: 0.75;
+}
+
+/* Marks these as sent strings rather than more prose, without spending a
+   glyph the screen reader would have to say out loud.
+   No colour of its own any more. It carried --pencil, which is 1.88:1 on
+   manila before the parent's opacity even applies — and the opacity DOES apply,
+   because it is set on the <li> and composites the whole subtree, pseudo-
+   element included. The arrow was effectively invisible. Inheriting the line's
+   own --ink puts it at the same 4.93:1 as the string it points at. */
+.search-queries li::before {
+  content: "→ ";
+}
+
+/* The FILED stamp — typographic only. A bordered label, not a fill, not a
+   texture. Rotation held well under the 2.5deg ceiling DIRECTION.md sets.
+   -2deg is the resting transform; the keyframes below hold that same
+   rotation throughout so nothing appears to spin or tilt, only press. */
+.stamp {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  align-self: flex-start;
+  border: 2px solid var(--ink);
+  border-radius: 2px;
+  padding: 0.3rem 0.9rem;
+  color: var(--ink);
+  transform: rotate(-2deg);
+  animation: stamp-press var(--stamp-duration) ease-out;
+}
+
+/* "Filed" — the headline, in the same --label voice every other drawer
+   plate and tab uses. */
+.stamp-word {
+  font-family: var(--label);
+  font-size: var(--label-md);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+}
+
+/* Researcher code + retrieval date — the two fields Task 4's live run can
+   state honestly (see drawer.js's renderFiled doc comment for the third
+   field, domain, and why it is not here). --slug per DIRECTION.md's stamp
+   spec: this is metadata, not a label. */
+.stamp-slug {
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+  letter-spacing: 0.03em;
+  opacity: 0.85;
+}
+
+/* The press: a short scale-and-settle, not a bounce or a spin — DIRECTION.md
+   is explicit that the stamp must read as typographic, not as a Photoshop
+   filter, so the only things that move are opacity and scale, and only
+   briefly. Rotation stays fixed at the resting -2deg for the entire
+   animation. */
+@keyframes stamp-press {
+  0% {
+    transform: rotate(-2deg) scale(1.5);
+    opacity: 0;
+  }
+  55% {
+    transform: rotate(-2deg) scale(0.94);
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(-2deg) scale(1);
+    opacity: 1;
+  }
+}
+
+/* Belt-and-braces, per this file's header comment: --stamp-duration is
+   already 0ms under reduced motion (tokens.css), which alone makes the
+   animation complete instantly — but Task 1 found that a rule that looks
+   correct can still lose to specificity or a browser edge case, and did
+   not ship on the strength of that alone. This second, independent path
+   to "no motion" was verified with prefers-reduced-motion actually
+   emulated in a real browser, not assumed from the token chain. */
+@media (prefers-reduced-motion: reduce) {
+  .stamp {
+    animation: none;
+  }
+}
+
+.drawer-counts {
+  margin-top: 0.7rem;
+}
+
+/* ---------------------------------------------------------------------
+   Below 900px the grid collapses to one column.
+
+   The 560px ceiling this rule shipped with is gone. Measured at the 900px
+   boundary, both ways, on the real stored room in the FILED state, by counting
+   pixels off the rendered PNG:
+
+     cap at 560px   manila 60.26% of the stage, 47.43% of the viewport
+     no cap         manila 75.96% of the stage, 59.77% of the viewport
+
+   So the cap did NOT break DIRECTION.md's >40% rule and this is not a rescue —
+   saying otherwise would be inventing a crisis to justify a change. What it did
+   was spend 15.7 points of the stage on --cabinet: a 560px card centred in an
+   836px stage is an object floating in a frame, which is the composition the
+   rule is a proxy for, arrived at from the width axis rather than the height
+   one. The cards are the page at every width or they are not the page.
+
+   `max-width: 100%` rather than deleting the property: .drawer-grid's own
+   1120px ceiling is declared above and would otherwise apply, which is
+   harmless today (no viewport in this range is that wide) and wrong the first
+   time someone moves the breakpoint.
+
+   `minmax(0, 1fr)` rather than `1fr`, and this is the line that actually makes
+   390px work — it was described as bookkeeping in the first draft of this
+   comment, which undersold it. `1fr` is shorthand for `minmax(auto, 1fr)`, and
+   that `auto` minimum resolves to the column's MIN-CONTENT width, so a single
+   unbreakable string anywhere in a card — a hostname on a receipt stamp, a long
+   URL, a query string in the search log — sets a floor the column cannot go
+   below, and the grid pushes past the viewport. An explicit `0` minimum lets
+   the column shrink and hands the wrapping back to the elements, which is where
+   web/clip.css's `overflow-wrap: anywhere` can do something about it. The same
+   substitution is on .drawer-grid's desktop `repeat(2, minmax(0, 1fr))` above,
+   for the same reason.
+--------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .drawer-grid {
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 100%;
+    /* No second row to clear, so the row gap's extra 2rem of headroom is
+       spent on nothing but distance between two cards. The tab rise still
+       has to clear, which is what this keeps. */
+    row-gap: calc(var(--tab-rise) + 1.25rem);
+  }
+}
+
+/* Phone width. The card's desktop padding — 28px each side plus a 24px tab
+   inset — is most of a 390px screen; at 1.1rem it is 17.6px and the measure
+   inside is 90px wider. Matches the 560px boundary web/clip.css and
+   web/bible.css already use for the same reason. */
+@media (max-width: 560px) {
+  .drawer {
+    min-height: 0;
+    padding: 2.25rem 1.1rem 1.5rem;
+  }
+
+  .drawer-tab {
+    left: 0.9rem;
+    max-width: calc(100% - 1.8rem);
+  }
+
+  /* The plates are two and three words long and the longest, "Setting &
+     Atmosphere", is 152px — it fits at 390px, but `nowrap` on a tab that is
+     also capped at the card's width would clip rather than wrap the first
+     time a category is renamed. */
+  .drawer-tab-label {
+    white-space: normal;
+  }
+}

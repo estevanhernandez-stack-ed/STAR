@@ -29,6 +29,21 @@ SERVICE=star
 # same change — see star/guards.py's module docstring and
 # docs/INFRASTRUCTURE.md.
 #
+# --no-cpu-throttling is the third load-bearing flag, and the least obvious.
+# By default Cloud Run allocates CPU only while a request is being processed.
+# The build itself is NOT a request: star/server.py's create_room returns
+# immediately and _execute runs as a detached asyncio task. The only thing
+# holding a request open during a build is the client's EventSource.
+#
+# So without this flag, a user who closes the tab mid-build ends the SSE
+# request, CPU throttles to near zero, and the pipeline stalls partway. The
+# run never reaches a terminal status, which means _evict_old_runs can never
+# reclaim it (it does not touch "running" entries), its daily-cap slot stays
+# spent, and its Firestore document is stranded at status "running" — which
+# the room view then reports to its owner as a run that never finished.
+# Every one of those consequences is invisible in a local test, because
+# nothing throttles a laptop.
+#
 # --timeout must exceed STAR_RUN_TIMEOUT_SECONDS (600), because the SSE
 # stream is itself a request and stays open for the whole build.
 gcloud run deploy "$SERVICE" \
@@ -39,6 +54,7 @@ gcloud run deploy "$SERVICE" \
   --max-instances=1 \
   --min-instances=1 \
   --cpu=1 \
+  --no-cpu-throttling \
   --memory=2Gi \
   --timeout=900 \
   --set-env-vars="GOOGLE_CLOUD_PROJECT=$PROJECT,FIREBASE_PROJECT_ID=$PROJECT,GOOGLE_GENAI_USE_VERTEXAI=FALSE,FIREBASE_API_KEY=${FIREBASE_API_KEY:?set FIREBASE_API_KEY in the environment before deploying}" \
