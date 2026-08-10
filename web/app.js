@@ -124,12 +124,29 @@ function setBibleOpen(open) {
   roomGrid.classList.toggle("hidden", open);
 }
 
+/** The activity feed's own reduced-motion path.
+ *
+ *  A smooth scroll is motion, and this one fires on every agent that finishes
+ *  during a build — the CSS token every other component routes its motion
+ *  through (--stamp-duration, web/tokens.css) cannot reach a scroll behaviour
+ *  passed from JS, so this was the one piece of movement in the app with no
+ *  reduced-motion path at all. Read at call time rather than cached at module
+ *  load: the setting can change mid-session, and this costs nothing.
+ *
+ *  "auto" is the instant jump, not the browser default — the element still
+ *  comes into view, it just gets there without travelling. */
+function scrollBehavior() {
+  return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+    ? "auto"
+    : "smooth";
+}
+
 function addEntry(cls, html) {
   const li = document.createElement("li");
   li.className = cls;
   li.innerHTML = html;
   timeline.appendChild(li);
-  li.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  li.scrollIntoView({ behavior: scrollBehavior(), block: "nearest" });
 }
 
 function pad2(n) {
@@ -380,18 +397,28 @@ async function buildRoom() {
 
 /** Clears the room view back to its resting state before a repaint.
  *
- *  Every one of these is a real cross-room leak, not defensive tidiness: the
- *  rail can move between rooms without a reload, so a bible left open would
- *  greet the next room with the previous room's prose, and a grid left mounted
- *  would show four filed drawers for a second while the next room's fetch is
- *  still in flight. Called before the fetch's result is read, so it also covers
- *  the failure paths below. */
+ *  Every one of these is a real cross-room leak, not defensive tidiness, and
+ *  WHERE THIS IS CALLED FROM is the whole of whether it works. It shipped after
+ *  the fetch, which closed nothing: shell.js's loadRoom reveals the stage before
+ *  awaiting the renderer, so a reader on room A who clicks room B in the rail
+ *  watched A's title, A's docket, A's four drawers and A's open bible sit there
+ *  for the entire round trip, under a rail that had already marked B active. A
+ *  load that failed was worse — showResults returns early on !res.ok, so A
+ *  stayed mounted behind the intake panel indefinitely.
+ *
+ *  It is now the first statement in showResults, before the request is even
+ *  issued, which covers the in-flight window and every early return after it.
+ *
+ *  The title goes to a transitional string rather than being blanked or left
+ *  alone: blank collapses the docket's heading row mid-navigation, and leaving
+ *  the previous room's title is the leak itself. */
 function resetRoomView() {
   setBibleOpen(false);
   bibleBtn.classList.add("hidden");
   bibleSurface.innerHTML = "";
   roomGrid.replaceChildren();
   docketBody.innerHTML = "";
+  $("result-title").textContent = "Opening the room";
   $("result-stats").textContent = "";
 }
 
@@ -402,6 +429,10 @@ function resetRoomView() {
  *  one render identically — the promise this file has carried since Task 3 and
  *  the reason the drawer component has one payload shape for both. */
 async function showResults(runId) {
+  // First, before the request goes out. shell.js's loadRoom has already
+  // revealed the stage by the time this runs — see resetRoomView.
+  resetRoomView();
+
   const res = await authedFetch(`/api/rooms/${runId}`);
   if (!res.ok) {
     // Without this check, `result` below is undefined and the story_profile
@@ -425,7 +456,6 @@ async function showResults(runId) {
   );
 
   showRoom();
-  resetRoomView();
   $("build-btn").disabled = false;
 
   // A room can be listed in the rail before it has anything to show: still
@@ -559,14 +589,41 @@ function renderDocket(profile, status) {
   `;
 }
 
+/** Did this category's researcher file anything at all?
+ *
+ *  ONE rule with two consumers — the drawer's mounted state and the bible
+ *  surface's sentence about how many researchers filed. They describe the same
+ *  fact about the same room, on the same screen, so they read it through the
+ *  same function: a page that says "two of the four researchers filed" over
+ *  four drawers stamped FILED would be worse than either mistake alone.
+ *
+ *  `markdown` is star/findings.py's `raw`, the researcher's prose kept verbatim.
+ *  Empty means the agent never wrote its output_key — reachable whenever a run
+ *  is salvaged while some researchers are still working. Non-empty with no
+ *  findings means they wrote and nothing parsed, which is a filing. */
+function categoryFiled(doc) {
+  return Boolean(String(doc?.markdown || "").trim());
+}
+
+function filedCount(categories) {
+  return Object.values(categories || {}).filter(categoryFiled).length;
+}
+
 /** The partial room, on the cover sheet.
  *
  *  Stated up front rather than left for whoever clicks through to the bible,
  *  because a partial room is otherwise indistinguishable from a finished one
  *  until you go looking — and finding out by absence is how a reader concludes
- *  something went wrong. It did not. See renderBible for the full register. */
+ *  something went wrong. It did not. See renderBible for the full register.
+ *
+ *  "with its sources" was cut from this line in review round 1. A finding whose
+ *  every cited URL failed to resolve against the ledger keeps its place with
+ *  citations: [] (star/findings.py), and renders as a clip with an UNSOURCED
+ *  stamp and no receipts at all. A one-line summary is exactly where a
+ *  universal claim does the most damage, because nothing next to it qualifies
+ *  it. What is true without exception is that the research is in the drawers. */
 function partialDocketNote() {
-  return `<p class="docket-note">Filed without a bible. The research is in the drawers, with its sources.</p>`;
+  return `<p class="docket-note">Filed without a bible. The research is in the drawers.</p>`;
 }
 
 /** One drawer of a filed room, mounted with its own toggle.
@@ -596,6 +653,23 @@ function mountRoomDrawer(el, doc, plan, filed) {
   if (!doc) {
     setDrawerState(el, "failed", {
       message: "This room was filed without a record for this category.",
+    });
+    return;
+  }
+
+  // A researcher that never wrote anything is not a researcher that filed
+  // nothing of note, and the difference is visible in the payload: when a run
+  // is salvaged mid-flight (star/server.py's _salvage) `_build_categories`
+  // still emits all four keys, and a category whose agent never reached its
+  // output_key comes through parse_findings(None, …) as markdown "" with no
+  // findings and no field notes. Stamping FILED on that says a researcher
+  // filed when none did. `markdown` is the raw prose held verbatim
+  // (star/models.py), so a non-empty one is proof something was written even
+  // when nothing in it parsed — that case stays FILED, and clip.js already
+  // has the copy for it.
+  if (!categoryFiled(doc)) {
+    setDrawerState(el, "failed", {
+      message: "This researcher had not filed anything when the run stopped.",
     });
     return;
   }
@@ -652,7 +726,7 @@ function renderBible(result, status) {
       <h3 class="bible-heading">The research bible</h3>
       <div class="bible-body">${bibleHtml(markdown)}</div>`;
   }
-  const { heading, body } = noBibleCopy(status);
+  const { heading, body } = noBibleCopy(status, result.categories);
   return `
     <h3 class="bible-heading">${heading}</h3>
     ${body.map((line) => `<p class="bible-note">${line}</p>`).join("")}`;
@@ -668,24 +742,68 @@ function bibleHtml(markdown) {
 /** A room with no bible, in the department's voice.
  *
  *  A partial run (star/server.py's _salvage) is a COMPLETE OUTCOME OF A
- *  DIFFERENT SHAPE, and the copy is written to hold that line under pressure.
- *  Four researchers ran. Every search was issued, every source came back, every
- *  citation was checked against the ledger, and all of it is in the drawers
- *  behind this surface. The one step that did not run is the editor's — folding
- *  those findings into one written document. Nothing here apologises, hedges,
- *  or lets the reader conclude the research is suspect, because none of that
- *  would be true: the shortfall is one assembly step, and the evidence it would
- *  have been assembled FROM is the thing this product is actually for.
+ *  DIFFERENT SHAPE, and the copy is written to hold that line under pressure:
+ *  the research that exists was gathered and checked the way all of it is, and
+ *  the one step that did not run is the editor's. Nothing here apologises,
+ *  hedges, or lets a reader conclude the research is suspect.
  *
- *  The distinction from the empty-complete case matters and is kept: a
- *  "complete" room with no bible means synthesis produced nothing, which is a
- *  different fact and gets a different sentence. */
-function noBibleCopy(status) {
+ *  Holding that register does not license overstating the room, and review
+ *  round 1 caught this copy doing exactly that, twice:
+ *
+ *    - "All four researchers filed" was asserted, never counted. `_salvage`
+ *      returns True if ANY category has findings, so a ceiling that trips while
+ *      two researchers are still searching produces a partial room with two
+ *      empty categories. The count is now read from the payload through
+ *      categoryFiled, the same function that decides whether each drawer mounts
+ *      FILED or FAILED, so the sentence and the drawers cannot disagree.
+ *
+ *    - "Every fact carries the source it came from and the excerpt that source
+ *      returned" was false in two independent ways. star/findings.py keeps a
+ *      Finding whose every cited URL failed to resolve, with citations: [] and
+ *      the URLs in unverified_urls — that clip has an UNSOURCED stamp and no
+ *      receipt at all, and star/server.py's _maybe_warn_empty_ledger exists
+ *      because a whole run can land that way. Separately, _best_excerpt returns
+ *      "" for a ledger entry carrying no excerpts, which is why clip.js already
+ *      ships "There is nothing to quote." The sentence now promises what the
+ *      clips actually show: the sources that came back, the excerpt where there
+ *      was one, and a mark on the links that never came back.
+ *
+ *  The distinction from the empty-complete case is kept: a "complete" room with
+ *  no bible means synthesis produced nothing, which is a different fact and
+ *  gets a different sentence. */
+function noBibleCopy(status, categories) {
+  // Spelled out, and the noun after the count, because the obvious
+  // construction is the wrong one: plural() renders "2 researchers", and
+  // "2 researchers of the four filed" is not a sentence anyone writes. Caught
+  // by reading the rendered string in a browser rather than the template.
+  // Four gets its own branch — "Four of the four researchers filed" reads like
+  // a hedge about a room where nothing is missing.
+  const filed = filedCount(categories);
+  const total = Object.keys(DRAWER_LABELS).length;
+  const spelled = ["No", "One", "Two", "Three", "Four"];
+  let whoFiled;
+  if (filed >= total) {
+    whoFiled = "All four researchers filed.";
+  } else if (filed > 0) {
+    whoFiled = `${spelled[filed]} of the four researchers filed. The others did not, and their drawers say so.`;
+  } else {
+    // Unreachable from a partial room — _salvage refuses to produce one
+    // without findings, and findings require prose. Defensive, and it still
+    // must not claim a filing.
+    whoFiled = "No researcher filed.";
+  }
+  // One sentence, used by both branches: it is the claim about evidence, and
+  // there is only one true version of it.
+  const whatIsThere =
+    "Every fact in the drawers shows the sources that came back for it, with " +
+    "the search's own excerpt where there was one, and any cited link that " +
+    "never came back is marked on its clip rather than dropped.";
+
   if (status === "partial") {
     return {
       heading: "This room is filed as clips",
       body: [
-        "All four researchers filed. Every fact in the drawers carries the source it came from and the excerpt that source returned, gathered the same way and checked the same way as a room that has a bible.",
+        `${whoFiled} What they filed was gathered the same way, and checked the same way, as the research in a room that has a bible. ${whatIsThere}`,
         "The step that did not run is the editor's: folding those findings into one written document. The drawers hold the research; read it there.",
       ],
     };
@@ -693,7 +811,7 @@ function noBibleCopy(status) {
   return {
     heading: "No bible was written for this room",
     body: [
-      "The editor produced nothing to read. What the researchers filed is untouched by that: the drawers hold their findings and the sources behind them.",
+      `The editor produced nothing to read. What the researchers filed is untouched by that. ${whatIsThere}`,
     ],
   };
 }

@@ -74,6 +74,36 @@ def test_categories_serialize_to_the_api_shape():
     assert payload["logistics"]["findings"] == []
 
 
+def test_a_researcher_that_never_wrote_is_distinguishable_from_one_that_filed_nothing():
+    """The room view depends on this and cannot recover it any other way.
+
+    `_build_categories` emits all four keys unconditionally, so a run salvaged
+    mid-flight (`_salvage`) sends categories for researchers that never
+    produced a word. `markdown` is the only field that separates the two: empty
+    means the agent never reached its output_key, non-empty with no findings
+    means it wrote prose the parser could not file. web/app.js's categoryFiled
+    reads exactly this to decide whether a drawer mounts FILED or FAILED, and
+    to count how many researchers filed in the partial room's copy — so a
+    change that gave `markdown` a non-empty default would silently stamp FILED
+    over a researcher that never filed, and put a false number on the page
+    next to it.
+    """
+    ledger = SourceLedger()
+    state = {
+        # Wrote, but nothing the parser could turn into a finding.
+        "findings_setting": "No usable sources came back for this category.",
+        # Never reached its output_key at all.
+    }
+
+    payload = jsonable_encoder(server._build_categories(state, ledger))
+
+    assert payload["setting"]["findings"] == []
+    assert payload["setting"]["markdown"].strip() != ""
+
+    assert payload["logistics"]["findings"] == []
+    assert payload["logistics"]["markdown"] == ""
+
+
 def test_room_endpoint_exposes_categories():
     client = TestClient(server.app)
     server._runs["testrun"] = {

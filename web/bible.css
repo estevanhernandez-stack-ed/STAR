@@ -17,11 +17,23 @@
    reader has deliberately asked for it — the drawers are hidden behind it, not
    under it, so the two surfaces are never both claiming to be the page.
 
-   Contrast, measured in a browser rather than eyeballed, and re-derived after
-   this phase found a helper returning 11.04:1 for a true 4.37:1:
-     --ink on --onionskin        12.7:1
-     --aniline on --onionskin     6.7:1   <- links, clears AA at body size
-     --ink at 0.72 on --onionskin 6.7:1   <- the note paragraphs
+   Contrast. Every pair below is what this file SHIPS, computed with a helper
+   that refuses to report until it reproduces the six values web/clip.css
+   already recorded — this phase found one returning 11.04:1 for a true 4.37:1,
+   and the lesson is that a table is only worth what its instrument is.
+   An earlier draft of this header carried two numbers that did not match the
+   rules underneath it (0.72 for a note paragraph that ships at 0.85, and 6.7
+   for a link that measures 6.43); they are corrected here rather than left,
+   because a header that documents values the file does not ship is the same
+   defect as a stale comment, in the one file that invokes that lesson.
+     --ink on --onionskin                    12.70:1  body text, headings
+     --ink at 0.85 on --onionskin             8.45:1  .bible-note
+     --aniline on --onionskin                 6.43:1  links, AA at body size
+     --ink on mix(--manila 45%, --onionskin) 10.77:1  code and pre
+     --ink on --onionskin (focus ring)       12.70:1  clears the 3:1 floor
+     --pencil on --onionskin                  2.76:1  <- why the ring is
+                                                        overridden, not
+                                                        inherited
    Nothing here is small text on manila, which is the pair this codebase keeps
    getting wrong; the surface is the lighter one and every value clears AA on
    it with room to spare.
@@ -152,6 +164,14 @@
   text-decoration: underline;
   text-underline-offset: 0.15em;
   overflow-wrap: anywhere;
+}
+
+/* Same override, one surface over: --pencil is 2.76:1 on --onionskin, under the
+   3:1 non-text floor, and these links are the only focusable things on this
+   surface. --ink is 12.70:1 here. Found by the focus-ring sweep review round 1
+   asked for; see web/shell.css's .docket-btn rule for the full list. */
+.bible-body a:focus-visible {
+  outline-color: var(--ink);
 }
 
 /* The DOMPurify-unavailable fallback (web/app.js's bibleHtml). Escaped text in

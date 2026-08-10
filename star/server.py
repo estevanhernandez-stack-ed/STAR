@@ -391,16 +391,33 @@ def _partial_message(cause: str) -> str:
     """Shared by both salvage sites so the promise stays consistent with what
     the browser can actually show.
 
-    It used to end "they'll be readable here once the room view for them
-    ships", which was the honest thing to say while `_salvage`'s `categories`
-    had nowhere to render: web/app.js showed a bible, a profile, and a plan,
-    and no clips. That view shipped in Task 6 and the promise came true, so
-    the sentence deferring it is now the false one. The findings are in the
-    room's drawers, and the copy says so.
+    Two rewrites, both for the same reason — this sentence keeps promising
+    more than the run can guarantee:
+
+    1. It used to end "they'll be readable here once the room view for them
+       ships", honest while `_salvage`'s `categories` had nowhere to render.
+       That view shipped in Task 6, so the deferral became the false part.
+    2. Its replacement said "Every researcher's findings and the sources
+       behind them were gathered". Neither half survives inspection. `_salvage`
+       returns True when ANY category has findings, so a ceiling that trips
+       while two researchers are still working produces this exact message
+       over two empty categories — "every researcher" is asserted, never
+       checked. And `parse_findings` keeps a Finding whose every cited URL
+       failed to resolve, with `citations=[]`; `_maybe_warn_empty_ledger`
+       above exists because a whole run can land that way, so "the sources
+       behind them" is not guaranteed for a single fact, let alone all of
+       them.
+
+    What is true without qualification, in every branch that reaches here, is
+    that whatever did get filed is saved and reachable. This says that and
+    stops. "did file" is doing the work: it scopes the sentence to what exists
+    instead of asserting a set. The room view itself counts the categories and
+    states the number (web/app.js's noBibleCopy), which is the right place for
+    a count: it has the payload, and this function has only a cause string.
     """
     return (
-        f"{cause} Every researcher's findings and the sources behind them "
-        "were gathered, and they are filed in this room's drawers."
+        f"{cause} The findings the researchers did file are saved in this "
+        "room's drawers."
     )
 
 

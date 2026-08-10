@@ -505,6 +505,28 @@ button {
   background: color-mix(in srgb, var(--ink) 8%, transparent);
 }
 
+/* The focus ring, on manila — the third time this file's own global rule
+   (`:focus-visible { outline: 2px solid var(--pencil) }`, line 42) has had to
+   be overridden for a control sitting on a card. --pencil measures 1.88:1 on
+   --manila against a 3:1 non-text floor; --ink measures 8.63:1. web/clip.css
+   overrode it for the receipt, web/drawer.css for the drawer toggle, and this
+   button is the only way to reach the bible, so it cannot be the one that
+   keeps an invisible ring.
+
+   #build-btn below is the same pair, found by sweeping every focusable control
+   for its surface after review round 1 flagged this one: rail buttons and the
+   footer link sit on --drawer-shadow (4.80:1) and the textarea already carries
+   its own --ink override, so those three are the whole list.
+
+   Still deliberately scoped rather than a change to the global rule — weakening
+   the default would break --cabinet and --drawer-shadow, where --pencil is
+   correct. The structural fix (a manila-surface rule setting these defaults for
+   its whole subtree) is Task 7's, per the phase ledger. */
+.docket-btn:focus-visible,
+#build-btn:focus-visible {
+  outline-color: var(--ink);
+}
+
 .docket-slug {
   margin: 0.9rem 0 0;
   font-family: var(--slug);
