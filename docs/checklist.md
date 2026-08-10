@@ -77,7 +77,7 @@ three tools and note the fourth as next. **Pipeline B and the video never go.**
   Verify: paste both round trips into `process-notes.md`. The uid held before the call and the
   `localId` returned by it are byte-identical strings.
 
-- [ ] **2. Google link mechanics in the browser**
+- [x] **2. Google link mechanics in the browser**
   Spec ref: `spec.md > Identity: linking without a gate` — The flow, Error mapping, Sign-out, The redirect that abandons a live run
   Depends on: 1. Effort: **M**.
   What to build: `web/auth.js` gains `beginGoogleLink()`, `completeGoogleLink()`, `signOut()`,
@@ -230,7 +230,7 @@ three tools and note the fourth as next. **Pipeline B and the video never go.**
   fixtures from item 5, a room-ledger hit, a run-ledger hit, neither, the downgrade, and a `budget:`
   prefix arriving when the budget was **not** spent.
 
-- [ ] **7. Scene endpoints, the check runner, and persistence**
+- [x] **7. Scene endpoints, the check runner, and persistence**
   Spec ref: `spec.md > Pipeline B — Script Check > Synchronous, not streamed` + `> Endpoints` + `spec.md > Data model > Firestore`
   Depends on: 5, 6. Effort: **L**. **← Checkpoint 2**
   What to build: `_run_check(uid, run_id, scene)` in `star/server.py` — read the room through

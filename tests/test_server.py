@@ -803,6 +803,23 @@ def test_api_schema_routes_are_disabled_on_a_public_endpoint():
     assert client.get("/openapi.json").status_code == 404
 
 
+def _exported_config(body: str) -> dict:
+    """Parse `/config.js` back into `{export name: payload}`.
+
+    The endpoint serves ES module source rather than JSON, so the test has to
+    read it as source. Splitting on the export statements rather than
+    partitioning once is what lets the assertions below check the exact SET of
+    exports: a second export used to land inside the first one's parse and
+    break it, which is a failure that says "the test is stale" when the thing
+    worth hearing is "something new is on this wire".
+    """
+    exported = {}
+    for statement in body.split("export const ")[1:]:
+        name, _, payload = statement.partition(" = ")
+        exported[name.strip()] = json.loads(payload.strip().rstrip(";"))
+    return exported
+
+
 def test_config_js_exposes_only_the_public_firebase_keys_and_no_secrets():
     client = TestClient(server.app)
     secret_google = "sk-google-should-never-leave-the-server"
@@ -813,6 +830,7 @@ def test_config_js_exposes_only_the_public_firebase_keys_and_no_secrets():
         {
             "FIREBASE_API_KEY": "public-web-key",
             "FIREBASE_PROJECT_ID": "star-project",
+            "GOOGLE_OAUTH_CLIENT_ID": "public-oauth-client-id",
             "GOOGLE_API_KEY": secret_google,
             "PARALLEL_API_KEY": secret_parallel,
         },
@@ -823,14 +841,45 @@ def test_config_js_exposes_only_the_public_firebase_keys_and_no_secrets():
     body = response.text
     assert response.headers["content-type"].startswith("application/javascript")
 
-    _, _, rest = body.partition("export const FIREBASE = ")
-    payload = json.loads(rest.rstrip(";\n"))
-    assert set(payload) == {"apiKey", "projectId"}
-    assert payload["apiKey"] == "public-web-key"
-    assert payload["projectId"] == "star-project"
+    exported = _exported_config(body)
+    # Exact key sets, not a subset check. This file is the one place server
+    # environment crosses into the browser, and the test that guards it has to
+    # fail on an ADDED key rather than only on a changed one — a leak arrives
+    # as something new in the payload, never as something missing from it.
+    assert set(exported) == {"FIREBASE", "GOOGLE"}
+    assert set(exported["FIREBASE"]) == {"apiKey", "projectId"}
+    assert exported["FIREBASE"]["apiKey"] == "public-web-key"
+    assert exported["FIREBASE"]["projectId"] == "star-project"
+    assert set(exported["GOOGLE"]) == {"clientId"}
+    assert exported["GOOGLE"]["clientId"] == "public-oauth-client-id"
 
+    # GOOGLE_OAUTH_CLIENT_ID is public and GOOGLE_API_KEY is the Gemini
+    # credential, and as of this cycle they share a prefix. Anything that ever
+    # reaches for the environment by pattern rather than by name puts the
+    # second one on this wire, so both secrets are asserted absent from the
+    # whole body rather than only from the payload that was parsed.
     assert secret_google not in body
     assert secret_parallel not in body
+
+
+def test_config_js_serves_an_empty_client_id_rather_than_failing_to_boot():
+    """An absent OAuth client id is loud, not fatal.
+
+    `config.validate_env()` deliberately does not list it. That function fails
+    the process on anything whose absence would be silent; this one's absence
+    reaches the browser as `""`, `linkingAvailable()` reads false, and the card
+    says linking is unavailable while every other path keeps working. Deleting
+    the variable is the whole test, and the assertion is that the response is
+    still a 200 carrying a well-formed empty string.
+    """
+    client = TestClient(server.app)
+
+    with mock.patch.dict(os.environ, {"FIREBASE_API_KEY": "k"}):
+        os.environ.pop("GOOGLE_OAUTH_CLIENT_ID", None)
+        response = client.get("/config.js")
+
+    assert response.status_code == 200
+    assert _exported_config(response.text)["GOOGLE"] == {"clientId": ""}
 
 
 # --- Task 1: abuse guards on a publicly reachable endpoint ------------------

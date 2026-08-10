@@ -1150,13 +1150,27 @@ async def delete_scene(
 
 @app.get("/config.js")
 async def browser_config() -> Response:
-    """The Firebase web key is a public project identifier, not a secret."""
+    """The Firebase web key is a public project identifier, not a secret.
+
+    The OAuth client id is public in the same sense: it names the client, it
+    does not authenticate one. It is served here rather than validated at boot
+    on purpose. `config.validate_env()` fails the process on anything whose
+    absence would be SILENT, and this one's absence is loud by construction:
+    the empty string reaches `web/auth.js`, `linkingAvailable()` reads false,
+    the card renders the offer as unavailable and says why, and every other
+    path in the app keeps working. That is
+    `prd.md > Identity That Outlives The Browser`'s fourth criterion satisfied
+    by the shape of the config rather than by a code path someone has to
+    remember to write.
+    """
     payload = {
         "apiKey": os.environ.get("FIREBASE_API_KEY", ""),
         "projectId": os.environ.get("FIREBASE_PROJECT_ID", ""),
     }
+    google = {"clientId": os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "")}
     return Response(
-        f"export const FIREBASE = {json.dumps(payload)};",
+        f"export const FIREBASE = {json.dumps(payload)};\n"
+        f"export const GOOGLE = {json.dumps(google)};",
         media_type="application/javascript",
     )
 

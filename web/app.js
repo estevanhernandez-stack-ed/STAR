@@ -27,7 +27,13 @@
    about the future — see elapsedLabel().
 */
 
-import { authedFetch, getIdToken } from "/auth.js";
+import {
+  authedFetch,
+  completeGoogleLink,
+  getIdToken,
+  setLiveRunProvider,
+  takeStashedRun,
+} from "/auth.js";
 import {
   showIntake,
   showRunning,
@@ -90,7 +96,25 @@ let drawerEls = new Map(); // category -> drawer element
 let categorySearch = new Map(); // category -> { objective, count }
 let filedCategories = new Set();
 let elapsedTimer = null;
+// null means "this page does not know when the run started" — see updateMeter.
 let runStartedAt = null;
+
+// The run this page is currently streaming, and how far into its event history
+// it has got. auth.js's beginGoogleLink reads all three through the provider
+// registered at the foot of this file, because a link redirect leaves the page
+// and these three values are the only thing about a live run that is not
+// recoverable from the server afterwards.
+let liveRunId = null;
+let liveStreamKey = null;
+let lastEventId = null;
+// The one open stream, held so it can be closed. "New room" during a build
+// used to leave the previous EventSource connected: it went on writing into
+// drawer elements resetProgress had already replaced, and it would eventually
+// yank the reader into the old room when that run finished. Harmless enough to
+// live with until the monotonic id guard below arrived — two live streams
+// sharing one lastEventId means the older one suppresses the newer one's
+// events — so the stream is now closed where the state it drives is cleared.
+let activeSource = null;
 
 $("build-btn").addEventListener("click", buildRoom);
 $("new-room-btn").addEventListener("click", () => {
@@ -193,16 +217,26 @@ function elapsedLabel() {
   return `${Math.floor(secs / 60)}:${pad2(secs % 60)} elapsed`;
 }
 
+/** The meter, and the one clause it drops rather than guesses.
+ *
+ *  A run resumed after a page load has no start time this browser can see:
+ *  GET /api/rooms/{id} returns `result: null` while the pipeline is still
+ *  running, so `created_at` is not on the wire for exactly the case that needs
+ *  it. Stamping Date.now() there would print "0:04 elapsed" over a build that
+ *  has been going four minutes, which is the same defect as a drawer explaining
+ *  a cause it cannot see. The search tally is a fact either way and stays. */
 function updateMeter() {
-  $("search-meter").textContent = `${searchCount} cited searches so far · ${elapsedLabel()}`;
+  const parts = [`${searchCount} cited searches so far`];
+  if (runStartedAt !== null) parts.push(elapsedLabel());
+  $("search-meter").textContent = parts.join(" · ");
   // One interval drives both clocks, so a drawer's "last search N ago" can
   // never disagree with the run meter beside it, and both stop the moment
   // the run does.
   tickDrawerClocks(progressPanel);
 }
 
-function startElapsedTimer() {
-  runStartedAt = Date.now();
+function startElapsedTimer({ startedAt = Date.now() } = {}) {
+  runStartedAt = startedAt;
   updateMeter();
   elapsedTimer = setInterval(updateMeter, 1000);
 }
@@ -220,11 +254,16 @@ function stopElapsedTimer() {
  *  next. */
 function resetProgress() {
   stopElapsedTimer();
+  closeStream();
   timeline.innerHTML = "";
   $("search-meter").textContent = "";
   searchCount = 0;
   filedCategories = new Set();
   categorySearch = new Map();
+  runStartedAt = null;
+  liveRunId = null;
+  liveStreamKey = null;
+  lastEventId = null;
   const grid = createDrawerGrid();
   drawerEls = new Map([...grid.children].map((el) => [el.dataset.category, el]));
   const oldGrid = progressPanel.querySelector(".drawer-grid");
@@ -318,6 +357,33 @@ async function buildRoom() {
   showRunning();
   startElapsedTimer();
   addEntry("done", "Treatment received. The department is assembling.");
+  openStream(runId, streamKey);
+}
+
+/** Opens one run's event stream and drives the progress panel off it.
+ *
+ *  Two callers, one handler, deliberately: a build started in this page and a
+ *  build picked back up after a redirect are the same run, and a second copy of
+ *  this logic is a second place for the two to drift apart.
+ *
+ *  `resumed` changes exactly one thing, and it is the error path. A run that
+ *  has left the server's in-memory registry answers this endpoint with a 404,
+ *  and EventSource's response to a failed connection is to keep retrying
+ *  forever. On the build path that cannot happen — the run was created
+ *  milliseconds ago. On the resume path it is the ordinary case for a run that
+ *  finished while the reader was away, so a failure that arrives before any
+ *  event does closes the stream and opens the filed room instead.
+ *
+ *  ON DUPLICATE ENTRIES, which is what this has to guarantee. Every event
+ *  carries its index in the run's append-only history (star/server.py's _push),
+ *  and this handler refuses any id it has already applied. That makes a
+ *  duplicated timeline entry structurally impossible rather than merely
+ *  unobserved — including when EventSource reconnects on its own and the server
+ *  replays from a cursor this page has already passed. */
+function openStream(runId, streamKey, { resumed = false } = {}) {
+  closeStream();
+  liveRunId = runId;
+  liveStreamKey = streamKey;
 
   // encodeURIComponent on both: runId and streamKey are server-minted hex
   // today, so neither can carry a character that needs escaping — which is
@@ -328,8 +394,17 @@ async function buildRoom() {
   const source = new EventSource(
     `/api/rooms/${encodeURIComponent(runId)}/events?k=${encodeURIComponent(streamKey)}`,
   );
+  let received = false;
+
   source.onmessage = (msg) => {
     const ev = JSON.parse(msg.data);
+    received = true;
+    // The monotonic guard. `id` is the event's position in the run's history,
+    // so "already applied" is an integer comparison and not a heuristic.
+    if (Number.isInteger(ev.id)) {
+      if (lastEventId !== null && ev.id <= lastEventId) return;
+      lastEventId = ev.id;
+    }
     if (ev.type === "search") {
       searchCount += 1;
       const category = ev.category;
@@ -401,32 +476,56 @@ async function buildRoom() {
       // rather than any one drawer.
       addEntry("warn", escapeHtml(ev.message));
     } else if (ev.type === "complete") {
-      stopElapsedTimer();
-      sweepUnfiledDrawers();
-      source.close();
+      endRun(source);
       showResults(runId);
       refreshRail(runId);
     } else if (ev.type === "partial") {
       // The editor ran out of time, but the researchers did not. Their
       // findings and citations are real and already paid for, so show them
       // rather than throwing away a four-minute build.
-      stopElapsedTimer();
-      sweepUnfiledDrawers();
-      source.close();
+      endRun(source);
       addEntry("warn", escapeHtml(ev.message));
       showResults(runId);
       refreshRail(runId);
     } else if (ev.type === "error") {
-      stopElapsedTimer();
-      sweepUnfiledDrawers();
-      source.close();
+      endRun(source);
       addEntry("error", `Something broke: ${escapeHtml(ev.message)}`);
       $("build-btn").disabled = false;
     }
   };
+
   source.onerror = () => {
-    /* stream closes naturally on completion; ignore */
+    /* On the build path the stream closes naturally on completion; ignore.
+       On the resume path a failure before the first event is the run having
+       left the server's registry — see this function's header. */
+    if (!resumed || received) return;
+    endRun(source);
+    showResults(runId);
+    refreshRail(runId);
   };
+
+  activeSource = source;
+  return source;
+}
+
+function closeStream() {
+  if (activeSource) activeSource.close();
+  activeSource = null;
+}
+
+/** One run's end, from every terminal branch.
+ *
+ *  Clearing the live-run pair matters beyond tidiness: it is what the link
+ *  redirect reads. A finished run left in these variables would be stashed on
+ *  the way to Google and then reopened as a stream on the way back, which is a
+ *  request for a run the server has already let go of. */
+function endRun(source) {
+  stopElapsedTimer();
+  sweepUnfiledDrawers();
+  source.close();
+  if (activeSource === source) activeSource = null;
+  liveRunId = null;
+  liveStreamKey = null;
 }
 
 /** Clears the room view back to its resting state before a repaint.
@@ -910,13 +1009,90 @@ function escapeHtml(s) {
     .replaceAll('"', "&quot;");
 }
 
+/** Picks a build back up after the page went to Google and came back.
+ *
+ *  The OAuth flow is a full-page navigation, so `{run_id, stream_key}` — which
+ *  live nowhere but this file's memory — are gone by the time the reader
+ *  returns. The run is not: the asyncio task keeps going and `_persist` writes
+ *  at terminal status. What is lost is the stream, and the stash auth.js wrote
+ *  before the redirect is what buys it back.
+ *
+ *  The server is asked first, because the run may well have finished while the
+ *  reader was choosing a Google account, and reopening a stream for a run that
+ *  has already filed is a 404 with a spinner on top of it.
+ *
+ *  WHY THE STREAM REPLAYS FROM THE BEGINNING RATHER THAN FROM THE STASHED ID.
+ *  EventSource sets Last-Event-ID itself on automatic reconnects and there is
+ *  no way for a page to set it on a fresh construction — it is not a header a
+ *  caller can supply. That turns out to be the right behaviour here rather than
+ *  a limitation worked around: everything the earlier events built lived in
+ *  page memory and died with the page, so a resume that started at the stashed
+ *  id would leave four drawers stuck at idle and then stamp them "did not file"
+ *  on a run where they did. Replaying the whole history rebuilds the timeline,
+ *  the drawer states, and the search tally from the run's own record, and the
+ *  monotonic guard in openStream is what makes that free of duplicates. The
+ *  stashed id is still carried, because it is the one number a future in-page
+ *  continuation would need and it costs nothing to keep. */
+async function resumeStashedRun() {
+  const stashed = takeStashedRun();
+  if (!stashed) return null;
+
+  let status = null;
+  try {
+    const res = await authedFetch(`/api/rooms/${encodeURIComponent(stashed.run_id)}`);
+    if (res.ok) ({ status } = await res.json());
+  } catch {
+    status = null;
+  }
+
+  // Unreadable is not the same as finished. Fall through to the ordinary load
+  // rather than opening a room this page could not confirm exists.
+  if (status === null) return null;
+
+  if (status !== "running") {
+    await showResults(stashed.run_id);
+    return stashed.run_id;
+  }
+
+  resetProgress();
+  showRunning();
+  // No startedAt: the running branch of GET /api/rooms/{id} returns
+  // `result: null`, so there is no created_at to read and this page genuinely
+  // does not know when the build began. updateMeter drops the clause.
+  startElapsedTimer({ startedAt: null });
+  addEntry("done", "Back from the sign-in. Picking the run up where it was.");
+  openStream(stashed.run_id, stashed.stream_key, { resumed: true });
+  return stashed.run_id;
+}
+
 // Wire the shell to this file's room renderer, then sign in and populate
 // the rail. A failed sign-in shows the same banner buildRoom's own check
 // would show later — no reason to wait for a build attempt to learn the
 // department can't be reached at all.
 setRoomRenderer(showResults);
 
+// auth.js asks for this on its way out to Google. Read at call time rather
+// than pushed on every event: the values are already tracked for the stream's
+// own sake, and a getter cannot go stale between updates.
+setLiveRunProvider(() =>
+  liveRunId && liveStreamKey
+    ? { run_id: liveRunId, stream_key: liveStreamKey, last_event_id: lastEventId }
+    : null
+);
+
 (async function init() {
+  // FIRST, and before the token is asked for. completeGoogleLink strips the
+  // returned fragment out of the address bar as its opening move, and on a
+  // successful link it is what puts the linked token in place — so the rail
+  // below is drawn with the session the reader just finished establishing
+  // rather than the one they had a moment ago. It resolves to a plain result
+  // object on every path including "nothing happened"; nothing here throws.
+  //
+  // What it does NOT do is render anything. This page has no account surface
+  // and the intake carries no mention of Google or of accounts by design, so
+  // the outcome is cached inside auth.js for the card to read.
+  await completeGoogleLink();
+
   let token;
   try {
     token = await getIdToken();
@@ -927,5 +1103,9 @@ setRoomRenderer(showResults);
     $("auth-error").classList.remove("hidden");
     return;
   }
-  await refreshRail();
+  // The rail is drawn either way. A resumed run marks itself active in it
+  // rather than replacing it — a reader who comes back mid-build still has
+  // every other room one click away.
+  const resumedRunId = await resumeStashedRun();
+  await refreshRail(resumedRunId ?? undefined);
 })();
