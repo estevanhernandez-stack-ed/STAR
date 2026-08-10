@@ -40,6 +40,38 @@ def test_verify_token_returns_none_when_firebase_rejects_it():
         assert verify_token("Bearer bad.token.here") is None
 
 
+def test_a_rejected_token_is_logged_with_its_cause(caplog):
+    """The refusal has to leave a trace on the server, and only on the server.
+
+    An intermittent 401 on a cold `GET /api/rooms` sat in the ledger for three
+    tasks explained by a theory that turned out to be wrong, and it stayed
+    un-diagnosable because this path discarded the exception. The log line is
+    the whole fix; this pins that it exists and carries the cause.
+    """
+    with (
+        caplog.at_level("WARNING", logger="star.auth"),
+        mock.patch("star.auth._verify", side_effect=ValueError("Could not fetch certs")),
+    ):
+        assert verify_token("Bearer bad.token.here") is None
+
+    assert len(caplog.records) == 1
+    message = caplog.records[0].getMessage()
+    assert "ValueError" in message
+    assert "Could not fetch certs" in message
+    # The credential itself must never reach a log line — a bearer token in a
+    # log file is a bearer token an operator can replay.
+    assert "bad.token.here" not in message
+
+
+def test_a_missing_or_malformed_header_is_not_logged_as_a_failure(caplog):
+    """Every unauthenticated poke at a public endpoint would otherwise write a
+    warning, which turns the signal this log exists for into noise."""
+    with caplog.at_level("WARNING", logger="star.auth"):
+        assert verify_token(None) is None
+        assert verify_token("Basic nope") is None
+    assert caplog.records == []
+
+
 def test_verify_token_returns_none_without_calling_firebase_on_a_bad_header():
     """A malformed header must not cost a network round trip."""
     with mock.patch("star.auth._verify") as verifier:

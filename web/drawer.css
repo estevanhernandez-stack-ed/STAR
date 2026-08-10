@@ -201,8 +201,25 @@
   color: var(--drawer-shadow);
 }
 
+/* "Not yet started". Found by Task 7's sweep, and it is the worst text pair
+   that survived to that point: --pencil on --manila is 1.88:1, the same value
+   this file's own header cites as the reason the focus ring had to be
+   overridden — used here as body text. It sat on the live run's first screen
+   for the ~80 seconds a build spends before the first drawer moves.
+
+   Not caught by the structural paper rule in web/shell.css, and worth naming
+   why: that rule fixes the INHERITED case, a token arriving from a dark-ground
+   default. This is an explicit declaration at (0,2,0) asking for pencil on
+   manila by name. The structural fix cannot save a rule that states the wrong
+   thing on purpose; only measuring can, which is what found it.
+
+   --ink at 0.75 is 4.93:1. The state signal does not live in this line anyway
+   — the TAB is rendered in pencil, which is what this file's IDLE comment says
+   it is for, and the italic body face still separates this from the bold
+   label voice every other state uses. */
 .drawer[data-state="idle"] .drawer-status {
-  color: var(--pencil);
+  color: var(--ink);
+  opacity: 0.75;
   font-weight: 400;
   letter-spacing: 0;
   text-transform: none;
@@ -210,17 +227,32 @@
   font-style: italic;
 }
 
-/* FAILED — tab in --oxide, per the rule. */
+/* FAILED — tab in --oxide, per the rule.
+   Both lines below were 3.23:1 until Task 7: --oxide against --manila, the
+   palette-inherent shortfall Task 3 logged and Task 6 made reachable from a
+   STORED room (a partial run mounts an unfiled category FAILED, so this is no
+   longer live-run-only furniture). Fixed on the two TEXT pairs without
+   touching what --oxide means — the tab's fill is still the raw pad, so the
+   flagged colour on screen is the flagged colour in the palette.
+
+     label on the tab   --manila on --oxide      3.23:1 -> --onionskin 4.75:1
+     the status line    --oxide on --manila      3.23:1 -> mixed 4.59:1
+
+   --onionskin is used here as a letterform colour, not as a ground; the rule
+   tokens.css states is that onionskin must never become a PAGE ground, and an
+   11px label printed on a stamp pad is the opposite of that. It is also the
+   same move the IDLE tab already makes — the label colour is chosen against
+   the tab's own fill, not against the card. */
 .drawer[data-state="failed"] .drawer-tab {
   background: var(--oxide);
 }
 
 .drawer[data-state="failed"] .drawer-tab-label {
-  color: var(--manila);
+  color: var(--onionskin);
 }
 
 .drawer[data-state="failed"] .drawer-status {
-  color: var(--oxide);
+  color: color-mix(in srgb, var(--oxide) 70%, var(--ink));
 }
 
 .drawer-body {
@@ -268,13 +300,11 @@
   border-bottom-color: var(--ink);
 }
 
-/* The global focus ring is --pencil (web/shell.css), which measures 1.9:1 on
-   manila against a 3:1 non-text floor. Same override, same reason, as the
-   receipt's in web/clip.css — this is the second focusable control in the app
-   to sit on a manila card. */
-.drawer-toggle:focus-visible {
-  outline-color: var(--ink);
-}
+/* The focus ring used to be overridden here (--pencil is 1.88:1 on manila
+   against a 3:1 floor, --ink is 8.63:1). It is now set once for every control
+   on a paper surface by web/shell.css's `.intake, .docket, .drawer, .bible`
+   rule, so this copy is gone rather than kept as a second place to maintain
+   the same number. Task 7 removed six of these. */
 
 .drawer-status {
   margin: 0;
@@ -321,7 +351,24 @@
 
 /* Names the log in the filed state, where the reader may never have watched
    these questions being asked. Deliberately quiet: it is a caption on
-   evidence, not a heading competing with the stamp. */
+   evidence, not a heading competing with the stamp.
+
+   0.75, not the 0.55 this shipped with. Composited over --manila, 0.55 is
+   3.05:1 for 11px bold tracked caps — under AA, measured, and it stopped being
+   a corner case when Task 6 made renderSceneNeeds fire from renderFiled rather
+   than only renderExpanded: this label now appears FOUR TIMES on the room's
+   first screen, where before it took a click to reach. Re-measured here rather
+   than taken from the earlier note: 0.55 -> 3.05:1, 0.75 -> 4.93:1.
+
+   0.75 is not a new number either. It is the value .drawer-meta below already
+   uses on this surface, and #results-panel .meter, .docket-slug and .kv .k in
+   web/shell.css. "Quiet on manila" has one value in this codebase.
+
+   Five call sites, all of them inside a .drawer-body and therefore all on
+   manila: web/clip.js's renderSceneNeeds, renderUncertainty and
+   renderFieldNotes, and web/drawer.js's buildLabelledLog and renderExpanded's
+   "What was found". Checked before changing it — a shared class is only safe
+   to retune if every surface it lands on is the one it was measured against. */
 .drawer-legend {
   margin: 1rem 0 0;
   font-family: var(--label);
@@ -330,7 +377,7 @@
   letter-spacing: var(--track-label);
   text-transform: uppercase;
   color: var(--ink);
-  opacity: 0.55;
+  opacity: 0.75;
 }
 
 .search-entry {
@@ -364,19 +411,26 @@
   gap: 0.12rem;
 }
 
+/* 0.75, not 0.70: 4.34:1 against a 4.5 floor for 11px slug text, and these are
+   the literal strings that went over the wire — the cheapest proof in the app
+   that a search is real. Same value as every other quiet line on manila. */
 .search-queries li {
   font-family: var(--slug);
   font-size: var(--label-sm);
   line-height: 1.5;
   color: var(--ink);
-  opacity: 0.7;
+  opacity: 0.75;
 }
 
 /* Marks these as sent strings rather than more prose, without spending a
-   glyph the screen reader would have to say out loud. */
+   glyph the screen reader would have to say out loud.
+   No colour of its own any more. It carried --pencil, which is 1.88:1 on
+   manila before the parent's opacity even applies — and the opacity DOES apply,
+   because it is set on the <li> and composites the whole subtree, pseudo-
+   element included. The arrow was effectively invisible. Inheriting the line's
+   own --ink puts it at the same 4.93:1 as the string it points at. */
 .search-queries li::before {
   content: "→ ";
-  color: var(--pencil);
 }
 
 /* The FILED stamp — typographic only. A bordered label, not a fill, not a
@@ -456,13 +510,58 @@
 }
 
 /* ---------------------------------------------------------------------
-   Below 900px the grid collapses to one column — Task 7 owns the full
-   responsive pass, but a drawer this narrow would already read fine as a
-   single column, so the rule is declared here rather than left implicit.
+   Below 900px the grid collapses to one column.
+
+   The 560px ceiling this rule shipped with is gone. Measured at the 900px
+   boundary, both ways, on the real stored room in the FILED state, by counting
+   pixels off the rendered PNG:
+
+     cap at 560px   manila 60.26% of the stage, 47.43% of the viewport
+     no cap         manila 75.96% of the stage, 59.77% of the viewport
+
+   So the cap did NOT break DIRECTION.md's >40% rule and this is not a rescue —
+   saying otherwise would be inventing a crisis to justify a change. What it did
+   was spend 15.7 points of the stage on --cabinet: a 560px card centred in an
+   836px stage is an object floating in a frame, which is the composition the
+   rule is a proxy for, arrived at from the width axis rather than the height
+   one. The cards are the page at every width or they are not the page.
+
+   `max-width: 100%` rather than deleting the property: .drawer-grid's own
+   1120px ceiling is declared above and would otherwise apply, which is
+   harmless today (no viewport in this range is that wide) and wrong the first
+   time someone moves the breakpoint.
 --------------------------------------------------------------------- */
 @media (max-width: 900px) {
   .drawer-grid {
-    grid-template-columns: 1fr;
-    max-width: 560px;
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 100%;
+    /* No second row to clear, so the row gap's extra 2rem of headroom is
+       spent on nothing but distance between two cards. The tab rise still
+       has to clear, which is what this keeps. */
+    row-gap: calc(var(--tab-rise) + 1.25rem);
+  }
+}
+
+/* Phone width. The card's desktop padding — 28px each side plus a 24px tab
+   inset — is most of a 390px screen; at 1.1rem it is 17.6px and the measure
+   inside is 90px wider. Matches the 560px boundary web/clip.css and
+   web/bible.css already use for the same reason. */
+@media (max-width: 560px) {
+  .drawer {
+    min-height: 0;
+    padding: 2.25rem 1.1rem 1.5rem;
+  }
+
+  .drawer-tab {
+    left: 0.9rem;
+    max-width: calc(100% - 1.8rem);
+  }
+
+  /* The plates are two and three words long and the longest, "Setting &
+     Atmosphere", is 152px — it fits at 390px, but `nowrap` on a tab that is
+     also capped at the card's width would clip rather than wrap the first
+     time a category is renamed. */
+  .drawer-tab-label {
+    white-space: normal;
   }
 }

@@ -28,7 +28,11 @@
    defect as a stale comment, in the one file that invokes that lesson.
      --ink on --onionskin                    12.70:1  body text, headings
      --ink at 0.85 on --onionskin             8.45:1  .bible-note
-     --aniline on --onionskin                 6.43:1  links, AA at body size
+     mix(--aniline 70%, --ink) on --onionskin 8.10:1  links (was the raw
+                                                      token at 6.43:1; both
+                                                      clear AA, the mixed
+                                                      shade is what every
+                                                      paper surface now uses)
      --ink on mix(--manila 45%, --onionskin) 10.77:1  code and pre
      --ink on --onionskin (focus ring)       12.70:1  clears the 3:1 floor
      --pencil on --onionskin                  2.76:1  <- why the ring is
@@ -158,20 +162,19 @@
    those pages pointed. They are opened through web/app.js's makeLinksSafe
    (target=_blank plus rel=noopener noreferrer) and they are underlined here
    rather than carried on color alone — color as the only signal fails anyone
-   who cannot separate --aniline from --ink. */
+   who cannot separate --aniline from --ink.
+
+   Neither the colour nor the focus ring is declared here any more. Both come
+   from web/shell.css's paper-surface rule, which covers .bible along with the
+   three manila surfaces: the link colour is color-mix(--aniline 70%, --ink),
+   8.10:1 on onionskin against the raw token's 6.43:1, and the ring is --ink at
+   12.70:1 against the global --pencil's 2.76:1. This is the largest surface in
+   the app and it carries 17 aniline marks on the real Detroit room, so the
+   darker shade is worth having here for a second reason beyond the ratio. */
 .bible-body a {
-  color: var(--aniline);
   text-decoration: underline;
   text-underline-offset: 0.15em;
   overflow-wrap: anywhere;
-}
-
-/* Same override, one surface over: --pencil is 2.76:1 on --onionskin, under the
-   3:1 non-text floor, and these links are the only focusable things on this
-   surface. --ink is 12.70:1 here. Found by the focus-ring sweep review round 1
-   asked for; see web/shell.css's .docket-btn rule for the full list. */
-.bible-body a:focus-visible {
-  outline-color: var(--ink);
 }
 
 /* The DOMPurify-unavailable fallback (web/app.js's bibleHtml). Escaped text in

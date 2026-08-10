@@ -39,25 +39,63 @@
     <!-- The stage: intake, live progress, or a filed room. Exactly one
          panel is visible at a time — shell.js owns the switch. -->
     <main class="stage" id="stage">
+      <!-- The intake. Two columns: what you hand over on the left, what comes
+           back on the right. The retention notice stays ABOVE the textarea —
+           research obligation 5 is "state what happens to the treatment,
+           in the intake, before the paste", and its copy is verified
+           clause-by-clause against what star/store.py persists. -->
       <section id="intake-panel" class="panel intake">
-        <h2>Hand your treatment to the department</h2>
-        <p class="hint">
-          A logline works; a paragraph works better. Era, place, and what
-          your characters actually do is what turns a guess into a grounded
-          fact.
-        </p>
-        <p class="retention">
-          Your treatment itself is not stored — only the profile the
-          department extracts from it, and the research it produces. Both
-          are kept under this browser's identity, so you can come back to
-          them. Nothing is visible without your sign-in token.
-        </p>
-        <textarea id="treatment" rows="7"
-          placeholder="A period drama set in 1962 Memphis. A 19-year-old session guitarist talks her way into a recording studio's house band while moonlighting as a getaway driver for her brother's crew..."></textarea>
-        <div class="actions">
-          <button id="build-btn">Build the Room</button>
-          <span id="intake-error" class="error"></span>
+        <div class="intake-paste">
+          <h2>Hand your treatment to the department</h2>
+          <p class="hint">
+            A logline works; a paragraph works better. Era, place, and what
+            your characters actually do is what turns a guess into a grounded
+            fact.
+          </p>
+          <p class="retention">
+            Your treatment itself is not stored — only the profile the
+            department extracts from it, and the research it produces. Both
+            are kept under this browser's identity, so you can come back to
+            them. Nothing is visible without your sign-in token.
+          </p>
+          <textarea id="treatment" rows="7"
+            placeholder="A period drama set in 1962 Memphis. A 19-year-old session guitarist talks her way into a recording studio's house band while moonlighting as a getaway driver for her brother's crew..."></textarea>
+          <div class="actions">
+            <button id="build-btn">Build the Room</button>
+            <span id="intake-error" class="error"></span>
+          </div>
         </div>
+
+        <!-- The four plates, at index scale. Each remit is compressed from the
+             instruction its researcher actually runs on
+             (star/agents/researchers.py's _CATEGORY_BRIEFS). -->
+        <aside class="intake-index" aria-labelledby="intake-index-heading">
+          <h3 id="intake-index-heading" class="intake-index-heading">Four drawers come back</h3>
+          <ul class="plate-list">
+            <li>
+              <span class="plate-label">Setting &amp; Atmosphere</span>
+              <span class="plate-remit">Light, sound, weather, dress, money, food — the texture of a place in its period.</span>
+            </li>
+            <li>
+              <span class="plate-label">Objects &amp; Props</span>
+              <span class="plate-remit">What characters hold, drive and wear: makes, models, materials, and the era's own words for them.</span>
+            </li>
+            <li>
+              <span class="plate-label">Logistics</span>
+              <span class="plate-remit">How people and things move: routes, distances, travel times, schedules, procedures.</span>
+            </li>
+            <li>
+              <span class="plate-label">Forces &amp; Conflicts</span>
+              <span class="plate-remit">What stands in the way: institutions, authorities, rivals, laws, and how they actually operated.</span>
+            </li>
+          </ul>
+          <p class="intake-rule">
+            Every fact is filed with the source it came from, the day it was
+            retrieved, and that source's own excerpt where there was one. A
+            cited link that never came back from a search is stamped, not
+            dropped.
+          </p>
+        </aside>
       </section>
 
       <section id="progress-panel" class="panel hidden">

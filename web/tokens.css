@@ -69,6 +69,17 @@
 
   /* Pencil — metadata, labels, and the unstamped state */
   --pencil: #7E8B7F;
+  /* Pencil when it has to be READ rather than drawn.
+     --pencil is a rule-and-glyph colour: 4.80:1 on --drawer-shadow (fine) but
+     4.07:1 on --cabinet, which is under AA for the 11px metadata it carries on
+     the stage — the run meter, the timeline's objective line, and a rail room's
+     meta line once .active repaints it --cabinet. Measured, not estimated; the
+     helper is the one calibrated against web/clip.css's recorded table.
+     This shade is 4.85:1 on --cabinet and 5.72:1 on --drawer-shadow, so ONE
+     value serves both dark grounds and there is no second number to drift.
+     Derived from the token, never a new hex — the same mechanism web/clip.css
+     uses to put aniline on a light ground. */
+  --pencil-text: color-mix(in srgb, var(--pencil) 85%, var(--onionskin));
   --ink: #1B211D;            /* text on manila */
 
   /* Type */

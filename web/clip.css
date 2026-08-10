@@ -36,6 +36,14 @@
    manila. Any new small text on manila in this file goes through the mixed
    shade, not the token.
 
+   Task 7 moved the two fixes that used to live in this file — the link colour
+   and the focus ring — up to a paper-surface rule in web/shell.css that covers
+   .intake, .docket, .drawer and .bible. The measurements above are unchanged
+   and are still what justify the values; what changed is that a link or a
+   control landing on paper now inherits them instead of waiting to be
+   measured. This file was the first of five places to hit the same bug and is
+   no longer one of the places that has to remember the answer.
+
    Motion is belt-and-braces, the same as web/drawer.css's .stamp: the lift
    transition is driven by --stamp-duration (already 0ms under reduced motion,
    web/tokens.css) AND killed outright by an explicit rule in the media query,
@@ -124,6 +132,11 @@
    what it already is elsewhere in this codebase — a rule and a glyph color.
    The label instead does the job --pencil was reaching for, which was
    "quieter than the sentence beside it". */
+/* 0.75, not 0.55 — 3.05:1 to 4.93:1 on manila, the same retune .drawer-legend
+   took in web/drawer.css and for the same reason: this label went from behind
+   a click to four times on the room's first screen when renderSceneNeeds
+   started firing from renderFiled. It is still quieter than the sentence
+   beside it, which is at full-strength --ink. */
 .scene-need-tag {
   font-family: var(--label);
   font-size: var(--label-sm);
@@ -131,7 +144,7 @@
   letter-spacing: var(--track-label);
   text-transform: uppercase;
   color: var(--ink);
-  opacity: 0.55;
+  opacity: 0.75;
   margin-right: 0.5rem;
 }
 
@@ -344,6 +357,14 @@
    expanded drawer's width `margin-left: auto` put it ~800px from the thing it
    opens, where it read as a stray label rather than as this receipt's
    affordance. Measured in a browser; it looked fine in the rule. */
+/* 0.75, and the [open] dim is gone. This word is the ONLY visible affordance
+   for the disclosure — .receipt-face suppresses the native marker deliberately
+   (see above), so "Excerpt" is the control, not a caption on one. At 0.55 it
+   measured 3.05:1 and at 0.30, which is what an open receipt showed, 1.76:1.
+   A control nobody can read is not a de-emphasised control.
+   The open state does not need the dim to be legible: the excerpt itself
+   appears directly underneath, which is a far louder signal than four percent
+   of alpha, and <details> reports the state to assistive tech natively. */
 .receipt-cue {
   flex: none;
   align-self: center;
@@ -353,11 +374,7 @@
   letter-spacing: var(--track-label);
   text-transform: uppercase;
   color: var(--ink);
-  opacity: 0.55;
-}
-
-.receipt[open] .receipt-cue {
-  opacity: 0.3;
+  opacity: 0.75;
 }
 
 .receipt-body {
@@ -401,39 +418,30 @@
   opacity: 0.78;
 }
 
-/* Same color-mix shade as .receipt-stamp's letterforms, and for the same
-   reason. This shipped as the raw --aniline token, which is 4.37:1 on manila —
-   under AA — at --label-sm, the exact pair this file's own contrast table
-   already flags as a miss for small text. Inheriting shell.css's global
-   `a { color: var(--aniline) }` is what let it through: the rule is correct on
-   --cabinet and --drawer-shadow, where every other link in the app lives, and
-   wrong on the first link this codebase ever put on manila. It matters more
-   here than anywhere: obligation 2 says the reader must be able to read the
-   target, and this is the target. */
+/* The colour is no longer declared here. It shipped as the raw --aniline token
+   (4.37:1 on manila, under AA at --label-sm) by inheriting shell.css's global
+   `a { color: var(--aniline) }`, which is correct on --cabinet and
+   --drawer-shadow and wrong on the first link this codebase ever put on paper.
+   That inheritance is now caught at the surface: shell.css gives every link
+   inside .intake / .docket / .drawer / .bible the same
+   color-mix(--aniline 70%, --ink) this rule used to set by hand — 5.50:1 on
+   manila. One declaration, and the next link to land on paper gets it without
+   anyone having to remember. It matters more here than anywhere: obligation 2
+   says the reader must be able to read the target, and this is the target. */
 .receipt-url {
   font-family: var(--slug);
   font-size: var(--label-sm);
   line-height: 1.5;
-  color: color-mix(in srgb, var(--aniline) 70%, var(--ink));
   overflow-wrap: anywhere;
 }
 
-/* The focus ring, on manila.
-   shell.css:41's global `:focus-visible { outline: 2px solid var(--pencil) }`
-   was sound for every control that existed before this file: the rail buttons,
-   the textarea, and the tab strip all sit on --cabinet (pencil 4.0:1) or
-   --drawer-shadow (4.8:1). <summary class="receipt-face"> is the first
-   focusable control in the app to sit on --manila, where --pencil measures
-   1.88:1 against a 3:1 non-text floor — so this diff is what introduced the
-   problem and this rule is what pays for it. --ink measures 8.6:1 on the
-   manila the ring surrounds and 12.7:1 on the onionskin the 2px offset puts it
-   over, so it clears the floor against both adjacent surfaces.
-   Deliberately scoped, not a change to the global rule: weakening the default
-   would break the surfaces where --pencil is already correct. */
-.receipt-face:focus-visible,
-.receipt-url:focus-visible {
-  outline-color: var(--ink);
-}
+/* The focus ring is likewise set once, in web/shell.css, for every control on
+   a paper surface. <summary class="receipt-face"> was the first focusable
+   control in the app to sit on --manila and this file is where the 1.88:1
+   pencil ring was first caught; the measurement it produced still stands and
+   is now applied structurally rather than per control: --ink is 8.63:1 on the
+   manila the ring surrounds and 12.70:1 on the onionskin the 2px offset puts
+   it over, so it clears the 3:1 floor against both adjacent surfaces. */
 
 /* ---------------------------------------------------------------------
    The second pad — oxide, on the link that failed the ledger check, on the
@@ -494,6 +502,9 @@
    field_notes — what the parser could not file, kept word for word.
 --------------------------------------------------------------------- */
 
+/* 0.75 — 0.72 measured 4.56:1, which passes, but it was a fourth value for
+   "quiet on manila" that cleared the floor by 0.06 and there is no reason for
+   it to be its own number. 4.93:1. */
 .field-notes-note {
   margin: 0.35rem 0 0;
   max-width: 78ch;
@@ -501,7 +512,7 @@
   font-size: var(--text-sm);
   line-height: 1.5;
   color: var(--ink);
-  opacity: 0.72;
+  opacity: 0.75;
 }
 
 .field-note {
@@ -532,13 +543,43 @@
 }
 
 /* ---------------------------------------------------------------------
-   Narrow viewports. Task 7 owns the full responsive pass; this only stops
-   the receipt stack's step-right offset from pushing fragments off a phone-
-   width card, where the horizontal room does not exist to spend.
+   Narrow viewports.
+
+   An expanded drawer full of receipts is the hardest case in the app at phone
+   width — it is the only view that stacks four levels of box inside each
+   other (drawer > clip > receipt > receipt-body), each with its own padding,
+   and the horizontal room to spend on them does not exist. The stack's
+   step-right offset goes first, then a few millimetres off each level.
+
+   .receipt-stamp is left alone deliberately: it is the widest fixed thing on
+   the card (147px, three uppercase slug lines) and it is also the element
+   whose entire job is to be legible. .receipt-face already wraps, so at 390px
+   the title drops to its own line under the stamp rather than being crushed
+   beside it.
 --------------------------------------------------------------------- */
 
 @media (max-width: 560px) {
   .receipt + .receipt {
     margin-left: 0;
+  }
+
+  .clip {
+    padding: 0.8rem 0.75rem 0.85rem;
+  }
+
+  .receipt-face {
+    padding: 0.55rem 0.6rem;
+  }
+
+  .receipt-body {
+    padding: 0 0.6rem 0.7rem;
+  }
+
+  .receipt-excerpt {
+    padding-left: 0.65rem;
+  }
+
+  .field-note {
+    padding: 0.6rem 0.7rem;
   }
 }

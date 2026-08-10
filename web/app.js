@@ -558,6 +558,28 @@ function plural(n, word) {
  *  costs one glance and identifies the room. `logline` leads because it is the
  *  one line that says what this room is FOR.
  *
+ *  THE ONE THING TASK 7 REMOVED: the "Needs grounding" row, which chipped out
+ *  `profile.key_entities`. Three reasons, in the order they mattered.
+ *
+ *  It was the only block on the cover sheet that neither identifies the room
+ *  (title, era/genre, logline do that) nor states what the department did
+ *  (the stats line does that). It listed nouns.
+ *
+ *  It said, generically, what the drawers now say specifically. Since Task 6
+ *  every drawer carries its own questions and the scene each was asked for,
+ *  filed under the researcher who asked it — the same information attached to
+ *  the evidence that answers it. On the real Detroit room the chips read
+ *  "Purple Gang", "U.S. Border Patrol", "Whisky bootlegging", every one of
+ *  which the logline directly above already names in a sentence.
+ *
+ *  And it cost the still frame 55px at the top of the page. At 1440x900 the
+ *  drawer row starts below the fold by exactly the kind of margin a chip row
+ *  spends. This is the frame most likely to appear in a submission gallery and
+ *  the drawers are the argument; a list of extracted nouns is not.
+ *
+ *  `profile.key_entities` is untouched in the payload and still stored. Nothing
+ *  was deleted from the room — one restatement was dropped from its cover.
+ *
  *  Every value is server data on an adversarial path — the profile is extracted
  *  from the treatment by a model — so all of it is escaped, chips included. */
 function renderDocket(profile, status) {
@@ -585,7 +607,6 @@ function renderDocket(profile, status) {
         : ""
     }
     ${row("Locations", chips(profile.locations))}
-    ${row("Needs grounding", chips(profile.key_entities))}
   `;
 }
 
