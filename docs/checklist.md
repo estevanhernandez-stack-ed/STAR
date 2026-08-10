@@ -260,7 +260,7 @@ three tools and note the fourth as next. **Pipeline B and the video never go.**
   every citation resolves to a real ledger excerpt. `DELETE` the scene and confirm the document and
   its stored text are gone.
 
-- [ ] **8. `web/anchor.js` — the matcher, pure and tested before any pixel**
+- [x] **8. `web/anchor.js` — the matcher, pure and tested before any pixel**
   Spec ref: `spec.md > The marked scene > web/anchor.js — pure, and the one piece with real algorithmic risk`
   Depends on: 5 (the extractor's exact-text contract is what it matches). Effort: **M**.
   What to build: `anchor(scene, claims) -> { segments, unanchored }`, where `segments` is a flat,

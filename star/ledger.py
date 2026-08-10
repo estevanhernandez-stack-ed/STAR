@@ -94,3 +94,48 @@ class SourceLedger:
     @property
     def urls(self) -> list[str]:
         return list(self._entries)
+
+
+def ledger_from_room(document: dict) -> SourceLedger:
+    """Rebuild a ledger from a filed room, so a check can consult it.
+
+    Pipeline B asks the room before it spends a search, and "the room
+    answered" has to mean the same thing "a fresh search answered" means: a
+    URL with a real title and a real excerpt behind it. The citations in a
+    stored room already meet that bar — `star/findings.py` hydrated every one
+    of them out of the build's own ledger, so nothing in this walk was ever
+    authored by a model.
+
+    The walk goes back through `record()` rather than filling `_entries`
+    directly. That function is the only place in the project that decides what
+    counts as a source, how two sightings of a URL merge, and when an excerpt
+    is a duplicate; a second accumulator here would be a second set of those
+    rules, drifting quietly from the first.
+
+    `categories` is a dict keyed by category value (`star/store.py:36`, filled
+    by `star/server.py:_build_categories`). A document missing that block, or
+    carrying something other than a dict there, yields an empty ledger rather
+    than raising: an empty room is a supported state — a partial or
+    interrupted build files nothing and a check against it runs on fresh
+    search alone — and taking a whole check down over the shape of a room is a
+    worse answer than running it without the files.
+    """
+    ledger = SourceLedger()
+    categories = (document or {}).get("categories")
+    if not isinstance(categories, dict):
+        return ledger
+
+    for category, doc in categories.items():
+        results = [
+            {
+                "url": citation.get("url"),
+                "title": citation.get("title"),
+                "excerpts": [citation.get("excerpt")],
+            }
+            for finding in (doc or {}).get("findings") or []
+            for citation in (finding or {}).get("citations") or []
+        ]
+        if results:
+            ledger.record(f"room:{category}", results)
+
+    return ledger
