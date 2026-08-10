@@ -194,6 +194,13 @@ the MCP endpoint from the same process.
 GOOGLE_OAUTH_CLIENT_ID=... FIREBASE_API_KEY=... bash scripts/deploy.sh
 ```
 
+Live at **https://star.626labs.dev**, a Cloud Run domain mapping onto the same service.
+Cloud Run additionally answers on two hostnames of its own, a project-number form and a
+hash form, and both keep serving whether or not anyone means them to. That matters for one
+reason: `web/auth.js` sends `location.origin + "/"` as its OAuth `redirect_uri`, so **every**
+origin the service answers on has to be registered on the OAuth client, or account linking
+fails for exactly the readers who arrived on the unregistered one.
+
 `--max-instances=1 --min-instances=1 --no-cpu-throttling` are load-bearing rather than
 tuning. The run registry and both abuse guards are in-memory module state; anything that
 scales past one instance has to move all three to a shared store in the same change.

@@ -77,16 +77,27 @@ def check_timeout_seconds() -> int:
 # is the failure that looks like a broken client on a laptop and works fine in
 # production — the same trap `spec.md > Deployment` names for the OAuth
 # client's redirect URIs.
-# BOTH Cloud Run hostnames, because the service genuinely answers on both and a
-# reader can arrive at either. `gcloud run deploy` prints the project-number form
-# and the hash form, and as of the 2026-08-10 deploy `gcloud run services
-# describe --format='value(status.url)'` reports the HASH form as canonical while
-# the project-number form keeps serving 200. Registering one and not the other is
-# not a hypothetical: it is what made the account-linking button fail with
-# redirect_uri_mismatch on the live site while the same flow passed by hand, and
-# the OAuth client's Authorized redirect URIs need both for the same reason this
-# list does.
+# EVERY origin this service answers on, and there are four. That is not
+# defensive breadth, it is the count.
+#
+# `star.626labs.dev` is the canonical one: a Cloud Run domain mapping, serving
+# the same revision under a valid certificate. It is what a reader should see and
+# what belongs on camera.
+#
+# The other two are Cloud Run's own, and both keep serving 200 whether or not
+# anyone means them to. `gcloud run deploy` prints the project-number form AND a
+# hash form, and `services describe --format='value(status.url)'` reports the
+# HASH form as canonical, which is a third answer again.
+#
+# Why the list rather than one entry: web/auth.js sends `location.origin + "/"`
+# as its OAuth redirect_uri, so the origin a reader happens to arrive on is the
+# one Google is asked to match. Registering a subset is what made the
+# account-linking button fail with redirect_uri_mismatch on the live site while
+# the identical flow passed from a script pointed at a different hostname. The
+# OAuth client's Authorized redirect URIs need this same set, with trailing
+# slashes, and that is a console step no code here can perform.
 _DEFAULT_MCP_ORIGINS = (
+    "https://star.626labs.dev",
     "https://star-390753828501.us-central1.run.app",
     "https://star-cdhog5ebsq-uc.a.run.app",
     "http://localhost:8000",
