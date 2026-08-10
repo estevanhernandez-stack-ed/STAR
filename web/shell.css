@@ -58,12 +58,13 @@ a {
      #build-btn     global focus ring           1.88:1  (Task 6)
      .bible-body a  global focus ring           2.76:1  (Task 6)
 
-   SIX elements are the whole set of paper surfaces this app mounts, and
+   SEVEN elements are the whole set of paper surfaces this app mounts, and
    everything on paper is inside one of them: .intake (manila, holds the
    onionskin retention slip), .docket (manila, holds the onionskin chips),
    .drawer (manila, holds the onionskin clips and the manila receipts inside
    them), .check (manila, holds the onionskin scene page and rail cards, and
-   the manila citation fragments inside those), .bible (onionskin), and
+   the manila citation fragments inside those), .account (manila, holds the
+   onionskin plaintext slip and the token rows), .bible (onionskin), and
    .banner (onionskin, below). So the defaults are set once, HERE, for those
    subtrees — a control or a link that lands on paper tomorrow inherits a
    ratio that already clears the floor, instead of inheriting a dark-ground
@@ -74,6 +75,16 @@ a {
    on onionskin that is not a <summary> (the <mark>s in the scene page), and
    the ring it needs is the one this rule already hands it — --ink at 12.70:1
    on onionskin, where the global --pencil ring is 2.76:1.
+
+   .account joined in Task 4 and is exactly the case this rule was built to
+   pre-empt rather than to repair. The card mounts SIX focusable controls on
+   manila in one go — the link button, sign-out, the label field, issue, and a
+   revoke per token — and every one of them would have taken the global
+   --pencil ring at 1.88:1. That is the same 1.88:1 that was found and fixed
+   one control at a time on .receipt-face, .docket-btn and #build-btn. The
+   whole point of the structural fix is that a sixth scoped copy is never
+   written; adding the class to the three selector lists below is the entire
+   change web/account.css needed, and it deliberately restates none of them.
 
    .banner joined the list in Task 7's fix round, in the same pass that
    repainted it onionskin — the list said "four" while the line below it made
@@ -117,6 +128,7 @@ a {
 .docket,
 .drawer,
 .check,
+.account,
 .bible,
 .banner {
   color: var(--ink);
@@ -124,7 +136,7 @@ a {
 
 /* --ink is 8.63:1 on --manila and 12.70:1 on --onionskin. Both clear the 3:1
    non-text floor a focus indicator has to meet, against either paper. */
-:is(.intake, .docket, .drawer, .check, .bible, .banner) :focus-visible {
+:is(.intake, .docket, .drawer, .check, .account, .bible, .banner) :focus-visible {
   outline-color: var(--ink);
 }
 
@@ -133,7 +145,7 @@ a {
    manila and 8.10:1 on onionskin. Still one pad, still a flat solid, still
    derived from the token — the rule DIRECTION.md sets is against washes and
    gradients, not against deriving a shade for the surface it lands on. */
-:is(.intake, .docket, .drawer, .check, .bible, .banner) a {
+:is(.intake, .docket, .drawer, .check, .account, .bible, .banner) a {
   color: color-mix(in srgb, var(--aniline) 70%, var(--ink));
 }
 
@@ -183,7 +195,22 @@ a {
   overflow-y: auto;
 }
 
-.rail-head {
+/* SCOPED, and the scope is a repair rather than tidiness.
+   `.rail-head` is the second name this file shares with web/scriptcheck.js's
+   citation rail — see .rail-foot below for the first. scene.css:413 declares
+   `.rail-head { align-items: baseline; gap: 0.35rem 0; }` for the verdict
+   card's stamp row, it loads AFTER this file, and both selectors are (0,1,0),
+   so the later one was winning here too. Measured in the headless harness
+   before this line existed: the cabinet rail's brand block computed
+   `align-items: baseline` with a 0px column gap, which put the ✶ flush against
+   the wordmark and left their centres 7px apart. Shipped in Task 9 and
+   invisible unless you go looking, which is exactly the failure mode of a
+   shared class name.
+
+   `.rail > .rail-head` is (0,2,0) and wins without touching web/scene.css,
+   whose rule is correct for the surface it was written for. The general point
+   is in .rail-foot's comment: `rail-` means two different rails in this app. */
+.rail > .rail-head {
   display: flex;
   align-items: center;
   gap: 0.7rem;
@@ -308,6 +335,65 @@ a {
   font-size: var(--label-sm);
   color: var(--pencil-text);
   margin-top: 0.15rem;
+}
+
+/* The card's entry, at the foot of the rail and nowhere else.
+   Lives here rather than in web/account.css because every .rail-* rule in this
+   app lives in this file, and the card's PANEL is what account.css owns. One
+   file per surface would put two rail rules in two places, which is the drift
+   the paper-surface block at the top of this file exists to stop.
+
+   IN --pencil, WHICH IS THE REQUIREMENT (prd.md: "at the bottom of the rail,
+   below the room list, in --pencil. Not a header item, not a button, not on
+   the intake"). --pencil-text rather than raw --pencil for the reason
+   web/tokens.css records: this is text to be READ, not a rule to be drawn, and
+   the derived shade is 5.72:1 on --drawer-shadow where the raw token is
+   4.80:1. Still one pad, still derived from the token, never a new hex.
+
+   "NOT A BUTTON" IS THE VISUAL REGISTER, not the element. It has to activate a
+   stage state and be reachable by keyboard, so it is a <button>; what it must
+   not be is a second #new-room-btn, which is why it carries no fill, no border
+   and no box — a filing label at 11px under a hairline, in the quietest colour
+   on the rail. margin-top:auto is what puts it at the FOOT: the rail is a
+   flex column, so the entry takes whatever vertical space the room list is not
+   using, and it stays below the list when the list is long.
+
+   WHY .rail-foot AND NOT .rail-card, which is what it was called for an hour.
+   `.rail-card` is ALREADY TAKEN by web/scene.css:341 — the Script Check's
+   citation rail names its verdict card that, and scene.css loads after this
+   file, so the entry rendered with an onionskin background inside the dark
+   rail. Measured, not guessed: the headless harness read
+   `backgroundColor: rgb(233, 226, 210)` off it.
+
+   That is the .tab / .drawer-tab collision of Task 5 verbatim, and the trap
+   under it is worth naming: `rail-` means two different rails in this app.
+   Here it is the cabinet's rail of saved rooms; in web/scriptcheck.js it is
+   the citation rail beside a marked scene, which owns roughly twenty
+   `.rail-*` classes of its own. ANY new `.rail-*` name in this file has to be
+   checked against web/scene.css first. `.rail-foot` is not in that set. */
+.rail-foot {
+  margin-top: auto;
+  padding: 0.55rem 0.5rem 0.15rem 0.45rem;
+  background: transparent;
+  /* Decoration, not a component boundary: the label carries the affordance,
+     and nothing about operating this control depends on seeing the line. Same
+     posture .check-foot's --manila-edge rule takes at 1.34:1. */
+  border: none;
+  border-top: 1px solid color-mix(in srgb, var(--pencil) 45%, var(--drawer-shadow));
+  border-radius: 0;
+  text-align: left;
+  color: var(--pencil-text);
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.rail-foot:hover,
+.rail-foot.active {
+  color: var(--manila);
 }
 
 /* ---------------------------------------------------------------------
@@ -925,6 +1011,17 @@ footer a {
 
   .rail-empty {
     margin: 0;
+  }
+
+  /* The rail is a wrapped flex ROW here, so "the foot" is the last line rather
+     than the bottom edge: .rail-list takes `flex: 1 1 100%` and pushes this
+     onto its own line below the room list, which is the same reading order the
+     column gives. margin-top:auto would resolve against a flex line rather
+     than the rail, and the hairline reads as a stray divider across a bar. */
+  .rail-foot {
+    margin-top: 0;
+    padding: 0 0 0 0.1rem;
+    border-top: none;
   }
 
   .stage {

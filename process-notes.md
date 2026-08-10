@@ -719,3 +719,77 @@ source actually read, so search for anything the room's files do not carry, **ev
 certain**. The pipeline needs no change and `verdicts.py` needs no change. Recorded here
 rather than fixed silently, because the honest reading is that the annotator passed its
 first live test by catching its own pipeline.
+
+### Checkpoint 1 — Your card, measured rather than judged
+
+The card is a fourth stage state (`#account-panel`, `showAccount()`), entered only from
+`Your card` at the foot of the rail. Measured in headless Chrome against the real
+stylesheets and the real `renderAccountCard()`, at five viewports:
+
+| Viewport | Manila, room filed state | Without the rail entry | Card's own state |
+| --- | --- | --- | --- |
+| 1440x900 | **62.1%** | 62.1% | 50.4% |
+| 1024x800 | **55.9%** | 55.9% | 59.8% |
+| 900x800 | **73.4%** | 76.3% | 70.6% |
+| 560x900 | **72.3%** | 74.9% | 79.9% |
+| 390x844 | **68.2%** | 70.9% | 71.3% |
+
+Union area of the manila rectangles clipped to the viewport, by a coordinate sweep, so
+overlapping surfaces are not double-counted. The rule is >40% and the floor is 55.9%.
+Above 900px this item costs the room's filed state **nothing** — its only addition there
+is a rail entry, and the rail is not manila. Below 900px the rail is a top bar and the
+entry takes a row, which pushes the stage down by 2.6-2.9 points. Still 68% at the worst
+width. No horizontal overflow at any width, and no descendant wider than its own box.
+
+**The headless window clamp, which nearly produced a false alarm.** `--window-size=390`
+on Windows lays the page out at **504px** and then crops the screenshot to 390 — which
+looks exactly like a horizontal overflow and is not one. Every narrow number above was
+taken inside an iframe of the honest width instead. Task 9's `check-390.png` was captured
+the same way and should be re-read with that in mind.
+
+### Two `.rail-*` collisions, one new and one shipped
+
+`rail-` means two different rails in this app: the cabinet's rail of saved rooms
+(`web/shell.css`) and the citation rail beside a marked scene (`web/scriptcheck.js`,
+styled in `web/scene.css`, which owns about twenty `.rail-*` names). `scene.css` loads
+after `shell.css`, so on a tie the citation rail wins.
+
+- **New, caught before it shipped.** The card's entry was called `.rail-card`, which is
+  `scene.css:341` — the verdict card. It rendered with an onionskin background inside the
+  dark rail (`backgroundColor: rgb(233, 226, 210)`, read off the engine). Renamed to
+  `.rail-foot`, which is not in that set.
+- **Shipped in Task 9, and fixed here.** `.rail-head` is declared in both files. The
+  cabinet rail's brand block was computing `align-items: baseline` with a **0px** column
+  gap instead of `center` and `0.7rem`, putting the ✶ flush against the wordmark with
+  their centres 7px apart. `shell.css` now scopes its rule to `.rail > .rail-head`
+  (0,2,0), which wins without touching `scene.css`, whose rule is right for the surface it
+  was written for. Measured before and after: `baseline / 0px` -> `center / 11.2px`.
+
+This is the `.tab` / `.drawer-tab` collision of Task 5 for the second and third time. Any
+new `.rail-*` name in `shell.css` has to be checked against `scene.css` first.
+
+### The retention copy, re-verified against post-link truth
+
+Two clauses of the four changed, and the rule applied was the Task 2 rule — a clause that
+cannot be verified from the code is cut, never softened.
+
+- **Kept:** "Your treatment itself is not stored — only the profile the department
+  extracts from it, and the research it produces." `star/store.py`'s `room_to_document`
+  writes twelve fields and none of them is the treatment; `StoryProfile` carries six
+  extracted fields and none of them is the text.
+- **Changed:** "kept under this browser's identity" -> "filed under the identity you are
+  signed in with." The old clause goes false the moment an account is attached, which is
+  the entire point of attaching one. The new one is true before and after, and names no
+  account, because this path must not.
+- **Cut:** "Nothing is visible without your sign-in token." True of the server today —
+  every `/api` read goes through `_require_uid` — but what a reader takes from it is *only
+  this browser can see this*, and an issued MCP token is a long-lived credential pasted
+  into an agent's config that reads the same rooms. The whole of it is now stated on the
+  card, before the link and before the token, where a reader can act on it.
+
+The intake path's silence is asserted rather than assumed: `tests/js/test_intake_silence.mjs`
+strips comments and tags out of `index.html`, folds the reader-visible attributes back in,
+and proves zero occurrences of "account" and exactly one of "Google" — the footer's build
+credit, pinned by exact string. The card's copy is not in the document at all:
+`#account-panel` ships empty and `web/account.js` fills it only when the rail's entry is
+used.

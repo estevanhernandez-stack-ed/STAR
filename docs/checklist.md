@@ -136,7 +136,7 @@ three tools and note the fourth as next. **Pipeline B and the video never go.**
   linked account and confirm `GET /api/tokens` returns neither the plaintext nor the hash. Revoke it
   and confirm the refusal string differs from the unknown-token one, and that no other refusal does.
 
-- [ ] **4. Your card — the account surface**
+- [x] **4. Your card — the account surface**
   Spec ref: `spec.md > The card: the account surface` (Naming, Structure, What it shows, Endpoints)
   Depends on: 2, 3. Effort: **L**. **← Checkpoint 1**
   What to build: `#account-panel` as a fourth `.panel` inside `<main class="stage">` in

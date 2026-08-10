@@ -4,6 +4,15 @@
    clip components landing in Tasks 3-5. app.js registers the function that
    turns a run_id into stage content via setRoomRenderer(); this file only
    ever calls it by name.
+
+   Since Task 4 the stage has four states, not three. The fourth is the card
+   (web/account.js), reached from the entry at the FOOT of the rail and from
+   nowhere else — that placement is the requirement, not a layout preference:
+   prd.md's first identity story is a writer who will never sign in to
+   anything, and the intake path from landing to a filed room has to contain
+   zero mentions of Google or of accounts. A rail entry reading "Your card" in
+   --pencil is what that costs. This file binds nothing to it; web/app.js does,
+   the same way it already binds #new-room-btn.
 */
 
 import { authedFetch } from "/auth.js";
@@ -11,9 +20,17 @@ import { authedFetch } from "/auth.js";
 const $ = (id) => document.getElementById(id);
 
 const railList = $("rail-list");
+const railFoot = $("rail-foot");
 const intakePanel = $("intake-panel");
 const progressPanel = $("progress-panel");
 const resultsPanel = $("results-panel");
+const accountPanel = $("account-panel");
+
+// Every panel the stage can show, so the switch below is a list and not four
+// hand-written triples. The fourth was added in Task 4 and the previous shape
+// — each showX() naming the other two by hand — is exactly the shape where a
+// fifth surface gets added and one function forgets to hide it.
+const PANELS = [intakePanel, progressPanel, resultsPanel, accountPanel];
 
 let _rooms = [];
 let _activeRunId = null;
@@ -160,22 +177,43 @@ export async function refreshRail(activeRunId) {
   }
 }
 
+/** Reveal one panel and hide the rest.
+ *
+ *  THIS IS THE WHOLE OF WHAT A STAGE STATE IS, and it is why the card can be
+ *  opened during a live build without touching it. The EventSource lives in
+ *  web/app.js and is never referenced here; a run that is streaming keeps
+ *  streaming into #progress-panel's DOM while the panel is hidden, and comes
+ *  back exactly as far along as it has got. Nothing in this file closes a
+ *  stream, and nothing in it re-fetches a room. */
+function stage(panel) {
+  for (const el of PANELS) el.classList.toggle("hidden", el !== panel);
+  // The rail entry carries the selection the way a rail room does, so "which
+  // surface am I on" has one answer in one place.
+  railFoot.setAttribute("aria-current", panel === accountPanel ? "true" : "false");
+  railFoot.classList.toggle("active", panel === accountPanel);
+}
+
 export function showIntake() {
-  intakePanel.classList.remove("hidden");
-  progressPanel.classList.add("hidden");
-  resultsPanel.classList.add("hidden");
+  stage(intakePanel);
   _activeRunId = null;
   renderRail(_rooms, null);
 }
 
 export function showRunning() {
-  intakePanel.classList.add("hidden");
-  progressPanel.classList.remove("hidden");
-  resultsPanel.classList.add("hidden");
+  stage(progressPanel);
 }
 
 export function showRoom() {
-  intakePanel.classList.add("hidden");
-  progressPanel.classList.add("hidden");
-  resultsPanel.classList.remove("hidden");
+  stage(resultsPanel);
+}
+
+/** The card — the fourth stage state.
+ *
+ *  It deliberately does NOT clear `_activeRunId`, the way showIntake does: a
+ *  reader who opens the card from an open room and comes back should find the
+ *  same room marked in the rail, because they never left it. And it does not
+ *  redraw the rail at all, so a build in flight keeps its row exactly as the
+ *  stream last left it. */
+export function showAccount() {
+  stage(accountPanel);
 }

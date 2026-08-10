@@ -35,12 +35,14 @@ import {
   takeStashedRun,
 } from "/auth.js";
 import {
+  showAccount,
   showIntake,
   showRunning,
   showRoom,
   refreshRail,
   setRoomRenderer,
 } from "/shell.js";
+import { initAccount, openAccount } from "/account.js";
 import {
   DRAWER_LABELS,
   createDrawerGrid,
@@ -131,6 +133,22 @@ $("new-room-btn").addEventListener("click", () => {
   $("treatment").value = "";
   $("intake-error").textContent = "";
   $("build-btn").disabled = false;
+});
+
+// The card. Bound here rather than in shell.js for the same reason
+// #new-room-btn is: shell.js owns which panel the stage shows, this file owns
+// what goes in one.
+//
+// NOTHING ELSE HAPPENS HERE, and that is the acceptance criterion. No
+// resetProgress(), no closeStream(), no showResults() — reaching the card
+// during a live build must not disturb the stream, and the way that is
+// guaranteed is that the only thing this listener does is reveal a panel and
+// fill it. The EventSource opened by openStream() is untouched, goes on
+// writing into #progress-panel's hidden DOM, and is exactly as far along when
+// the reader comes back.
+$("rail-foot").addEventListener("click", () => {
+  showAccount();
+  openAccount();
 });
 
 // The bible is one surface behind one control, and opening it puts the
@@ -695,7 +713,7 @@ function paintRoom(result, status) {
 
   $("result-title").textContent = profile.title || "Your research room";
   $("result-stats").textContent = statsLine(result, filed);
-  docketBody.innerHTML = renderDocket(profile, status);
+  docketBody.innerHTML = renderDocket(profile, status, result);
 
   const grid = createDrawerGrid();
   // Spread first: `children` is a LIVE HTMLCollection and mountRoomDrawer adds
@@ -774,7 +792,16 @@ function plural(n, word) {
  *
  *  Every value is server data on an adversarial path — the profile is extracted
  *  from the treatment by a model — so all of it is escaped, chips included. */
-function renderDocket(profile, status) {
+// `result` is a parameter because it used to be a free variable, and on the one
+// status that reads it the docket did not paint at all. The reference below is
+// short-circuited unless `status === "partial"`, which is why this survived
+// every complete run and every test: `renderDocket` threw a ReferenceError only
+// on a salvaged room, and `paintRoom` assigns its return straight into
+// `docketBody.innerHTML`, so the throw took the whole docket with it. A partial
+// room is a real terminal state — `_salvage` files one whenever at least one
+// researcher came back — and it is the state where a reader most needs the
+// docket to explain what happened.
+function renderDocket(profile, status, result) {
   const chips = (values) =>
     (Array.isArray(values) ? values : [])
       .map((value) => String(value).trim())
@@ -1128,6 +1155,13 @@ setRoomRenderer(showResults);
 // tested in Node against a stubbed document.
 initScriptCheck();
 
+// The card does the same, and does less: #account-panel ships EMPTY, so this
+// only takes the reference. Not one sentence of the card's copy reaches the
+// DOM until the rail's entry is used, which is how the intake path carries
+// zero mentions of Google or of accounts while the surface that offers both
+// lives in the same document.
+initAccount();
+
 // auth.js asks for this on its way out to Google. Read at call time rather
 // than pushed on every event: the values are already tracked for the stream's
 // own sake, and a getter cannot go stale between updates.
@@ -1145,9 +1179,12 @@ setLiveRunProvider(() =>
   // rather than the one they had a moment ago. It resolves to a plain result
   // object on every path including "nothing happened"; nothing here throws.
   //
-  // What it does NOT do is render anything. This page has no account surface
-  // and the intake carries no mention of Google or of accounts by design, so
-  // the outcome is cached inside auth.js for the card to read.
+  // What it does NOT do is render anything, and that is still true now the
+  // card exists: the intake carries no mention of Google or of accounts by
+  // design, so a link that came back refused must not paint a sentence onto
+  // the first screen. The outcome is cached inside auth.js and web/account.js
+  // reads it when the reader opens the card — which is the only place on this
+  // app where that sentence belongs.
   await completeGoogleLink();
 
   let token;

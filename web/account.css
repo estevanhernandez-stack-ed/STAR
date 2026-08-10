@@ -1,0 +1,446 @@
+/* THE MORGUE — Your card: the account surface.
+   Tokens only, from web/tokens.css. No raw hex, no rgba() literals — every
+   shade is derived with color-mix() from a token, the precedent web/shell.css
+   set for .rail-room:hover and web/clip.css for the stamp's letterforms.
+
+   NOTHING IS ADDED TO THE PALETTE, and this surface adds no new meaning to it
+   either. It presses exactly one stamp, and it is the one docs/design/
+   DIRECTION.md already assigns: --oxide is FLAGGED, so a revoked token carries
+   the same pad the UNSOURCED clip does. There is no aniline anywhere on this
+   card. Aniline means "filed and verified" against a checked source, and a
+   token is not a source — putting the first pad on an account would be the
+   first place in this app where it meant something else.
+
+   WHAT THIS FILE DOES NOT CONTAIN, which is the point of Task 9's structural
+   fix: no focus-ring rule, no link colour, and no `color: var(--ink)` on the
+   card root. Five controls on manila would each have taken the global
+   --pencil ring at 1.88:1 against a 3:1 floor — the identical bug found one
+   control at a time on .receipt-face, .docket-btn and #build-btn. web/shell.css
+   covers them by adding `.account` to its three paper-surface selector lists,
+   and a sixth scoped copy here is exactly what that rule exists to prevent.
+
+   SURFACES. The card is ONE manila card on the cabinet. Everything inside it
+   that has to be read carefully rather than scanned is an onionskin slip with
+   a --pencil left rule — the treatment on the intake (.retention) and the
+   scene disclosure on the check panel (.check-retention) are the same
+   component, and this file reuses their shape rather than inventing a third.
+   Onionskin stays a component inside a manila card and never a page ground,
+   which is DIRECTION.md's third rule.
+
+   CONTRAST, measured with the helper calibrated against web/clip.css's
+   recorded table (it reproduces 8.63 / 12.70 / 4.75 / 4.93 / 6.24 exactly),
+   never eyeballed:
+
+     --ink on --manila                                    8.63:1
+     --ink on --onionskin                                12.70:1
+     --ink at 0.75 on --manila                            4.93:1   quiet meta
+     --manila on --cabinet                                7.65:1   filled button
+     mix(--oxide 70%, --ink) on --manila                  4.57:1   armed, revoked
+     --oxide on --manila (raw)                            3.23:1   NEVER used
+     --manila-edge on --manila                            1.34:1   hairline only
+
+   The oxide line is the one asymmetry and it is web/shell.css's, not this
+   file's: raw --oxide is 3.23:1 on manila, which is the palette-inherent
+   shortfall .error already records, so oxide reaches text on this surface only
+   as the same 70%-toward-ink mix .error and .check-delete-btn[data-armed] use.
+   4.57 is the browser's own composited value from that measurement; the mix
+   computed by hand reads 4.59.
+
+   MOTION. None. There is no stamp press here and nothing on this card is an
+   event — a token is issued, not filed, and the one animation the surface
+   borrows is web/shell.css's .ellipsis on the working line, which already
+   carries its own prefers-reduced-motion path.
+*/
+
+/* ---------------------------------------------------------------------
+   The panel. One manila card on the cabinet, and deliberately narrower than
+   the room: this is a list of five facts and two controls, and stretching it
+   to the room's 1120px would leave it as a wide band of blank stock — the
+   same argument #intake-panel's align-self:start makes about a card being as
+   tall as what is written on it.
+--------------------------------------------------------------------- */
+
+#account-panel.panel {
+  align-self: start;
+}
+
+.account {
+  background: var(--manila);
+  border-radius: 4px;
+  padding: 1.75rem 2rem 2rem;
+  box-shadow: 0 1px 0 var(--manila-edge);
+}
+
+.account-heading {
+  margin: 0 0 1.5rem;
+  font-family: var(--label);
+  font-size: var(--text-lg);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+/* The two sections, separated by the folder's own edge rather than by a box
+   each. Two cards inside one card is the "five cards on one card is a
+   background" mistake web/shell.css records about the results panel. */
+.account-block + .account-block {
+  margin-top: 1.75rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--manila-edge);
+}
+
+.account-legend {
+  margin: 0 0 0.75rem;
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink);
+  opacity: 0.75; /* 4.93:1 — the one value this codebase uses for quiet text
+                    on manila. See web/shell.css's #results-panel .meter. */
+}
+
+.account-line {
+  margin: 0 0 0.85rem;
+  max-width: 66ch;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+/* The sentence the intake cut, standing here instead: what a linked account
+   can reach, said BEFORE the link. Same onionskin slip with a --pencil rule
+   the intake's own retention notice uses, because it is the same kind of
+   statement — what happens to your work, before you act. */
+.account-reach {
+  margin: 0 0 1.1rem;
+  max-width: 66ch;
+  padding: 0.85rem 1rem;
+  background: var(--onionskin);
+  border-left: 3px solid var(--pencil);
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+/* A refusal the surface was handed, in web/auth.js's own words. Oxide via the
+   same mix .error uses, for the same measured reason. */
+.account-refusal {
+  margin: 0 0 0.85rem;
+  max-width: 66ch;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--oxide) 70%, var(--ink));
+}
+
+.account-working {
+  margin: 0;
+  font-family: var(--body);
+  font-size: var(--text-md);
+  color: var(--ink);
+}
+
+/* ---------------------------------------------------------------------
+   The controls. Two registers and no third: the two acts that ADD something
+   are filled the way #build-btn is, and the two that TAKE something away are
+   bordered the way .docket-btn and .check-delete-btn are. A destructive
+   control painted louder than a constructive one is the shape that makes a
+   reader afraid of their own card.
+--------------------------------------------------------------------- */
+
+.account-link-btn,
+.token-issue-btn {
+  background: var(--cabinet);
+  color: var(--manila); /* 7.65:1 */
+  border: 1px solid var(--cabinet);
+  border-radius: 3px;
+  padding: 0.7rem 1.5rem;
+  font-family: var(--label);
+  font-size: var(--label-md);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.account-link-btn:hover:not(:disabled),
+.token-issue-btn:hover:not(:disabled) {
+  background: var(--drawer-shadow);
+}
+
+/* The disabled issue control. Dimmed AND explained — the reason is a sentence
+   in the DOM beside it (web/account.js's ISSUE_BLOCKED, wired through
+   aria-describedby), because the requirement is that the control states its
+   reason rather than being greyed out and left to be guessed at. `not-allowed`
+   rather than #build-btn's `wait`: that one is disabled while something is
+   happening, this one is disabled because something has not. */
+.account-link-btn:disabled,
+.token-issue-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.account-signout-btn,
+.token-revoke-btn {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--ink);
+  border-radius: 3px;
+  padding: 0.45rem 1rem;
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.account-signout-btn:hover,
+.token-revoke-btn:hover {
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+/* Armed — the second press is the one that acts. Oxide mixed toward --ink for
+   the same reason .error is: raw --oxide is 3.23:1 on manila, and mixed 70%
+   toward ink it is 4.57:1. */
+.account-signout-btn[data-armed="true"],
+.token-revoke-btn[data-armed="true"] {
+  color: color-mix(in srgb, var(--oxide) 70%, var(--ink));
+  border-color: color-mix(in srgb, var(--oxide) 70%, var(--ink));
+}
+
+/* What the second press will do, said before it happens. Empty until the
+   control is armed, and it is a node on the page rather than a browser dialog
+   so the department says it in its own voice. */
+.account-signout-btn-wrap,
+.token-revoke-btn-wrap {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin-top: 1.1rem;
+}
+
+.account-signout-btn-notice,
+.token-revoke-btn-notice {
+  margin: 0;
+  max-width: 48ch;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.token-revoke-btn-wrap {
+  margin-top: 0.6rem;
+}
+
+/* ---------------------------------------------------------------------
+   Issuing.
+--------------------------------------------------------------------- */
+
+.token-issue {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  margin: 1.1rem 0 0;
+}
+
+.token-issue-label {
+  flex: 1 1 22rem;
+  min-width: 0;
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink);
+  opacity: 0.75; /* 4.93:1 */
+}
+
+/* The field takes the same recessed treatment the treatment box and the scene
+   box do — --manila on --drawer-shadow, 9.01:1 — so "somewhere to type" has
+   one appearance in this app rather than three. */
+.token-issue-input {
+  flex: 1 1 22rem;
+  min-width: 0;
+  background: var(--drawer-shadow);
+  color: var(--manila);
+  border: 1px solid var(--pencil);
+  border-radius: 3px;
+  padding: 0.6rem 0.7rem;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+}
+
+.token-issue-input::placeholder {
+  color: var(--pencil);
+}
+
+.token-issue-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* The reason the control above is refused. An onionskin slip rather than a
+   grey aside, because it is the same class of statement as the reach notice:
+   something the reader has to read before they can act. */
+.token-blocked {
+  margin: 0.9rem 0 0;
+  max-width: 66ch;
+  padding: 0.85rem 1rem;
+  background: var(--onionskin);
+  border-left: 3px solid var(--pencil);
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+/* ---------------------------------------------------------------------
+   The plaintext, once. The one slip on this card that carries a credential,
+   and the only place in the app where one is ever on screen.
+--------------------------------------------------------------------- */
+
+.token-plaintext {
+  margin: 1.1rem 0 0;
+  padding: 1rem 1.1rem;
+  background: var(--onionskin);
+  border-left: 3px solid color-mix(in srgb, var(--oxide) 70%, var(--ink));
+}
+
+.token-plaintext-legend {
+  margin: 0 0 0.6rem;
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--oxide) 70%, var(--ink)); /* 6.76:1 here */
+}
+
+/* Slug face, and it wraps rather than truncating: a credential the reader has
+   to copy in full must never be cut off by a box, and `break-all` is what
+   keeps a 51-character unbroken string inside one at 390px. */
+.token-plaintext-value {
+  display: block;
+  font-family: var(--slug);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--ink); /* 12.70:1 */
+  word-break: break-all;
+  user-select: all;
+}
+
+.token-plaintext-use {
+  margin: 0.7rem 0 0;
+  max-width: 60ch;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--ink);
+  opacity: 0.75; /* 6.24:1 on onionskin */
+}
+
+/* ---------------------------------------------------------------------
+   The list. Metadata rows on the card's own stock, separated by the folder
+   edge — not cards inside a card.
+--------------------------------------------------------------------- */
+
+.token-list {
+  list-style: none;
+  margin: 1.5rem 0 0;
+  padding: 0;
+}
+
+.token {
+  padding: 0.9rem 0;
+  border-top: 1px solid var(--manila-edge);
+}
+
+.token-label {
+  display: block;
+  font-family: var(--label);
+  font-size: var(--label-md);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  color: var(--ink);
+}
+
+/* An unnamed token is a truthful blank, so it is set in the quieter voice
+   rather than passed off as a name the reader chose. */
+.token-label-blank {
+  font-weight: 400;
+  font-style: italic;
+  opacity: 0.75; /* 4.93:1 */
+}
+
+.token-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 1.1rem;
+  margin: 0.3rem 0 0;
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+  color: var(--ink);
+  opacity: 0.75; /* 4.93:1 */
+}
+
+.token-id {
+  word-break: break-all;
+}
+
+/* A revoked token stays on the card, and it carries the second pad: --oxide is
+   FLAGGED, the same meaning the UNSOURCED stamp presses. Typographic, no
+   rotation, no distress — DIRECTION.md's second make-or-break rule, and this
+   one does not even rotate, because nothing about a revocation is an event
+   that just happened. */
+.token[data-revoked="true"] .token-label {
+  opacity: 0.75;
+}
+
+.token-revoked-stamp {
+  display: inline-block;
+  margin-top: 0.5rem;
+  padding: 0.1rem 0.5rem 0.15rem;
+  border: 1px solid color-mix(in srgb, var(--oxide) 70%, var(--ink));
+  border-radius: 2px;
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--oxide) 70%, var(--ink)); /* 4.57:1 */
+}
+
+/* ---------------------------------------------------------------------
+   NARROW VIEWPORTS. 900px and 560px, the same two boundaries every other
+   surface in this app already turns on (web/shell.css, web/drawer.css,
+   web/scene.css) — the card stacks with everything else rather than at a
+   breakpoint of its own.
+--------------------------------------------------------------------- */
+
+@media (max-width: 900px) {
+  /* One column of controls. At 430px a label, a field and a button on one
+     flex line computed the field down to a few characters wide, which is the
+     same failure the drawer grid hit before it dropped to one column. */
+  .token-issue {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .token-issue-btn {
+    align-self: start;
+  }
+}
+
+@media (max-width: 560px) {
+  .account {
+    padding: 1.25rem 1.1rem 1.5rem;
+  }
+}
