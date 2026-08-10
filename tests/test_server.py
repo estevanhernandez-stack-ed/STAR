@@ -1000,6 +1000,14 @@ async def test_a_pipeline_failure_does_not_leak_exception_detail_to_the_client(c
 # --- Task 2: SSE reconnect must not replay the whole history ---------------
 
 
+# Every one of these runs is reached through the stream's per-run
+# capability (star/server.py's stream_events). These tests are about the
+# Last-Event-ID cursor, so the key is fixture plumbing here; the tests that
+# actually pin the capability live at the end of this file.
+_SSE_KEY = "sse-fixture-key"
+_SSE_PARAMS = {"k": _SSE_KEY}
+
+
 def _sse_ids(response) -> list[int]:
     """Parse `id: N` lines out of a raw SSE response body, in event order."""
     ids = []
@@ -1026,11 +1034,12 @@ def test_stream_events_replays_everything_with_no_last_event_id():
     run = server._runs["sse-fresh"] = {
         "events": [], "status": "complete", "search_count": 0,
         "ledger": SourceLedger(), "result": None, "uid": "uid-one",
+        "stream_key": _SSE_KEY,
     }
     for i in range(5):
         server._push(run, "search", agent="x", objective=f"q{i}", category=None)
 
-    response = client.get("/api/rooms/sse-fresh/events")
+    response = client.get("/api/rooms/sse-fresh/events", params=_SSE_PARAMS)
 
     assert _sse_ids(response) == [0, 1, 2, 3, 4]
 
@@ -1045,12 +1054,15 @@ def test_stream_events_honours_last_event_id_and_skips_replayed_events():
     run = server._runs["sse-reconnect"] = {
         "events": [], "status": "complete", "search_count": 0,
         "ledger": SourceLedger(), "result": None, "uid": "uid-one",
+        "stream_key": _SSE_KEY,
     }
     for i in range(5):
         server._push(run, "search", agent="x", objective=f"q{i}", category=None)
 
     response = client.get(
-        "/api/rooms/sse-reconnect/events", headers={"Last-Event-ID": "1"}
+        "/api/rooms/sse-reconnect/events",
+        headers={"Last-Event-ID": "1"},
+        params=_SSE_PARAMS,
     )
 
     # Event 1 was already delivered before the (simulated) reconnect; only
@@ -1065,12 +1077,15 @@ def test_stream_events_treats_a_malformed_last_event_id_as_no_cursor():
     run = server._runs["sse-malformed"] = {
         "events": [], "status": "complete", "search_count": 0,
         "ledger": SourceLedger(), "result": None, "uid": "uid-one",
+        "stream_key": _SSE_KEY,
     }
     for i in range(3):
         server._push(run, "search", agent="x", objective=f"q{i}", category=None)
 
     response = client.get(
-        "/api/rooms/sse-malformed/events", headers={"Last-Event-ID": "not-a-number"}
+        "/api/rooms/sse-malformed/events",
+        headers={"Last-Event-ID": "not-a-number"},
+        params=_SSE_PARAMS,
     )
 
     assert _sse_ids(response) == [0, 1, 2]
@@ -1115,12 +1130,15 @@ def test_stream_events_treats_an_underscore_grouped_last_event_id_as_malformed()
     run = server._runs["sse-underscore"] = {
         "events": [], "status": "complete", "search_count": 0,
         "ledger": SourceLedger(), "result": None, "uid": "uid-one",
+        "stream_key": _SSE_KEY,
     }
     for i in range(3):
         server._push(run, "search", agent="x", objective=f"q{i}", category=None)
 
     response = client.get(
-        "/api/rooms/sse-underscore/events", headers={"Last-Event-ID": "1_000"}
+        "/api/rooms/sse-underscore/events",
+        headers={"Last-Event-ID": "1_000"},
+        params=_SSE_PARAMS,
     )
 
     assert _sse_ids(response) == [0, 1, 2]
@@ -1136,12 +1154,15 @@ def test_stream_events_with_an_out_of_range_last_event_id_does_not_error():
     run = server._runs["sse-out-of-range"] = {
         "events": [], "status": "complete", "search_count": 0,
         "ledger": SourceLedger(), "result": None, "uid": "uid-one",
+        "stream_key": _SSE_KEY,
     }
     for i in range(3):
         server._push(run, "search", agent="x", objective=f"q{i}", category=None)
 
     response = client.get(
-        "/api/rooms/sse-out-of-range/events", headers={"Last-Event-ID": "999999"}
+        "/api/rooms/sse-out-of-range/events",
+        headers={"Last-Event-ID": "999999"},
+        params=_SSE_PARAMS,
     )
 
     assert response.status_code == 200
@@ -1271,3 +1292,115 @@ def test_agent_done_from_a_non_researcher_has_a_null_category():
     server._push(run, "agent_done", agent="Editor", category=None)
 
     assert run["events"][0]["category"] is None
+
+
+# --- The SSE stream's per-run capability -----------------------------------
+#
+# GET /api/rooms/{run_id}/events is the one /api route that cannot read the
+# Authorization header, because EventSource does not send custom headers. It
+# therefore checked nothing at all until a per-run key was added, and anyone
+# holding a run_id could read another caller's live research. These tests pin
+# the capability, not the plumbing: that a caller who starts a run is given
+# the key, that the key is required, that a wrong key is indistinguishable
+# from a nonexistent run, and that the key never leaves this process by any
+# other route.
+
+
+def _stream_run(**overrides) -> dict:
+    run = {
+        "events": [{"id": 0, "type": "started"}],
+        "status": "complete",  # terminal, so the generator drains and stops
+        "result": {"research_bible": "# Bible"},
+        "search_count": 0,
+        "uid": "uid-one",
+        "stream_key": "k" * 32,
+        "created_at": "2026-08-10T00:00:00+00:00",
+    }
+    run.update(overrides)
+    return run
+
+
+def test_the_event_stream_requires_the_runs_key():
+    client = TestClient(server.app)
+    with mock.patch.dict(server._runs, {"run-1": _stream_run()}, clear=True):
+        assert client.get("/api/rooms/run-1/events").status_code == 404
+
+
+def test_the_event_stream_accepts_the_runs_key():
+    client = TestClient(server.app)
+    with mock.patch.dict(server._runs, {"run-1": _stream_run()}, clear=True):
+        response = client.get("/api/rooms/run-1/events", params={"k": "k" * 32})
+
+    assert response.status_code == 200
+    assert "started" in response.text
+
+
+def test_a_wrong_key_is_indistinguishable_from_an_unknown_run():
+    """A 403 here would confirm that a guessed run_id exists, turning the
+    check into an oracle for the thing it protects. Both answers must be the
+    same answer."""
+    client = TestClient(server.app)
+    with mock.patch.dict(server._runs, {"run-1": _stream_run()}, clear=True):
+        wrong = client.get("/api/rooms/run-1/events", params={"k": "x" * 32})
+        absent = client.get("/api/rooms/nope/events", params={"k": "x" * 32})
+
+    assert wrong.status_code == absent.status_code == 404
+    assert wrong.json() == absent.json()
+
+
+def test_another_callers_key_does_not_open_this_stream():
+    """The realistic attack: someone who has legitimately started their own
+    run, and so holds a valid key, pointing it at a run_id that is not
+    theirs."""
+    client = TestClient(server.app)
+    runs = {
+        "mine": _stream_run(stream_key="a" * 32),
+        "theirs": _stream_run(stream_key="b" * 32, uid="uid-two"),
+    }
+    with mock.patch.dict(server._runs, runs, clear=True):
+        assert client.get(
+            "/api/rooms/theirs/events", params={"k": "a" * 32}
+        ).status_code == 404
+
+
+def test_the_stream_key_is_returned_to_the_caller_that_starts_the_run():
+    client = TestClient(server.app)
+    treatment = "A period drama set in 1962 Memphis, with a session guitarist."
+
+    with (
+        mock.patch("star.server.verify_token", return_value="uid-one"),
+        mock.patch("star.server._persist"),
+        mock.patch("star.server._execute", new=mock.AsyncMock()),
+        mock.patch.dict(server._runs, {}, clear=True),
+    ):
+        response = client.post("/api/rooms", json={"treatment": treatment}, headers=AUTH)
+        body = response.json()
+        run = server._runs[body["run_id"]]
+
+    assert response.status_code == 200
+    assert body["stream_key"] == run["stream_key"]
+    # Long enough to be a secret rather than an identifier. run_id is a
+    # truncated uuid because it is a name; this is not.
+    assert len(body["stream_key"]) == 32
+
+
+def test_the_stream_key_is_never_persisted_or_returned_by_get_room():
+    """It lives and dies in this process, with the run it guards. If a future
+    change serialises the run dict wholesale, this is the field that has to be
+    stripped first — so both exits are pinned here."""
+    fake_store = mock.Mock()
+    client = TestClient(server.app)
+    run = _stream_run()
+
+    with mock.patch("star.server._store", fake_store):
+        server._persist(run, "run-1", "complete")
+    saved_document = fake_store.save.call_args[0][2]
+
+    with (
+        mock.patch("star.server.verify_token", return_value="uid-one"),
+        mock.patch.dict(server._runs, {"run-1": run}, clear=True),
+    ):
+        body = client.get("/api/rooms/run-1", headers=AUTH).json()
+
+    assert "stream_key" not in saved_document
+    assert "stream_key" not in json.dumps(body)

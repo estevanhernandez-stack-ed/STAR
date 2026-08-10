@@ -11,6 +11,7 @@ import asyncio
 import json
 import logging
 import os
+import secrets
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -593,6 +594,20 @@ async def create_room(
         "events": [],
         "status": "running",
         "result": None,
+        # The capability that guards this run's SSE stream. See stream_events
+        # for why the stream cannot use the Authorization header every other
+        # route does, and why this is a per-run secret rather than the
+        # caller's ID token. Full 32 hex characters, unlike run_id's truncated
+        # 12: run_id is an identifier that appears in URLs and logs, this is a
+        # secret, and they should not have the same entropy.
+        #
+        # Deliberately NOT persisted. _persist builds its document from
+        # room_to_document(run["result"], …), never from this dict, and
+        # get_room's in-memory branch returns only status and result — so this
+        # key lives and dies in this process, with the run it guards. If a
+        # future change ever serialises the run dict wholesale, this field is
+        # the one that must be stripped first.
+        "stream_key": secrets.token_hex(16),
         "search_count": 0,
         "ledger": SourceLedger(),
         "uid": uid,
@@ -618,14 +633,45 @@ async def create_room(
     # Hold a strong reference so the event loop can't garbage-collect the
     # in-flight pipeline (asyncio keeps only weak refs to bare tasks).
     _runs[run_id]["task"] = asyncio.create_task(_execute(run_id, treatment))
-    return {"run_id": run_id}
+    return {"run_id": run_id, "stream_key": _runs[run_id]["stream_key"]}
 
 
 @app.get("/api/rooms/{run_id}/events")
 async def stream_events(
-    run_id: str, last_event_id: str | None = Header(None, alias="Last-Event-ID")
+    run_id: str,
+    k: str | None = None,
+    last_event_id: str | None = Header(None, alias="Last-Event-ID"),
 ) -> StreamingResponse:
-    if run_id not in _runs:
+    """Stream one run's progress, to the caller who started it.
+
+    This is the only /api route that cannot use the Authorization header, and
+    that is a browser constraint rather than a choice: EventSource sends no
+    custom headers, so `_require_uid` has nothing to read. For most of this
+    project's life the route consequently checked nothing at all, and
+    `_require_uid`'s own docstring ("Every /api route is scoped to a caller.
+    No token, no data.") was quietly false — anyone holding a run_id could
+    stream someone else's research: their objectives, their query strings,
+    their agents' progress.
+
+    `k` is a per-run capability minted in create_room and returned to the
+    caller that started the run, alongside run_id. The alternative was passing
+    the Firebase ID token as a query parameter, which would have written a
+    live, replayable credential into Cloud Run's access logs and every
+    Referer header — the same class of mistake star/auth.py was being fixed
+    for in the same breath. A per-run key is narrower than the identity it
+    stands in for: it grants exactly one run's event stream, and it dies with
+    the process that holds the run.
+
+    A bad key 404s rather than 403ing, and with the same detail as an unknown
+    run. 403 would confirm that a guessed run_id exists, turning this check
+    into an oracle for the thing it protects.
+
+    compare_digest rather than `!=` because this is a secret comparison and
+    the timing of a mismatch should not describe the secret. `or ""` because
+    compare_digest raises on None.
+    """
+    run = _runs.get(run_id)
+    if run is None or not secrets.compare_digest(k or "", run["stream_key"]):
         raise HTTPException(404, "Unknown run")
 
     async def generate():

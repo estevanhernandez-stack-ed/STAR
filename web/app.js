@@ -274,6 +274,7 @@ async function buildRoom() {
   $("auth-error").classList.add("hidden");
 
   let runId;
+  let streamKey;
   try {
     const res = await authedFetch("/api/rooms", {
       method: "POST",
@@ -281,7 +282,12 @@ async function buildRoom() {
       body: JSON.stringify({ treatment }),
     });
     if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
-    runId = (await res.json()).run_id;
+    // `stream_key` is the capability for this run's event stream, minted
+    // server-side and handed back exactly once, here. It is the only way the
+    // progress stream can identify its caller: EventSource sends no custom
+    // headers, so the Authorization header every other request carries is
+    // unavailable to it. See star/server.py's stream_events.
+    ({ run_id: runId, stream_key: streamKey } = await res.json());
   } catch (err) {
     $("intake-error").textContent = err.message;
     $("build-btn").disabled = false;
@@ -293,7 +299,15 @@ async function buildRoom() {
   startElapsedTimer();
   addEntry("done", "Treatment received. The department is assembling.");
 
-  const source = new EventSource(`/api/rooms/${runId}/events`);
+  // encodeURIComponent on both: runId and streamKey are server-minted hex
+  // today, so neither can carry a character that needs escaping — which is
+  // exactly the kind of assumption that stops being true quietly. Encoding
+  // costs nothing and does not depend on the server's id format staying hex.
+  // EventSource re-sends this whole URL on every automatic reconnect, so the
+  // key travels with the Last-Event-ID resume for free.
+  const source = new EventSource(
+    `/api/rooms/${encodeURIComponent(runId)}/events?k=${encodeURIComponent(streamKey)}`,
+  );
   source.onmessage = (msg) => {
     const ev = JSON.parse(msg.data);
     if (ev.type === "search") {
