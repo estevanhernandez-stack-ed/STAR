@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "adapter": "unknown",
+  "appName": "STAR",
+  "baseUrls": {
+    "dev": "http://127.0.0.1:8000",
+    "prod": "https://star-390753828501.us-central1.run.app"
+  },
+  "devRunCommand": "uvicorn star.server:app --reload",
+  "discoveryRoute": null,
+  "authModelNote": "Firebase anonymous Auth; the browser sends its ID token as `Authorization: Bearer <token>`, verified in star/auth.py to a uid or None. No session cookies, no caller-supplied API keys.",
+  "capturedAt": "2026-08-10T15:58:47.355Z"
+}
