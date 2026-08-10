@@ -32,13 +32,21 @@ from star import config  # noqa: E402
 
 config.validate_env()
 
-from star.agents.pipelines import build_room  # noqa: E402
+from star.agents.pipelines import build_room, check_scene  # noqa: E402
+from star.agents.script_check import check_state  # noqa: E402
 from star.auth import verify_token  # noqa: E402
 from star.findings import parse_findings  # noqa: E402
 from star.guards import DailyCap, RateLimiter  # noqa: E402
-from star.ledger import SourceLedger  # noqa: E402
-from star.models import Category  # noqa: E402
-from star.store import RoomStore, document_to_room, room_to_document  # noqa: E402
+from star.ledger import SourceLedger, ledger_from_room  # noqa: E402
+from star.models import Category, ClaimSet, ScriptCheckResult  # noqa: E402
+from star.store import (  # noqa: E402
+    RoomStore,
+    document_to_room,
+    document_to_scene,
+    room_to_document,
+    scene_to_document,
+)
+from star.verdicts import annotate  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -764,6 +772,380 @@ async def get_room(run_id: str, authorization: str | None = Header(None)) -> dic
         document["status"] = "interrupted"
 
     return {"status": document.get("status", "complete"), "result": document_to_room(document)}
+
+
+# --- Pipeline B: Script Check ----------------------------------------------
+#
+# A check is answered inside the request that asked for it. No run_id, no
+# stream_key, no SSE, no entry in `_runs` — spec.md's Decision 5, and the
+# argument is arithmetic rather than taste. Everything above exists because a
+# build runs 146s to 420s+ and no client holds a request open that long; a
+# check is one extraction plus one verification with at most eight searches.
+# Reusing that apparatus would import its capability key, its resume cursor,
+# its eviction rules, and its four terminal statuses to solve a problem this
+# pipeline does not have. It also makes check_scene a normal blocking MCP
+# tool, which is what an agent expects.
+
+_CHECK_APP = "star"
+# A second runner because it runs a second root agent. It carries its own
+# InMemorySessionService, so nothing a check puts in state can be read by
+# _salvage, which looks its sessions up through _runner.
+_check_runner = InMemoryRunner(agent=check_scene, app_name=_CHECK_APP)
+
+# Pipeline A passes user_id="web", naming the door the run came through. A
+# check has two doors onto one code path, so this names the pipeline instead.
+# Nothing reads it: the sessions are per-process and dropped when the check
+# ends.
+_CHECK_USER = "check"
+# The run's user message, and deliberately not the scene. The scene travels in
+# session state so it always renders inside claim_extractor's <scene> markers
+# (star/agents/script_check.py's check_state). A scene posted as the user turn
+# arrives in instruction position, which is the one thing those delimiters
+# exist to prevent, and a scene is a longer and more adversarial paste than a
+# treatment.
+_CHECK_TURN = "Check the scene on file against this room."
+
+
+def _room_files(document: dict) -> str:
+    """Assemble a stored room's own research for the verifier's prompt.
+
+    Server-side, deliberately. "The room is consulted before a search is
+    spent" is enforced by putting the room's files in front of the verifier
+    before it can reach a tool at all, and that only means something if the
+    block is built from the stored document rather than asked for.
+
+    Only findings carrying at least one citation are printed, which is the
+    load-bearing choice here. The verifier may cite only URLs it actually saw,
+    so a fact with no URL behind it gives it nothing it is allowed to name;
+    a verdict resting on one comes back with an empty sources field and
+    star/verdicts.py downgrades it to unverifiable regardless. Printing those
+    facts would spend prompt on evidence the grammar cannot carry. It also
+    keeps one measurement meaning one thing: this block is empty exactly when
+    `ledger_from_room` is empty, because both are built from the same
+    citations, so "the room's files were empty" is a single fact rather than
+    two that can disagree.
+    """
+    categories = (document or {}).get("categories")
+    if not isinstance(categories, dict):
+        return ""
+
+    blocks: list[str] = []
+    for category, doc in categories.items():
+        lines: list[str] = []
+        for finding in (doc or {}).get("findings") or []:
+            cited = (finding or {}).get("citations") or []
+            citations = [c for c in cited if c.get("url")]
+            fact = str((finding or {}).get("fact") or "").strip()
+            if not citations or not fact:
+                continue
+            lines.append(f"- {fact} :: {', '.join(c['url'] for c in citations)}")
+            for citation in citations:
+                # Collapsed to one line because the block is read as a list of
+                # facts and a multi-line excerpt would look like three more
+                # findings.
+                excerpt = " ".join(str(citation.get("excerpt") or "").split())
+                if excerpt:
+                    title = citation.get("title") or citation["url"]
+                    lines.append(f'    {title}: "{excerpt}"')
+        if lines:
+            blocks.append("\n".join([category.upper().replace("_", " "), *lines]))
+
+    return "\n\n".join(blocks)
+
+
+def _cover_note(claims: list, room_files: str) -> str:
+    """The one line a thin result needs so it does not read as a failure.
+
+    Two results are legitimately thin. A scene of pure interior dialogue
+    asserts nothing about the world and comes back with an empty claim set,
+    which is a result. A partial or interrupted room filed nothing, and a
+    check against it runs on fresh search alone, which is also a result. Both
+    reach a reader as a blank panel unless something says what happened, and
+    neither is a failure.
+
+    The no-claims line wins when both are true. A check with nothing to check
+    did not lean on a search either, so describing what it worked from would
+    be describing work that never happened.
+
+    Nothing here asserts that a search ran. The room being empty is known
+    before the pipeline starts; whether the room or a fresh search answered is
+    a per-claim fact, and it is already computed per claim in
+    `citation_sources`.
+    """
+    if not claims:
+        return (
+            "Nothing in this scene made a claim about the world, so there was "
+            "nothing for the department to check."
+        )
+    if not room_files:
+        return (
+            "This room filed no sources of its own, so the check had nothing "
+            "to work from but a fresh search."
+        )
+    return ""
+
+
+async def _check_events(session_id: str, run_ledger: SourceLedger) -> dict:
+    """Run the check to its end and hand back the session state it left.
+
+    The ledger is fed here, by the server, out of
+    `event.get_function_responses()` — the same path `_run_pipeline` uses for
+    a build. That is what gives a citation hydrated during a check the
+    identical trust property as one hydrated during a build: it is in the
+    ledger only because parallel_search returned it, and nothing the verifier
+    writes can put a source there.
+
+    Raises on failure and owns no outcome; `_run_check` decides what the
+    caller is told. Kept separate so the whole pipeline sits under one
+    wall-clock ceiling.
+    """
+    message = types.Content(role="user", parts=[types.Part(text=_CHECK_TURN)])
+
+    async for event in _check_runner.run_async(
+        user_id=_CHECK_USER, session_id=session_id, new_message=message
+    ):
+        for response in event.get_function_responses() or []:
+            run_ledger.record(
+                getattr(event, "author", None) or "verifier",
+                getattr(response, "response", None),
+            )
+
+    session = await _check_runner.session_service.get_session(
+        app_name=_CHECK_APP, user_id=_CHECK_USER, session_id=session_id
+    )
+    return session.state if session else {}
+
+
+async def _forget_check_session(session_id: str) -> None:
+    """Drop the ADK session a finished check ran on.
+
+    Two reasons, and the second is the one that matters. The session holds the
+    scene verbatim, and the scene is the paste this surface promises can be
+    deleted — a copy of it living in this process for the life of the instance
+    would make that promise smaller than it sounds. And checks are admitted on
+    `_require_uid` alone, so unlike builds nothing bounds how many run in a
+    day; an InMemorySessionService that only ever grows is a leak with no
+    ceiling on a service pinned to min-instances=1.
+
+    Never raises: the check already succeeded or already failed by the time
+    this runs, and losing the cleanup must not change either answer.
+    """
+    try:
+        await _check_runner.session_service.delete_session(
+            app_name=_CHECK_APP, user_id=_CHECK_USER, session_id=session_id
+        )
+    except Exception:
+        logger.exception("Failed to drop the session for check %s", session_id)
+
+
+async def _run_check(uid: str, run_id: str, scene: str) -> ScriptCheckResult:
+    """Check one scene against one filed room, and file what comes back.
+
+    Transport-free on purpose. The endpoint below and the MCP `check_scene`
+    tool call this same function object, so "one department, two doors" is
+    mechanical rather than asserted (spec.md's Decision 4).
+
+    Cross-uid isolation holds by construction rather than by a check anyone
+    has to remember to write. The room is read through
+    `_store.get(uid, run_id)`, whose path is rooted at `users/{uid}`, so
+    another caller's room is not *found and refused* — it is not found, which
+    is the same answer a room that never existed gets, down to the string.
+
+    Refusals raise HTTPException because both doors want the same three
+    things: a status, a message, and nothing else. The browser gets them for
+    free and the MCP router reads `.detail` to build its CallToolResult.
+    """
+    document = await asyncio.to_thread(_store.get, uid, run_id)
+    if document is None:
+        raise HTTPException(404, "Unknown run")
+
+    # A room still being built has filed nothing yet, so a check against it
+    # would spend up to eight live searches to produce a check leaning on
+    # nothing. The status is read from `_runs` rather than from the document
+    # because the document says "running" in two different situations: a build
+    # genuinely in flight, and one whose asyncio task did not survive a restart.
+    # get_room recovers the second as "interrupted", and a check against an
+    # interrupted room is a supported case that runs on fresh search alone.
+    # Refusing on the stored status alone would refuse both, and the second one
+    # forever. The uid comparison mirrors get_room's in-memory branch, for the
+    # same reason: `_runs` is keyed by run_id and is not scoped by uid.
+    live = _runs.get(run_id)
+    if live is not None and live.get("uid") == uid and live.get("status") == "running":
+        raise HTTPException(
+            409,
+            "This room is still being built. Give the department a moment to "
+            "finish filing, then check the scene against it.",
+        )
+
+    room_files = _room_files(document)
+    run_ledger = SourceLedger()
+    timeout = config.check_timeout_seconds()
+    session = await _check_runner.session_service.create_session(
+        app_name=_CHECK_APP,
+        user_id=_CHECK_USER,
+        state=check_state(scene, room_files),
+    )
+    try:
+        try:
+            state = await asyncio.wait_for(
+                _check_events(session.id, run_ledger), timeout=timeout
+            )
+            # ADK leaves the extractor's output in state as a plain dict. A
+            # claim set that fails validation is a failure worth seeing rather
+            # than one to paper over with an empty list — an empty list reaches
+            # the reader as "nothing in this scene made a claim about the
+            # world", and a silent lie that looks like a result is the exact
+            # failure the missing-`?` guard on {scene} exists to prevent.
+            claims = ClaimSet.model_validate(state.get("claims")).claims
+        except TimeoutError:
+            logger.warning("Check on room %s exceeded its %ss ceiling", run_id, timeout)
+            raise HTTPException(
+                504,
+                f"The check ran past its {timeout}-second limit and was "
+                "stopped. Try it again with a shorter scene.",
+            ) from None
+        except Exception:
+            # Same posture as _execute: the detail goes to the log and the
+            # reader gets plain language with none of our vocabulary in it.
+            # This surface is public, and `f"{type(exc).__name__}: {exc}"` once
+            # handed a stranger library names, table names, and a stray
+            # credential out of an error string.
+            logger.exception("Check on room %s failed", run_id)
+            raise HTTPException(
+                502,
+                "The department hit an unexpected problem and could not "
+                "finish the check. The details are in the server log.",
+            ) from None
+    finally:
+        await _forget_check_session(session.id)
+
+    searches = int(state.get("search_count") or 0)
+    # The fifth-envelope failure in the only form Pipeline B can see it: the
+    # tool ran, the ledger stayed empty, and every citation this check produces
+    # will come back unsourced. _maybe_warn_empty_ledger pushes that as a
+    # visible SSE event for a build; a check has no stream, so it goes to the
+    # log.
+    if searches > 0 and len(run_ledger) == 0:
+        logger.warning(
+            "Check on room %s ran %s searches and recorded no sources — the ADK "
+            "function-response envelope may have changed shape",
+            run_id,
+            searches,
+        )
+
+    result = annotate(
+        state.get("verdicts"),
+        claims,
+        ledger_from_room(document),
+        run_ledger,
+        # The server's own fact, never the model's. parallel_search holds the
+        # ceiling and counts every allowed spend into session state, so this is
+        # the count of searches that actually ran measured against the ceiling
+        # they ran under. The verifier's `budget:` prefix is a claim about the
+        # same thing, and star/verdicts.py honours it only where this agrees.
+        searches >= config.max_searches_per_check(),
+        scene_id=uuid.uuid4().hex[:12],
+        created_at=datetime.now(timezone.utc).isoformat(),  # noqa: UP017
+        search_count=searches,
+    )
+    result = result.model_copy(update={"cover_note": _cover_note(claims, room_files)})
+
+    # Off the event loop; see list_rooms for why. Best-effort for the same
+    # reason _persist is: the answer was decided above and a Firestore hiccup
+    # should cost durability, never correctness. The cost is named rather than
+    # hidden — the caller holds a scene_id the GET below will not find — and it
+    # is the cheaper of the two failures, because the alternative discards a
+    # check that already spent real searches to produce.
+    try:
+        await asyncio.to_thread(
+            _store.save_scene,
+            uid,
+            run_id,
+            result.scene_id,
+            scene_to_document(jsonable_encoder(result), scene),
+        )
+    except Exception:
+        logger.exception("Failed to file check %s on room %s", result.scene_id, run_id)
+
+    return result
+
+
+class SceneRequest(BaseModel):
+    scene: str
+
+
+@app.post("/api/rooms/{run_id}/scenes")
+async def create_scene(
+    run_id: str, req: SceneRequest, authorization: str | None = Header(None)
+) -> dict:
+    uid = _require_uid(authorization)
+    scene = req.scene.strip()
+    # An empty scene is refused here because it cannot be refused upstream.
+    # claim_extractor's `{scene}` carries no `?`, so a scene the server never
+    # seeded raises rather than rendering an empty block — but an empty *string*
+    # seeds fine, renders an empty block, and returns zero claims, which reads
+    # on screen as "nothing in this scene made a claim about the world". That
+    # guard cannot see this case; this is where it is caught.
+    if not scene:
+        raise HTTPException(400, "Paste a scene for the department to check.")
+    if len(scene) > config.max_scene_chars():
+        raise HTTPException(
+            400,
+            f"Scenes are capped at {config.max_scene_chars()} characters — "
+            "send the department a scene, not the script.",
+        )
+    # Note what is NOT here: a rate limiter. A check spends real searches, but
+    # `_ip_limiter` and `_daily_cap` both count rooms, and the per-uid limiter
+    # the MCP door needs does not exist yet. Admission for a check is
+    # `_require_uid` alone today, and that is a gap rather than a decision.
+    return jsonable_encoder(await _run_check(uid, run_id, scene))
+
+
+@app.get("/api/rooms/{run_id}/scenes")
+async def list_scenes(run_id: str, authorization: str | None = Header(None)) -> dict:
+    # An unknown room and another caller's room both answer with an empty list
+    # rather than a 404. The path is rooted at `users/{uid}`, so there is
+    # nothing to find in either case and no read that could tell the two apart
+    # — the no-oracle posture get_room and stream_events already take, arrived
+    # at here by construction instead of by a decision.
+    uid = _require_uid(authorization)
+    # Off the event loop; see list_rooms for why.
+    scenes = await asyncio.to_thread(_store.list_scenes, uid, run_id)
+    return {"scenes": scenes}
+
+
+@app.get("/api/rooms/{run_id}/scenes/{scene_id}")
+async def get_scene(
+    run_id: str, scene_id: str, authorization: str | None = Header(None)
+) -> dict:
+    """Read one filed check back, in the shape the check itself returned.
+
+    Replayable without re-running: the claims are exact substrings of the
+    stored scene rather than offsets into it, so the surface can mark the same
+    scene the same way from this payload alone.
+    """
+    uid = _require_uid(authorization)
+    document = await asyncio.to_thread(_store.get_scene, uid, run_id, scene_id)
+    if document is None:
+        raise HTTPException(404, "Unknown check")
+    return document_to_scene(document)
+
+
+@app.delete("/api/rooms/{run_id}/scenes/{scene_id}")
+async def delete_scene(
+    run_id: str, scene_id: str, authorization: str | None = Header(None)
+) -> Response:
+    """Remove one filed check, and with it the scene text it stored.
+
+    The whole document goes, not a flag on it. Soft deletion is right for a
+    revoked token, which has to be *told* it was revoked; it is wrong for a
+    writer's script pages, where the promise made above the paste box is that
+    the text stops being kept.
+    """
+    uid = _require_uid(authorization)
+    if not await asyncio.to_thread(_store.delete_scene, uid, run_id, scene_id):
+        raise HTTPException(404, "Unknown check")
+    return Response(status_code=204)
 
 
 @app.get("/config.js")

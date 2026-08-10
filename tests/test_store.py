@@ -46,6 +46,13 @@ class _FakeDoc:
     def get(self):
         return _FakeSnapshot(self._store.data.get(self._path))
 
+    def delete(self):
+        # Real Firestore's .delete() is idempotent and says nothing about what
+        # it removed — no raise on a missing document, no return value. Stores
+        # that answer "did anything go?" have to read first, which is why
+        # RoomStore.delete_scene does.
+        self._store.data.pop(self._path, None)
+
 
 class _FakeSnapshot:
     def __init__(self, data):

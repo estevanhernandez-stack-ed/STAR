@@ -744,7 +744,15 @@ def test_every_api_route_requires_auth_except_the_explicitly_open_sse_stream():
 
     def body_for(method: str) -> dict:
         if method == "POST":
-            return {"json": {"treatment": "x" * 60}}
+            # One body that satisfies every POST route's schema at once.
+            # Pydantic ignores the keys a given model does not declare, and
+            # the alternative — a per-route body table — puts a hand-named
+            # route back in the middle of a test whose whole point is that it
+            # names none. A POST route whose body this does not satisfy fails
+            # validation with a 422 before _require_uid ever runs, so it would
+            # read here as "did not require auth" and the fix would be a new
+            # key in this dict, not an exemption.
+            return {"json": {"treatment": "x" * 60, "scene": "x" * 60}}
         return {}
 
     checked = []
@@ -770,7 +778,16 @@ def test_every_api_route_requires_auth_except_the_explicitly_open_sse_stream():
 
     # Guards against the walk silently matching nothing (e.g. a path-prefix typo).
     checked_names = {name for name, _ in checked}
-    assert {"create_room", "list_rooms", "get_room", "stream_events"} <= checked_names
+    assert {
+        "create_room",
+        "list_rooms",
+        "get_room",
+        "stream_events",
+        "create_scene",
+        "list_scenes",
+        "get_scene",
+        "delete_scene",
+    } <= checked_names
 
 
 # --- Test-shape gap: /config.js must serve only the public keys ------------

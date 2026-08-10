@@ -571,3 +571,93 @@ No live builder input this run. Two assumptions stay marked `(default — confir
 run)`: the 8,000-character scene cap and the three-persona count, both inherited unchanged from
 `/prd` and `/spec` rather than re-inferred. The cut line was copied into the checklist verbatim from
 `scope.md` so it is never re-decided under deadline pressure.
+
+## /build
+
+Autonomous mode, verification on, checkpoints after items 4, 7, 9, and 11, commit
+per item. Baseline before the first item: 175 tests green, 20 commits ahead of
+`origin/main`.
+
+### Sequencing deviation, taken on purpose
+
+Item 1 is a browser sign-in and a Cloud Console step, so it is the builder's to run
+rather than the agent's. Its failure reshapes items 2, 3, and 4 and nothing else, and
+items 5, 6, and 8 declare no dependency on Gate A. So Gate B ran in parallel with item
+1 rather than idling behind it. The ordering argument `/checklist` made is intact: item
+1 still landed before a single line of Gate A code was written.
+
+### Item 1 — the Google link flow, proved against the live API
+
+Both claims **PASS**. Recorded here because the item's Verify asks for both round trips
+either way, and because a documented-but-unverified claim is what this item existed to
+convert into a measured one.
+
+**Claim 1 — `response_type=id_token` is still honoured for this client.** Confirmed. The
+authorize URL returned a `#id_token=` fragment, and `state` round-tripped byte-identical.
+Google's own copy steers toward Google Identity Services here, which is the remote
+`<script>` this project forbids; the implicit flow it steers away from still works.
+
+**Claim 2 — `signInWithIdp` accepts a Google ID token minted outside Firebase's handler,
+carrying a nonce Firebase did not issue.** Confirmed, `HTTP 200` on the **first** attempt.
+The `&nonce=<raw nonce>` retry the spec names as the first fallback was never needed, and
+the server-side authorization-code exchange named as the second is therefore **not built**.
+
+**The uid survived.** `uid_before` and `uid_after` are byte-identical (`ROfFQgQW…j6i1`).
+Linking preserves the uid, so the rail lists the same rooms across the link. That is
+`prd.md > Identity That Outlives The Browser`'s first linking criterion, and it is now a
+property this cycle measured rather than one it read off a doc page.
+
+**Request shape** (`accounts:signInWithIdp?key=<FIREBASE_API_KEY>`), credentials elided:
+
+    { "postBody": "id_token=<google id_token, 1305 chars>&providerId=google.com",
+      "requestUri": "https://star-390753828501.us-central1.run.app",
+      "idToken": "<the anonymous Firebase ID token, 856 chars>",
+      "returnSecureToken": true,
+      "returnIdpCredential": true }
+
+**Response shape**, values elided, field names verbatim:
+
+    federatedId, providerId="google.com", email, emailVerified=true, firstName,
+    fullName, lastName, photoUrl, localId, displayName, idToken (1006 chars),
+    refreshToken (482 chars), expiresIn="3600", oauthIdToken (1274 chars),
+    rawUserInfo (621 chars), kind="identitytoolkit#VerifyAssertionResponse"
+
+Three things in that shape item 2 depends on. `expiresIn` is a **string**, so
+`web/auth.js:48`'s `remember()` already does the right thing with it via `Number()`.
+`localId` is the uid to assert against. And there is **no `oauthAccessToken`** — the
+implicit ID-token flow returns no access token at all, so nothing in this exchange
+produces a Google credential with API reach, which narrows what a leaked fragment could
+ever be worth.
+
+### `spec.md > Open issues` #2, closed
+
+The client id in play is `390753828501-vmm840999…`, the web client Firebase
+auto-provisions for its own Google provider. Because it is the client the provider
+already trusts, the token's `aud` matched with **no whitelist step**. Using any other
+client id would have required adding it to the provider's allowed list; that path exists
+and was not needed.
+
+### The failure that actually cost the round trip, and it was not either claim
+
+The first attempt died on `Error 400: redirect_uri_mismatch`, and the diagnosis took a
+detour worth writing down because the console invites it. Google's credentials page has
+two sections with **opposite rules**: *Authorized JavaScript origins* rejects a path or a
+trailing slash, and *Authorized redirect URIs* requires the full URL and accepts both. The
+two redirect URIs went into the origins box first, where the console refused them with a
+message about trailing slashes that reads like the URIs are wrong rather than like the
+box is.
+
+`https://star-390753828501.us-central1.run.app/` and `http://localhost:8000/`, trailing
+slashes intact, belong in **Authorized redirect URIs**, alongside the
+`__/auth/handler` entry Firebase put there. The localhost registration is the one worth
+naming twice: skipping it is the failure that works in production and looks like a broken
+button on a laptop, which is a rehearsal-week discovery rather than a day-one one.
+
+This is precisely what `/checklist` put item 1 first to find. It cost one browser round
+trip and a console edit. Discovered on day four, it costs the ordering argument.
+
+### One live artifact this left behind
+
+The throwaway anonymous account minted by the prover is now permanently linked to a real
+Google identity in `star-research-dept`. It is not a leak and it is useful — it is the
+linked uid items 3 and 4 need to exercise the allow path, and the only one that exists.

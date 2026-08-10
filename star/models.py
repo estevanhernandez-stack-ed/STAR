@@ -144,7 +144,18 @@ class ClaimResult(BaseModel):
 
 
 class ScriptCheckResult(BaseModel):
-    """One filed check: a scene, its claims, and what the check cost."""
+    """One filed check: a scene, its claims, and what the check cost.
+
+    `cover_note` is the department's own line about the check, and it is the
+    one field here no model touches and `star/verdicts.py` never sets — the
+    server computes it from what it handed the pipeline. Two results are
+    legitimately thin and would otherwise reach a reader as an empty screen:
+    a scene that asserts nothing about the world, and a room that filed no
+    sources of its own. Both are answers, and an answer that arrives as a
+    blank panel reads as a failure. The line lives on the payload rather than
+    in the browser because the MCP door has no renderer between this object
+    and its reader.
+    """
 
     scene_id: str
     created_at: str
@@ -154,3 +165,8 @@ class ScriptCheckResult(BaseModel):
     field_notes: str = ""
     search_count: int = 0
     budget_exhausted: bool = False
+    cover_note: str = Field(
+        default="",
+        description="One plain line about what this check had to work with. "
+        "Empty when the claims speak for themselves.",
+    )

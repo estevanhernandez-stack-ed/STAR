@@ -53,7 +53,7 @@ three tools and note the fourth as next. **Pipeline B and the video never go.**
 
 ## Checklist
 
-- [ ] **1. Prove the Google link flow against the live API**
+- [x] **1. Prove the Google link flow against the live API**
   Spec ref: `spec.md > Identity: linking without a gate > Build-blocking verification, before the epic's first line of code`
   Depends on: nothing. Effort: **S** — half a session, no application code.
   What to build: No code. Three round trips and a console step. (a) Register the OAuth client's
@@ -200,7 +200,7 @@ three tools and note the fourth as next. **Pipeline B and the video never go.**
   golden fixture item 6 parses** — the same measure-don't-assume move that decided A-vs-B in GUI
   Phase 1.
 
-- [ ] **6. `star/verdicts.py` — the deterministic annotator**
+- [x] **6. `star/verdicts.py` — the deterministic annotator**
   Spec ref: `spec.md > Pipeline B — Script Check > star/verdicts.py — the annotator` + `> The two ledgers`
   Depends on: 5 (needs real verifier output as fixtures). Effort: **M**.
   What to build: `star/verdicts.py`, pure — no I/O, no model — mirroring `star/findings.py` in
