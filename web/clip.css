@@ -1,0 +1,479 @@
+/* THE MORGUE — the clip and its receipts, the expanded drawer's contents.
+   Tokens only, from web/tokens.css. No raw hex, no rgba() literals — every
+   shade is derived with color-mix() from a token, the precedent web/shell.css
+   set for .rail-room:hover and web/drawer.css for .drawer::before.
+
+   Surfaces, per DIRECTION.md:
+     - The clip's reading surface is --onionskin, and it stays a COMPONENT
+       inside an opened drawer. It is never a page ground; if it becomes one
+       the direction lands in the cream-and-serif default by the side door.
+     - A receipt is a manila fragment sitting ON that surface, which is also
+       what keeps manila's share of the room from collapsing as clips fill a
+       card: the drawer's padding, the gaps between clips, and every receipt
+       are all manila. The >40% rule is measured on the mounted page, not
+       here — see this task's report.
+
+   Contrast, measured rather than eyeballed (Task 3's idle tab shipped at
+   1.4:1 before anyone checked):
+     --ink on --onionskin            12.7:1
+     --ink at 0.75 on --manila        4.9:1
+     --oxide on --onionskin           4.8:1   <- the UNSOURCED stamp lives here
+     --oxide on --manila              3.2:1   <- known shortfall, so it doesn't
+     --aniline on --manila            4.4:1   <- misses AA for small text
+     aniline mixed 70% into --ink
+       on --manila                    5.5:1   <- what the stamp's letters use
+   The aniline stamp therefore carries the raw token as its RULE (4.4:1 clears
+   the 3:1 non-text requirement) and a color-mixed shade of the same token as
+   its letterforms. Still one pad, still flat ink, still no gradient — the rule
+   DIRECTION.md sets is against washes and gradients, and color-mix from the
+   token is how this codebase has derived every other shade.
+
+   Motion is belt-and-braces, the same as web/drawer.css's .stamp: the lift
+   transition is driven by --stamp-duration (already 0ms under reduced motion,
+   web/tokens.css) AND killed outright by an explicit rule in the media query,
+   because Task 1 found that a reduced-motion rule which looks correct can
+   still lose silently and was only caught by emulating it in a real browser.
+   Nothing here needs motion to read: every state below is legible as a still
+   frame, which is the only reason the transition is allowed to exist.
+*/
+
+/* ---------------------------------------------------------------------
+   The expanded drawer's body. Clips are ADDED to a filed card, never
+   swapped in for its contents — the stamp, the counts, and the log of what
+   this researcher asked all survive underneath, because a card that empties
+   at the moment you open it reads as work being thrown away.
+--------------------------------------------------------------------- */
+
+.drawer[data-state="expanded"] .drawer-body {
+  gap: 0.9rem;
+}
+
+/* An expanded drawer is a reading view, not a tile: it takes the full width
+   of whatever grid it sits in. Declared here rather than left to the mounting
+   task so a drawer cannot be opened into a 546px column by accident. Row
+   geometry still derives from --tab-rise (web/drawer.css) — spanning columns
+   changes width, never the distance a cut tab escapes its card by. */
+.drawer-grid > .drawer[data-state="expanded"] {
+  grid-column: 1 / -1;
+}
+
+/* ---------------------------------------------------------------------
+   Research obligation 1 — the scene each question was asked for.
+   Per category, because that is the only join the data supports.
+--------------------------------------------------------------------- */
+
+.scene-need-list {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.scene-need {
+  padding-left: 0.85rem;
+  border-left: 2px solid var(--manila-edge);
+}
+
+.scene-need-question {
+  margin: 0;
+  max-width: 78ch;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  font-style: italic;
+  line-height: 1.45;
+  color: var(--ink);
+  opacity: 0.8;
+}
+
+/* The high-value line. Full-strength ink, upright, so it outranks the
+   question above it: the question is the assignment, this is the reason a
+   screenwriter should care. */
+.scene-need-why {
+  margin: 0.2rem 0 0;
+  max-width: 78ch;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+/* The brief asked for this line in --pencil. --pencil measures 2.8:1 on
+   --onionskin and 1.9:1 on --manila, so it cannot carry text here; it stays
+   what it already is elsewhere in this codebase — a rule and a glyph color.
+   The label instead does the job --pencil was reaching for, which was
+   "quieter than the sentence beside it". */
+.scene-need-tag {
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink);
+  opacity: 0.55;
+  margin-right: 0.5rem;
+}
+
+/* ---------------------------------------------------------------------
+   Research obligation 4 — the real uncertainty numbers, stated plainly.
+--------------------------------------------------------------------- */
+
+.uncertainty-line {
+  margin: 0.35rem 0 0;
+  max-width: 78ch;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--ink);
+  opacity: 0.85;
+}
+
+/* ---------------------------------------------------------------------
+   The clip — one fact on onionskin, its receipts beneath.
+--------------------------------------------------------------------- */
+
+.clip-list {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.clip {
+  background: var(--onionskin);
+  border-radius: 3px;
+  border-left: 3px solid var(--manila-edge);
+  padding: 0.95rem 1.1rem 1rem;
+}
+
+/* Scannable at a glance without overstating: the rule says "something on this
+   clip failed the ledger check", and the stamp inside says exactly which link
+   and what that means. A clip carrying two real sources and one bad URL is
+   marked, not condemned. */
+.clip[data-unsourced="true"] {
+  border-left-color: var(--oxide);
+}
+
+/* Measure is capped on every prose block in this file, not just this one. An
+   expanded drawer spans the grid — 1061px at desktop width, measured — and
+   17px Newsreader across that is about 120 characters per line, roughly double
+   a readable measure. The card is allowed to be wide because it is holding
+   evidence; the sentences are not. Everything here caps in `ch` so the measure
+   tracks the type rather than a pixel guess. */
+.clip-fact {
+  margin: 0;
+  max-width: 64ch;
+  font-family: var(--body);
+  font-size: var(--text-md);
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.clip-empty {
+  margin: 0.4rem 0 0;
+  max-width: 78ch;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  font-style: italic;
+  line-height: 1.5;
+  color: var(--ink);
+  opacity: 0.75;
+}
+
+/* ---------------------------------------------------------------------
+   Receipts — manila fragments, stacked the way clips sit in a folder.
+
+   The stack is built to read as a STILL FRAME, not only while something is
+   moving: each fragment overlaps the one above it by less than its own top
+   padding and steps right by a few pixels, so every title and every stamp
+   stays legible while the pile still reads as a pile. A stack whose lower
+   cards are hidden until you interact with it would fail the one test this
+   whole direction is built on.
+--------------------------------------------------------------------- */
+
+.clip-receipts {
+  margin-top: 0.85rem;
+}
+
+.receipt {
+  position: relative;
+  display: block;
+  background: var(--manila);
+  border: 1px solid var(--manila-edge);
+  border-radius: 2px;
+  transition:
+    margin var(--stamp-duration) ease-out,
+    box-shadow var(--stamp-duration) ease-out;
+}
+
+/* Later siblings paint over earlier ones by document order (both are
+   positioned, neither sets z-index), which is how a pile actually looks:
+   last one dropped sits on top. --stack-index is this file's own loop
+   counter, written by clip.js, never payload data. */
+.receipt + .receipt {
+  margin-top: -0.35rem;
+  margin-left: calc(var(--stack-index, 0) * 0.4rem);
+}
+
+/* The lift. Same rule specificity as the stack rule above (0,2,0), so it wins
+   on source order — declared after, deliberately. */
+.receipt[open] {
+  z-index: 2;
+  margin-top: 0.5rem;
+  margin-left: 0;
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--drawer-shadow) 30%, transparent);
+}
+
+/* The card BELOW an open one has to let go too. Without this its own
+   -0.35rem pull keeps it sitting on the opened card's bottom edge, which was
+   measured at 5.6px of overlap in a browser and read as the stack refusing to
+   part. A lift only reads as a lift if the neighbours move out of the way. */
+.receipt[open] + .receipt {
+  margin-top: 0.45rem;
+  margin-left: 0;
+}
+
+/* Stamp, then title, then the cue — a row, not a stack. Stacked, the three-line
+   stamp made every closed receipt ~113px tall with the card's whole right half
+   empty, which at an expanded drawer's 1060px is a lot of manila spent on
+   nothing. Side by side the same content costs ~70px and the stamp lands first,
+   which is also the right reading order: a clip is identified by what is
+   stamped on it. */
+.receipt-face {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.5rem 0.85rem;
+  padding: 0.6rem 0.75rem;
+  cursor: pointer;
+  /* Kill the disclosure triangle in both engines. The affordance is the word
+     "Excerpt", which is real text a screen reader can read, rather than a glyph
+     in a pseudo-element that some readers announce and some do not. */
+  list-style: none;
+}
+
+.receipt-face::-webkit-details-marker {
+  display: none;
+}
+
+/* `flex: 0 1 auto`, not `1 1 <basis>`: growing meant a one-line title like
+   "Detroit River - Wikipedia" still occupied its full 506px cap, parking the
+   "Excerpt" cue 330px past the end of the words it belongs to. Shrink-to-fit
+   with a cap gives long titles room to wrap and short ones nothing they do not
+   use. */
+.receipt-title {
+  flex: 0 1 auto;
+  max-width: 62ch;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+/* THE STAMP, at the level DIRECTION.md actually specifies it: per citation,
+   "when the ledger check passes". Typographic, bordered rather than filled,
+   rotation well under the 2.5deg ceiling. Domain, retrieval date, researcher's
+   code — and only the fields the caller genuinely knows, which is why clip.js
+   builds the lines rather than the template hard-coding three. */
+.receipt-stamp {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  border: 2px solid var(--aniline);
+  border-radius: 2px;
+  padding: 0.25rem 0.55rem;
+  transform: rotate(-1.5deg);
+  transform-origin: left center;
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+  letter-spacing: 0.03em;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--aniline) 70%, var(--ink));
+  text-transform: uppercase;
+}
+
+.receipt-source {
+  font-weight: 700;
+}
+
+/* Sits directly after the title, not pushed to the card's far edge. At an
+   expanded drawer's width `margin-left: auto` put it ~800px from the thing it
+   opens, where it read as a stray label rather than as this receipt's
+   affordance. Measured in a browser; it looked fine in the rule. */
+.receipt-cue {
+  flex: none;
+  align-self: center;
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink);
+  opacity: 0.55;
+}
+
+.receipt[open] .receipt-cue {
+  opacity: 0.3;
+}
+
+.receipt-body {
+  padding: 0 0.75rem 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+/* Verbatim, at whatever length the ledger holds — excerpts in the real payload
+   run from 120 to 2700 characters. Not truncated: the entire point of
+   obligation 2 is that the reader can see what the source actually said, and a
+   trimmed excerpt is a summary, which is the thing being avoided. */
+.receipt-excerpt {
+  margin: 0;
+  max-width: 80ch;
+  padding-left: 0.8rem;
+  border-left: 2px solid color-mix(in srgb, var(--ink) 35%, var(--manila));
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  font-style: italic;
+  line-height: 1.55;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.receipt-excerpt-empty {
+  font-style: normal;
+  opacity: 0.7;
+}
+
+/* The narrow claim, in body type rather than slug: this is the most important
+   sentence on the page and 11px monospace would file it as apparatus. */
+.receipt-check {
+  margin: 0;
+  max-width: 74ch;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--ink);
+  opacity: 0.78;
+}
+
+.receipt-url {
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+  line-height: 1.5;
+  color: var(--aniline);
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------------
+   The second pad — oxide, on the link that failed the ledger check, on the
+   onionskin surface where oxide measures 4.8:1 rather than the 3.2:1 it
+   manages on manila.
+--------------------------------------------------------------------- */
+
+.clip-unsourced {
+  margin-top: 0.85rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid color-mix(in srgb, var(--oxide) 45%, var(--onionskin));
+}
+
+.clip-stamp {
+  display: inline-block;
+  border: 2px solid var(--oxide);
+  border-radius: 2px;
+  padding: 0.2rem 0.7rem;
+  transform: rotate(-2deg);
+  font-family: var(--label);
+  font-size: var(--label-md);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--oxide);
+}
+
+.clip-stamp-note {
+  margin: 0.6rem 0 0;
+  max-width: 78ch;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--ink);
+  opacity: 0.85;
+}
+
+/* Deliberately not a link, and deliberately still shown. star/models.py's own
+   words: "Rendered as a warning, never as a source." Turning it into an
+   anchor beside the real receipts would make it look like one of them, and
+   send a reader to a page nothing in this system ever saw. */
+.unsourced-urls {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+}
+
+.unsourced-url {
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+  line-height: 1.55;
+  color: var(--ink);
+  opacity: 0.75;
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------------
+   field_notes — what the parser could not file, kept word for word.
+--------------------------------------------------------------------- */
+
+.field-notes-note {
+  margin: 0.35rem 0 0;
+  max-width: 78ch;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--ink);
+  opacity: 0.72;
+}
+
+.field-note {
+  margin: 0.5rem 0 0;
+  max-width: 80ch;
+  padding: 0.65rem 0.85rem;
+  background: var(--onionskin);
+  border-left: 2px solid var(--manila-edge);
+  border-radius: 2px;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+/* ---------------------------------------------------------------------
+   Reduced motion. --stamp-duration is already 0ms here (web/tokens.css),
+   which alone makes the transition instant; this is the independent second
+   path, exactly as web/drawer.css's .stamp does it, because a rule that
+   looks correct once lost silently to specificity and was only caught by
+   emulating the setting in a real browser.
+--------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .receipt {
+    transition: none;
+  }
+}
+
+/* ---------------------------------------------------------------------
+   Narrow viewports. Task 7 owns the full responsive pass; this only stops
+   the receipt stack's step-right offset from pushing fragments off a phone-
+   width card, where the horizontal room does not exist to spend.
+--------------------------------------------------------------------- */
+
+@media (max-width: 560px) {
+  .receipt + .receipt {
+    margin-left: 0;
+  }
+}

@@ -13,28 +13,37 @@
    Color discipline, checked against DIRECTION.md's palette table:
      - --oxide marks the FAILED tab. Same "flagged" meaning shell.js already
        gave it for the rail's error/interrupted marker (web/shell.js).
-     - --aniline is NOT used here, still. DIRECTION.md's "signature" stamp
-       (domain, retrieval date, researcher's code, in --aniline) is
-       specified at the per-CITATION level: it fires "when the ledger check
-       passes" against one Finding's citations. Task 4's own live-run
-       consumer of this file — the drawer's FILED transition — has no
-       citation to check. `agent_done` (star/server.py) carries only the
-       friendly agent label, never a URL or a fact; the domain and
-       fact/source/question counts a filed category eventually carries only
-       exist once GET /api/rooms/{id} is fetched and parsed, which is
-       Task 5's territory (findings, citations, the ledger check). Stamping
-       the DRAWER aniline here would claim a verification this component
-       still cannot see, exactly what research obligation 3 warns against —
-       so this stays Task 3's --ink, extended rather than reversed. What
-       Task 4 legitimately DOES know at the moment a category files: which
-       researcher (the category itself, encoded as a three-letter code) and
-       when (today, genuinely — the render happens the moment the event
-       arrives). Both are now on the stamp; no domain is fabricated to fill
-       the third slot the citation-level design calls for. See renderFiled
-       below and drawer.css's .stamp rule for the full reasoning.
+     - --aniline is still not used by THIS file, in any state including
+       expanded. DIRECTION.md's "signature" stamp (domain, retrieval date,
+       researcher's code, in --aniline) is specified at the per-CITATION
+       level: it fires "when the ledger check passes" against one Finding's
+       citations. No drawer state has a citation to check — a drawer is a
+       container for clips, and the check happens inside one. Task 4's
+       live-run FILED transition knows even less: `agent_done`
+       (star/server.py) carries only the friendly agent label, never a URL
+       or a fact. Stamping the DRAWER aniline would claim a verification
+       this component cannot see, exactly what research obligation 3 warns
+       against — so it stays Task 3's --ink, extended rather than reversed.
+       What Task 4 legitimately DOES know at the moment a category files:
+       which researcher (the category, encoded as a three-letter code) and
+       when (today, genuinely — the render happens as the event arrives).
+       Both are on the stamp; no domain is fabricated to fill the third
+       slot the citation-level design calls for. Task 5 spends the aniline
+       pad where it belongs, in web/clip.js's receipt stamp.
      - Search-progress dots use --pencil (metadata), not --aniline — a
        landed search is not a verified fact.
 */
+
+import {
+  countSources,
+  escapeHtml,
+  plural,
+  questionsForCategory,
+  renderClips,
+  renderFieldNotes,
+  renderSceneNeeds,
+  renderUncertainty,
+} from "/clip.js";
 
 export const DRAWER_LABELS = {
   setting: "Setting & Atmosphere",
@@ -45,24 +54,11 @@ export const DRAWER_LABELS = {
 
 const VALID_STATES = new Set(["idle", "searching", "filed", "failed", "expanded"]);
 
-function escapeHtml(s) {
-  return String(s)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
-
-/* Naive "+s" breaks on "search" ("searchs") — a real bug this file already
- * had (Task 3's aria-label on the dot row), surfaced while testing Task 4's
- * new "N searches completed" stamp line, which hits the exact same word.
- * Standard English pluralization for words ending in a sibilant sound
- * takes "+es", not "+s". */
-function plural(n, word) {
-  if (n === 1) return `${n} ${word}`;
-  const suffix = /(?:[sxz]|[cs]h)$/i.test(word) ? "es" : "s";
-  return `${n} ${word}${suffix}`;
-}
+/* escapeHtml and plural moved to web/clip.js in Task 5 and are imported above.
+ * Both files need them, and clip.js is the leaf (it imports nothing), so
+ * putting them there is the only arrangement that shares one implementation
+ * without a module cycle. plural's history is worth keeping in view from here:
+ * naive "+s" produced "searchs", a bug this file shipped twice. */
 
 function renderIdle(body) {
   body.innerHTML = `<p class="drawer-status">Not yet started</p>`;
@@ -204,7 +200,7 @@ function renderSearching(body, data = {}) {
  *  legitimately file with zero facts) selects the finding-count line;
  *  otherwise the honest fallback is the search tally, never a fabricated
  *  zero. */
-function renderFiled(body, data = {}) {
+function buildFiledHead(data = {}) {
   const { factCount, sourceCount, questionCount, code, date, searchCount } = data;
   const hasFindingCounts =
     factCount !== undefined || sourceCount !== undefined || questionCount !== undefined;
@@ -219,19 +215,83 @@ function renderFiled(body, data = {}) {
     : searchCount !== undefined
       ? `${plural(searchCount, "search")} completed`
       : "";
-  // Carried over from the searching state so the card does not empty at the
-  // moment it succeeds. Labelled, because a filed room reached from the rail
-  // never saw these questions being asked — without the label a bare list of
-  // quotes under a FILED stamp reads as findings, which they are not.
-  const searches = Array.isArray(data.searches) ? data.searches : [];
-  const log = buildSearchLog(searches, { withQueries: false });
-  body.innerHTML = `
+  return `
     <div class="stamp">
       <span class="stamp-word">Filed</span>
       ${stampDetail}
     </div>
     ${countsLine ? `<p class="drawer-meta drawer-counts">${countsLine}</p>` : ""}
-    ${log ? `<p class="drawer-legend">What this researcher asked</p>${log}` : ""}
+  `;
+}
+
+/** The log of what this researcher asked, labelled. A filed or expanded room
+ *  reached from the rail never watched these questions being issued, and
+ *  without the label a bare list of quotes under a FILED stamp reads as
+ *  findings, which they are not. */
+function buildLabelledLog(data = {}) {
+  const searches = Array.isArray(data.searches) ? data.searches : [];
+  const log = buildSearchLog(searches, { withQueries: false });
+  return log ? `<p class="drawer-legend">What this researcher asked</p>${log}` : "";
+}
+
+function renderFiled(body, data = {}) {
+  // The log is carried over from the searching state so the card does not
+  // empty at the moment it succeeds.
+  body.innerHTML = `
+    ${buildFiledHead(data)}
+    ${buildLabelledLog(data)}
+  `;
+}
+
+/** EXPANDED: the reading view. The same filed card, with its clips opened out.
+ *
+ *  Additive by construction, and that is the whole design of this state: the
+ *  stamp, the counts, and the log of what this researcher asked all survive
+ *  underneath the clips. Task 4 learned this the expensive way in the other
+ *  direction — its first cut of FILED rendered a stamp alone and read on
+ *  screen as the drawer throwing away everything it had just shown you.
+ *  Opening a drawer must not do that either.
+ *
+ *  Reading order is an argument, not a layout preference:
+ *    1. the stamp and the counts — what this drawer is
+ *    2. what the department could not do cleanly — the uncertainty numbers,
+ *       BEFORE the findings rather than in a footnote after them. Burying
+ *       them under the good news would be the sycophancy the aversion
+ *       research names as the actual harm.
+ *    3. what these findings are for — the scene needs, so every clip below is
+ *       read under the question it was gathered to answer
+ *    4. the clips
+ *    5. the lines the parser could not file, verbatim
+ *    6. the searches that produced all of it
+ *
+ *  Counts are computed here rather than trusted from the caller, because in
+ *  this state they are derivable from the payload and a derived number cannot
+ *  drift from what is on screen. `sourceCount` counts DISTINCT resolved URLs
+ *  (see clip.js's countSources) — the stored Detroit-1929 room cites one
+ *  museum page on five separate logistics findings, and summing citations
+ *  would inflate it to five sources.
+ *
+ *  `code` and `date` are passed through to every receipt stamp and are
+ *  optional: a caller that does not know the retrieval date gets a stamp
+ *  without one, never a guessed one. */
+function renderExpanded(body, data = {}, category = "") {
+  const doc = data.doc || {};
+  const findings = Array.isArray(doc.findings) ? doc.findings : [];
+  const questions = questionsForCategory(data.plan, category);
+  const stamp = { date: data.date, code: data.code };
+  body.innerHTML = `
+    ${buildFiledHead({
+      ...data,
+      factCount: findings.length,
+      sourceCount: countSources(findings),
+      questionCount: questions.length,
+    })}
+    ${renderUncertainty(doc)}
+    ${renderSceneNeeds(questions)}
+    <p class="drawer-legend">What was found</p>
+    ${renderClips(findings, stamp)}
+    ${renderFieldNotes(doc)}
+    ${buildLabelledLog(data)}
   `;
 }
 
@@ -271,10 +331,11 @@ export function createDrawer(category) {
  *  -> failed); each call fully replaces the body's content, so there is no
  *  stale state left over from a previous call.
  *
- *  "expanded" is a deliberate no-op: Task 5 owns the expanded reading view
- *  (clips, receipts, the onionskin surface) and mounts it here. This state
- *  is accepted so the signature is stable across tasks, but nothing about
- *  its content is decided by this file. */
+ *  "expanded" takes the same payload shape as the others plus `doc` (one
+ *  category's ResearchDoc out of GET /api/rooms/{id}) and `plan`
+ *  (result.research_plan, or its questions array). It reads the category off
+ *  the element rather than the payload so the per-category scene-need join
+ *  can never be pointed at the wrong drawer's questions. */
 export function setDrawerState(el, state, data = {}) {
   if (!VALID_STATES.has(state)) {
     throw new Error(`setDrawerState: unknown state "${state}"`);
@@ -295,9 +356,25 @@ export function setDrawerState(el, state, data = {}) {
       renderFailed(body, data);
       break;
     case "expanded":
+      renderExpanded(body, data, el.dataset.category);
       break;
   }
   return el;
+}
+
+/** Open one drawer into its reading view.
+ *
+ *  Takes the element rather than a category name so it composes with whatever
+ *  the mounting task already holds — createDrawerGrid hands back four of these
+ *  and web/app.js already keeps them in a Map. `doc` is one entry of the room
+ *  payload's `categories`; `plan` is `result.research_plan`. `extra` carries
+ *  the stamp fields a caller genuinely knows: { code, date, searches }.
+ *
+ *  A thin wrapper over setDrawerState on purpose — every state a drawer can
+ *  reach goes through one function, so nothing can leave the element's
+ *  data-state disagreeing with what its body actually shows. */
+export function expandDrawer(el, doc, plan, extra = {}) {
+  return setDrawerState(el, "expanded", { ...extra, doc, plan });
 }
 
 /** Convenience for callers that want all four drawers at once, in the fixed
