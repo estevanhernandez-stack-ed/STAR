@@ -58,7 +58,6 @@ let _liveRunId = null;
 // then be replaced by the false one on the reader's next click.
 let _unreadable = false;
 
-/** Register the function that paints a loaded room onto the stage. */
 /** Tell the rail which run is streaming, or that none is.
  *
  *  Called from both ends of a run's life in web/app.js — openStream sets it,

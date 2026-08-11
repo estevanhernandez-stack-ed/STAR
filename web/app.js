@@ -113,10 +113,11 @@ let elapsedTimer = null;
 let runStartedAt = null;
 
 // The run this page is currently streaming, and how far into its event history
-// it has got. auth.js's beginGoogleLink reads all three through the provider
-// registered at the foot of this file, because a link redirect leaves the page
-// and these three values are the only thing about a live run that is not
-// recoverable from the server afterwards.
+// it has got. auth.js reads all three through the provider registered at the
+// foot of this file — beginGoogleLink on the way out to Google, and
+// stashLiveRun on every run since wave 1 — because these three values are the
+// only thing about a live run that is not recoverable from the server
+// afterwards, and a page that goes away for any reason loses them.
 let liveRunId = null;
 let liveStreamKey = null;
 let lastEventId = null;
@@ -358,6 +359,23 @@ function stopElapsedTimer() {
 function resetProgress() {
   stopElapsedTimer();
   closeStream();
+  // Let go of the run, not just of the panel.
+  //
+  // closeStream() ends this page's view of a run; these two end the rest of the
+  // app's memory of it. They were in endRun() alone, and the abandon path never
+  // reaches endRun — pressing "New room" twice during a build lands here and
+  // nowhere else. That left shell.js's _liveRunId pointing at the run the
+  // reader had just walked away from, so its rail row routed to showRunning()
+  // and opened the panel this function had emptied one line earlier: "The
+  // department is working", a fresh ellipsis, four idle drawers, no stream —
+  // for a run that was genuinely still spending. The armed control's own notice
+  // sends the reader there by name.
+  //
+  // Safe at the other two call sites: buildRoom clears here and openStream sets
+  // both again a few lines later, and resumeStashedRun runs after
+  // takeStashedRun has already deleted the stash on read.
+  setLiveRun(null);
+  clearStashedRun();
   // The heading and the failure block are panel state, so they reset with the
   // panel. Without this the next build would start under "The department
   // stopped" with the previous run's reason still pinned above the drawers.
@@ -1346,9 +1364,11 @@ initScriptCheck();
 // lives in the same document.
 initAccount();
 
-// auth.js asks for this on its way out to Google. Read at call time rather
-// than pushed on every event: the values are already tracked for the stream's
-// own sake, and a getter cannot go stale between updates.
+// auth.js asks for this on its way out to Google, and — since wave 1 —
+// on every openStream, because a reload loses the stream_key the same way a
+// redirect does. Read at call time rather than pushed on every event: the
+// values are already tracked for the stream's own sake, and a getter cannot go
+// stale between updates.
 setLiveRunProvider(() =>
   liveRunId && liveStreamKey
     ? { run_id: liveRunId, stream_key: liveStreamKey, last_event_id: lastEventId }

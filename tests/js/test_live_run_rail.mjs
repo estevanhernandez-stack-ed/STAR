@@ -77,6 +77,29 @@ assert.match(
     "that has already filed"
 );
 
+// THE ABANDON PATH, and this file used to assert the opposite. It said the
+// live-run id was "set and cleared at exactly one place each", which was the
+// sentence that let the defect through: endRun is the TERMINAL funnel, and
+// walking away from a run is not terminal. Pressing "New room" twice during a
+// build reaches resetProgress and nothing else, so _liveRunId survived in
+// shell.js pointing at the abandoned run — its rail row routed to
+// showRunning() and opened the panel resetProgress had just emptied, for a run
+// that was still spending. The stash survived the same press, so a reload
+// resumed the run the reader pressed twice to leave.
+const resetProgress = app.match(/function resetProgress\(\) \{([\s\S]*?)\n\}/);
+assert.ok(resetProgress, "resetProgress should exist");
+assert.match(
+  resetProgress[1],
+  /setLiveRun\(null\)/,
+  "resetProgress is the only thing the abandon path reaches — it must let go " +
+    "of the run, not just of the panel"
+);
+assert.match(
+  resetProgress[1],
+  /clearStashedRun\(\)/,
+  "and drop the stash, or a reload resumes the run the reader just abandoned"
+);
+
 /* 3 — a running row goes to the live surface, not to loadRoom. ---------- */
 
 assert.match(

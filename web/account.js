@@ -496,7 +496,10 @@ export function initAccount() {
  *  Called on every entry from the rail rather than once, because everything on
  *  this surface can change from outside it: a link resolves on a page load, a
  *  token is used by an agent between two visits, and a sign-out mints a new
- *  session. There is no cache to go stale because there is no cache. */
+ *  session. There is no cache to go stale because there is no cache — with one
+ *  bounded exception the reader controls: while an issued plaintext is live the
+ *  re-read is skipped entirely (see the guard below), so the whole card, not
+ *  just the token, is held until they press "Put it away". */
 export async function openAccount() {
   if (!panel) return;
   // A card still holding a live plaintext is not re-read, and that is not an

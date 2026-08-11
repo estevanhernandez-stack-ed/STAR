@@ -863,7 +863,11 @@ export async function signOutNotice() {
   );
 }
 
-// --- The live run across the redirect -------------------------------------
+// --- The live run across a page that goes away ----------------------------
+//
+// Named for the redirect until the glow campaign's wave 1, which found the
+// stream_key is lost the same way by a reload, a crash and a locked phone, and
+// wired stashLiveRun to every run rather than to beginGoogleLink alone.
 //
 // app.js registers a getter rather than this file importing app.js, for the
 // same reason shell.js takes setRoomRenderer: app.js already imports this
@@ -871,8 +875,11 @@ export async function signOutNotice() {
 
 let liveRunProvider = null;
 
-/** Registers the function beginGoogleLink asks for the run in flight.
- *  It returns {run_id, stream_key, last_event_id} or null. */
+/** Registers the getter for the run in flight.
+ *  It returns {run_id, stream_key, last_event_id} or null.
+ *
+ *  Two readers now, not one: beginGoogleLink on its way to Google, and
+ *  stashLiveRun on every openStream. */
 export function setLiveRunProvider(fn) {
   liveRunProvider = typeof fn === "function" ? fn : null;
 }
