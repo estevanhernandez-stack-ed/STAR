@@ -355,7 +355,14 @@ function elapsedLabel() {
  *  has been going four minutes, which is the same defect as a drawer explaining
  *  a cause it cannot see. The search tally is a fact either way and stays. */
 function updateMeter() {
-  const parts = [`${searchCount} cited searches so far`];
+  // "searches", not "cited searches". star/server.py:470 increments
+  // run["search_count"] inside the block reading `call.args` — the tool CALL,
+  // before any response exists — so this counts searches ISSUED. Whether one
+  // came back, and whether anything it returned was cited, are facts this
+  // number cannot carry. web/drawer.js:187 already says "issued" for the same
+  // reason, in its own words: "'Issued' is what the event proves and it costs
+  // nothing."
+  const parts = [`${searchCount} searches so far`];
   if (runStartedAt !== null) parts.push(elapsedLabel());
   $("search-meter").textContent = parts.join(" · ");
   // One interval drives both clocks, so a drawer's "last search N ago" can
@@ -972,14 +979,28 @@ function paintRoom(result, status) {
  *  size (star/server.py sends `len(run["ledger"])`), so it is sources SEEN, not
  *  sources cited — worth saying plainly rather than letting "106 sources" imply
  *  106 footnotes. Each piece is dropped rather than defaulted when it is
- *  missing: "? cited web searches" was a shrug printed where a number belongs. */
+ *  missing: "? web searches" was a shrug printed where a number belongs.
+ *
+ *  The search half used to read "17 cited web searches", and the discipline
+ *  this docstring argues for the number BESIDE it is exactly what that broke.
+ *  star/server.py:470 increments run["search_count"] inside the block reading
+ *  `call.args` — the tool CALL — while the ledger is written separately from
+ *  the responses, and the check path increments before the request is even
+ *  sent. It counts searches ISSUED. "Cited" asserts both that something came
+ *  back and that a finding leaned on it, and this number knows neither; the
+ *  server ships a guard for exactly that gap (`search_count > 0 and
+ *  len(ledger) == 0`). Copy rule 3, applied to a number instead of to a word.
+ *
+ *  "Cited link" elsewhere in the app is NOT the same claim and stays: a model
+ *  really did cite that URL, which is what makes its absence from the ledger
+ *  worth reporting. */
 function statsLine(result, filed) {
   const parts = [];
   // typeof, not Number(): `Number(null)` is 0, and a room whose count never
-  // reached the client would have printed a confident "0 cited web searches"
-  // for a run that ran seventeen.
+  // reached the client would have printed a confident "0 web searches" for a
+  // run that ran seventeen.
   if (typeof result.search_count === "number") {
-    parts.push(plural(result.search_count, "cited web search"));
+    parts.push(plural(result.search_count, "web search"));
   }
   if (typeof result.source_count === "number" && result.source_count > 0) {
     parts.push(`${plural(result.source_count, "source")} returned`);
