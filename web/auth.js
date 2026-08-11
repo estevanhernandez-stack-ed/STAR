@@ -871,7 +871,23 @@ export function setLiveRunProvider(fn) {
   liveRunProvider = typeof fn === "function" ? fn : null;
 }
 
-function stashLiveRun() {
+/** Write the run in flight to sessionStorage so a page that goes away can pick
+ *  it back up.
+ *
+ *  Exported in the glow campaign's wave 1, and the reason is that this was
+ *  written for one trigger and the value it protects is lost the same way by
+ *  three others. `stream_key` is minted server-side and handed back exactly
+ *  once, at creation (star/server.py) — EventSource sends no custom headers, so
+ *  it is the only way the progress stream can identify its caller, and no
+ *  endpoint will reissue it. The OAuth redirect loses it. So does a reload, a
+ *  crash, and a phone locking. Only the first was ever wired.
+ *
+ *  What this covers and what it does not: sessionStorage is scoped to the tab
+ *  and cleared when the tab closes, so a reload and a same-tab lock are
+ *  covered, a crash usually is via session restore, and a closed or new tab is
+ *  not. Best-effort on that third case, and no copy anywhere should imply
+ *  otherwise. */
+export function stashLiveRun() {
   let run = null;
   try {
     run = liveRunProvider ? liveRunProvider() : null;
@@ -887,6 +903,18 @@ function stashLiveRun() {
     stream_key: String(run.stream_key),
     last_event_id: Number.isInteger(run.last_event_id) ? run.last_event_id : null,
   });
+}
+
+/** Forget the stashed run, because it has reached a terminal state.
+ *
+ *  takeStashedRun deletes on read, which is enough when the only writer is a
+ *  redirect that is always followed by a load. Once every run is stashed, it is
+ *  not: a run that finishes while the page stays open leaves its stash behind,
+ *  and the NEXT load would resume a run that had already filed — opening that
+ *  room instead of the intake, for a reader who has done nothing to ask for it.
+ *  Called from web/app.js's endRun, which every terminal branch passes through. */
+export function clearStashedRun() {
+  removeStash(RUN_KEY);
 }
 
 /** The run that was in flight when the page left, once.

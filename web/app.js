@@ -29,9 +29,11 @@
 
 import {
   authedFetch,
+  clearStashedRun,
   completeGoogleLink,
   getIdToken,
   setLiveRunProvider,
+  stashLiveRun,
   takeStashedRun,
 } from "/auth.js";
 import {
@@ -561,6 +563,13 @@ function openStream(runId, streamKey, { resumed = false } = {}) {
   // rather than fetching a room that has no story_profile yet.
   setLiveRun(runId);
   liveStreamKey = streamKey;
+  // Stash the run for a page that does not survive it. Here rather than only
+  // at the OAuth redirect, because the stream_key is lost the same way by a
+  // reload, a crash, and a phone locking — and it is the one value about a
+  // live run that no endpoint will reissue. Placed after both fields are set,
+  // since auth.js reads them back through the provider registered at the foot
+  // of this file.
+  stashLiveRun();
 
   // encodeURIComponent on both: runId and streamKey are server-minted hex
   // today, so neither can carry a character that needs escaping — which is
@@ -712,6 +721,11 @@ function endRun(source) {
   // button is armed would otherwise leave a warning about spending on a run
   // that has already stopped spending.
   disarmNewRoom();
+  // The stash outlives the run unless something drops it. takeStashedRun
+  // deletes on read, but only a load reads it, and a run that finishes while
+  // the page stays open never gets one — so the next load would resume a room
+  // that had already filed.
+  clearStashedRun();
 }
 
 /** Clears the room view back to its resting state before a repaint.
@@ -791,9 +805,17 @@ async function showResults(runId) {
   // plainly rather than reading `null.story_profile` and crashing the panel.
   if (!hasProfile) {
     const copy = {
+      // Reworded in the glow campaign's wave 1. The old sentence — "Reconnecting
+      // to a live run isn't available yet" — described the product's roadmap
+      // rather than the reader's next step, and stopped being true in the same
+      // wave: every run is stashed now, so a reload in the same tab picks its
+      // own run back up. This branch is what is left after that, and it is a
+      // narrower thing: a run that IS live but that THIS page is not watching —
+      // another tab, or a stash already consumed. Says that, and offers the
+      // one action available.
       running: [
         "Still in the department",
-        "This room is still being researched. Reconnecting to a live run isn't available yet — check back once it's filed.",
+        "This room is still being researched, and this page is not watching that run. Check again, or open it once it has filed.",
       ],
       // States what the payload proves — nothing was filed — and not why.
       // "the server restarted" was one cause of a document stuck at
@@ -817,6 +839,24 @@ async function showResults(runId) {
     ];
     $("result-title").textContent = copy[0];
     docketBody.innerHTML = `<p class="docket-note">${escapeHtml(copy[1])}</p>`;
+    // The one action a reader has on a run they are not watching. Without it
+    // the only way to learn a build had finished was to reload the whole page
+    // on a hunch — the surface said "check back" and gave nothing to check
+    // with.
+    //
+    // A control rather than a timer, deliberately. A poll would need a handle
+    // cleared on every stage change, and shell.js owns stage changes while this
+    // file owns the interval; a leaked interval hammering /api/rooms is a worse
+    // failure than one extra press. Recorded as a deviation from the wave
+    // brief, which proposed a 5s poll.
+    if (status === "running") {
+      const again = document.createElement("button");
+      again.type = "button";
+      again.className = "docket-btn";
+      again.textContent = "Check again";
+      again.addEventListener("click", () => showResults(runId));
+      docketBody.appendChild(again);
+    }
     return;
   }
 
@@ -1273,7 +1313,10 @@ async function resumeStashedRun() {
   // `result: null`, so there is no created_at to read and this page genuinely
   // does not know when the build began. updateMeter drops the clause.
   startElapsedTimer({ startedAt: null });
-  addEntry("done", "Back from the sign-in. Picking the run up where it was.");
+  // Neutral, because this path is no longer only the sign-in's. Every run is
+  // stashed now, so a reload, a crash, or a locked phone arrives here too, and
+  // "Back from the sign-in" would be false for three of the four ways in.
+  addEntry("done", "Picking the run up where it was.");
   openStream(stashed.run_id, stashed.stream_key, { resumed: true });
   return stashed.run_id;
 }
