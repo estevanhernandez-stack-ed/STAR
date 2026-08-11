@@ -9,10 +9,12 @@ Run from the repo root:
 
 import asyncio
 import functools
+import html
 import json
 import logging
 import os
 import secrets
+import time
 import uuid
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -25,7 +27,12 @@ load_dotenv()
 
 from fastapi import FastAPI, Header, HTTPException, Request  # noqa: E402
 from fastapi.encoders import jsonable_encoder  # noqa: E402
-from fastapi.responses import JSONResponse, Response, StreamingResponse  # noqa: E402
+from fastapi.responses import (  # noqa: E402
+    JSONResponse,
+    RedirectResponse,
+    Response,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from google.adk.runners import InMemoryRunner  # noqa: E402
 from google.genai import types  # noqa: E402
@@ -44,9 +51,10 @@ from star.guards import DailyCap, RateLimiter  # noqa: E402
 from star.ledger import SourceLedger, ledger_from_room  # noqa: E402
 from star.mcp.router import build_mcp_router  # noqa: E402
 from star.models import Category, ClaimSet, ScriptCheckResult  # noqa: E402
-from star.oauth import clients, codes  # noqa: E402
+from star.oauth import clients, codes, pkce  # noqa: E402
 from star.oauth import metadata as oauth_metadata  # noqa: E402
 from star.oauth import tokens as oauth_tokens  # noqa: E402
+from star.oauth import validate as oauth_validate  # noqa: E402
 from star.store import (  # noqa: E402
     ClientStore,
     RoomStore,
@@ -1602,6 +1610,184 @@ def _oauth_redirect(target: str, **params: str) -> str:
     merged = dict(parse_qsl(parts.query, keep_blank_values=True))
     merged.update({k: v for k, v in params.items() if v is not None})
     return urlunsplit(parts._replace(query=urlencode(merged)))
+
+
+# Pending authorizations: validated request parameters, waiting for a human.
+#
+# Separate from `_code_store` on purpose. That one holds a grant somebody has
+# already agreed to; this one holds a question nobody has answered yet, and the
+# two have different lifetimes and different consequences if they leak. A
+# pending entry buys an attacker a consent screen they could have requested
+# themselves; a code buys them a token.
+#
+# In memory, bounded, and swept, for the reason star/guards.py documents about
+# every other piece of module state in this process. Same accepted cost: a
+# restart between the redirect and the press drops the question and the client
+# starts over.
+_pending_authorizations: dict[str, dict] = {}
+_PENDING_TTL_SECONDS = 600
+
+
+def _sweep_pending(now: float) -> None:
+    stale = [k for k, v in _pending_authorizations.items() if now - v["at"] > _PENDING_TTL_SECONDS]
+    for key in stale:
+        _pending_authorizations.pop(key, None)
+
+
+@app.get("/oauth/authorize", include_in_schema=False)
+async def oauth_authorize(request: Request) -> Response:
+    """The hinge: a client's request becomes a question put to a human.
+
+    ORDER IS THE SECURITY PROPERTY HERE, and it is the one thing in this file
+    worth reading twice. The client and its redirect URI are validated FIRST,
+    and a failure at that step renders an error rather than redirecting. Every
+    later failure may redirect, because by then the destination has been proved
+    to belong to the client that registered it.
+
+    Redirecting an unvalidated `redirect_uri` is how authorization codes are
+    stolen: an attacker names a client that exists, points the redirect at
+    themselves, and the server hands the code to whoever asked. That is why the
+    two branches below are not symmetric, and why the asymmetry is deliberate
+    rather than an oversight in error handling.
+
+    No uid is bound here. The reader is identified when they answer, not when
+    they arrive, so a link someone was tricked into opening cannot pre-bind a
+    grant to whoever happens to be signed in.
+    """
+    q = request.query_params
+
+    client = await clients.lookup(q.get("client_id"), _client_store)
+    if isinstance(client, clients.Rejected):
+        return _oauth_error_page("This client is not registered with the department.")
+    if not clients.redirect_allowed(client, q.get("redirect_uri")):
+        return _oauth_error_page(
+            "That return address is not one this client registered. The "
+            "department will not send an answer there."
+        )
+
+    redirect_uri = q.get("redirect_uri")
+    state = q.get("state") or ""
+
+    def _refuse(error: str, description: str) -> Response:
+        return RedirectResponse(
+            _oauth_redirect(redirect_uri, error=error, error_description=description, state=state),
+            status_code=303,
+        )
+
+    if q.get("response_type") != "code":
+        return _refuse("unsupported_response_type", "This server issues authorization codes.")
+    if q.get("code_challenge_method") != "S256":
+        return _refuse("invalid_request", "PKCE with S256 is required.")
+    if not pkce.is_valid_challenge(q.get("code_challenge")):
+        return _refuse("invalid_request", "That code_challenge is not a valid S256 challenge.")
+    if not oauth_metadata.accepts_resource(q.get("resource")):
+        return _refuse("invalid_target", "This server issues tokens for its own resource only.")
+
+    granted = oauth_validate.requested_scope(q.get("scope"), client.scope)
+    if granted is None:
+        return _refuse("invalid_scope", "That scope is not one this client may be granted.")
+
+    now = time.time()
+    _sweep_pending(now)
+    if len(_pending_authorizations) >= config.max_authorization_codes():
+        return _refuse("temporarily_unavailable", "The department is busy. Try again.")
+
+    state_key = secrets.token_urlsafe(24)
+    _pending_authorizations[state_key] = {
+        "at": now,
+        "client_id": client.client_id,
+        "client_name": client.client_name or "",
+        "client_uri": getattr(client, "client_uri", "") or "",
+        "redirect_uri": redirect_uri,
+        "scope": granted,
+        "code_challenge": q.get("code_challenge"),
+        "state": state,
+    }
+
+    return RedirectResponse(
+        "/consent.html?"
+        + urlencode(
+            {
+                "client_name": client.client_name or client.client_id,
+                "client_uri": getattr(client, "client_uri", "") or "",
+                "redirect_host": urlsplit(redirect_uri).hostname or "",
+                "scope": granted,
+                "state_key": state_key,
+            }
+        ),
+        status_code=303,
+    )
+
+
+@app.post("/oauth/authorize/decide", include_in_schema=False)
+async def oauth_decide(
+    req: DecideRequest, authorization: str | None = Header(None)
+) -> dict:
+    """The human answers, and only now is a uid attached to anything.
+
+    `_require_uid` is what makes the answer somebody's. The `state_key` proves
+    the question is real; the ID token proves who is answering it. Neither
+    alone is enough, which is why this route asks for both.
+    """
+    uid = _require_uid(authorization)
+
+    now = time.time()
+    _sweep_pending(now)
+    pending = _pending_authorizations.pop(req.state_key, None)
+    if pending is None:
+        raise HTTPException(
+            400,
+            "That request has expired or was already answered. Start the "
+            "connection again from your client.",
+        )
+
+    if req.decision != "approve":
+        return {
+            "redirect_to": _oauth_redirect(
+                pending["redirect_uri"],
+                error="access_denied",
+                error_description="The reader declined.",
+                state=pending["state"],
+            )
+        }
+
+    code = _code_store.issue(
+        codes.Grant(
+            uid=uid,
+            client_id=pending["client_id"],
+            redirect_uri=pending["redirect_uri"],
+            scope=pending["scope"],
+            code_challenge=pending["code_challenge"],
+            resource=oauth_metadata.resource(),
+        )
+    )
+    if code is None:
+        raise HTTPException(503, "The department could not issue a code just now.")
+
+    return {
+        "redirect_to": _oauth_redirect(
+            pending["redirect_uri"], code=code, state=pending["state"]
+        )
+    }
+
+
+def _oauth_error_page(message: str) -> Response:
+    """A dead end that says why, rather than a redirect that leaks a code.
+
+    Reached only when the client or its redirect URI failed validation, which
+    is exactly when there is no address the department is willing to send an
+    answer to.
+    """
+    return Response(
+        f"<!doctype html><meta charset=utf-8>"
+        f"<title>STAR</title>"
+        f"<body style='background:#232B27;color:#D2B98C;font:16px/1.6 system-ui;"
+        f"padding:3rem;max-width:34rem'>"
+        f"<h1 style='font-size:1.2rem'>The department cannot take this request</h1>"
+        f"<p>{html.escape(message)}</p></body>",
+        media_type="text/html",
+        status_code=400,
+    )
 
 
 @app.post("/oauth/register", include_in_schema=False)

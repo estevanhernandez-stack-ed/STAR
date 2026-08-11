@@ -528,10 +528,29 @@ export function redirectTarget(body) {
   return "";
 }
 
+/* The decision is sent AS somebody, and that is not decoration.
+ *
+ * This module was built credential-free, which was the right instinct and the
+ * wrong contract, and the gap was in the brief rather than in the build: a
+ * `state_key` proves that this browser was sent here by a real /oauth/authorize
+ * request, and proves nothing at all about WHO is pressing the control. The
+ * grant being minted is a grant over one reader's rooms. Without an identity on
+ * this request the server would have to either bind the grant at redirect time,
+ * before anyone has agreed to anything, or take the browser's word for whose
+ * rooms these are.
+ *
+ * So the handle proves the request is real and the ID token proves who answered
+ * it, and the server needs both. `authedFetch` is the same helper every other
+ * /api call in this app goes through, including its one retry on a 401, which
+ * is worth having on the single request this page ever makes.
+ *
+ * It costs this file its only import, and the import is same-origin. The
+ * property that actually mattered is untouched: nothing here becomes markup. */
 async function submit(stateKey, decision, controls) {
   let body;
   try {
-    const res = await fetch(ENDPOINT, {
+    const { authedFetch } = await import("/auth.js");
+    const res = await authedFetch(ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       // The handle goes back exactly as it arrived. This page never asked
