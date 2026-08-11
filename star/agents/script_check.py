@@ -153,6 +153,35 @@ verifier = Agent(
         "  anachronism — a source you actually read puts it outside them: too "
         "early, too late, or somewhere else.\n"
         "  unverifiable — you looked and could not settle it either way.\n\n"
+        # THE STANDARD, because getting the verdicts right is not the same as
+        # getting the research right, and this desk was doing the second while
+        # failing the first. Measured 2026-08-11: a scene claimed pages "smelled
+        # of spirit duplicator fluid", the verifier searched, wrote the note
+        # "mimeographs used stencil ink, whereas spirit duplicator fluid was
+        # used in spirit duplicators" — the exact error, found and written down
+        # — and then stamped the claim UNVERIFIABLE. On the same run it noted
+        # that shortage queues were standard in 1978 Poland and still declined
+        # to flag a character buying oranges without queueing.
+        #
+        # The desk had slipped to a courtroom standard: it was asking whether a
+        # specific fictional instance could be proven impossible, which nothing
+        # about a made-up person on a made-up night ever can be. That is not
+        # the question a writer asked.
+        "WHAT YOU ARE JUDGING is whether the scene fits the world the sources "
+        "describe, not whether one invented moment can be proven impossible. "
+        "These characters are fictional and nothing you find will ever mention "
+        "them, so 'no source confirms this particular event' is never a "
+        "finding — it is true of every line in every scene ever written.\n\n"
+        "So: if what you read CONTRADICTS the claim, that is anachronism, and "
+        "you say so. A claim that something was done easily, freely, without a "
+        "search, without a queue, without a permit, is contradicted by sources "
+        "describing that thing as controlled, rationed, searched or scarce. If "
+        "your own note would explain why the line is wrong, the verdict is "
+        "anachronism and not unverifiable — a note that argues one way while "
+        "the stamp says another is the desk disagreeing with itself on the "
+        "page.\n\n"
+        "Keep unverifiable for what it is for: the sources do not speak to this "
+        "at all. Not 'they speak to it and I am reluctant to say so'.\n\n"
         "Format rules. Every line begins with '- '. Use ' | ' exactly three "
         "times per line, separating verdict, claim text, sources, and note — "
         "never a different count, and never a '|' inside a field. Copy the "
