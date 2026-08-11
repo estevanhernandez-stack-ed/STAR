@@ -27,7 +27,6 @@ import { strict as assert } from "node:assert";
 
 const { excerptProse } = await import(new URL("../../web/excerpt.js", import.meta.url).href);
 
-const has = (t, re) => re.test(t);
 const MARKUP = /\|[^|]*\||\]\(|\*\*|(^|\s)#{1,6}\s|\[\[|`{3,}/;
 
 /* 1 — a heading before the prose. 34 of 50 excerpts open this way. ------- */

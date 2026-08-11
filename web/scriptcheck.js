@@ -31,7 +31,7 @@
    Parallel Search returns <strong> highlighting and entities like
    `&quot;whiskey sixes,&quot;`, verified against the stored Detroit-1929 room.
    That is no longer what arrives. Measured across all 104 excerpts in the two
-   stored rooms: 2 carry <strong>, ZERO carry an HTML entity, and the large
+   stored rooms: 5 carry <strong>, ZERO carry an HTML entity, and the large
    majority are the page's content as MARKDOWN — headings, table rows, inline
    links, wiki cite markers. Only 4 of 50 in one room even begin with prose.
    Either the API changed its extraction or it varies by source. The decoding
