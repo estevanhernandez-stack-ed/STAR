@@ -185,6 +185,16 @@
   cursor: not-allowed;
 }
 
+/* The second door, drawn as the second door.
+   Bordered rather than filled, deliberately: `.account-link-btn` above is the
+   primary because attaching is the offer this card is built around, and a
+   second filled control beside it would make a reader choose between two
+   things that look equally intended. This one is for the reader who already
+   knows they have an account. It shipped for twenty minutes with no rule at
+   all, which is the one way a control can be worse than badly styled — it was
+   raw browser chrome on a surface whose whole argument is that it was made on
+   purpose. */
+.account-signin-btn,
 .account-signout-btn,
 .token-revoke-btn {
   background: transparent;
