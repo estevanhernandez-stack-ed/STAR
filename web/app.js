@@ -1201,7 +1201,28 @@ function mountRoomDrawer(el, doc, plan, filed) {
   };
 
   toggle.addEventListener("click", () => {
-    setOpen(el.dataset.state !== "expanded");
+    const open = el.dataset.state !== "expanded";
+    setOpen(open);
+    // Expanding a RIGHT-column drawer sends it to the next grid row, full
+    // width, below a first row that already runs past the fold. Measured on the
+    // filed Gdansk room from a room scrolled to its top, every drawer, the rest
+    // closed: the two left-column cards move 0px, and the two right-column ones
+    // move +623px and +602px. The first of those is on screen when it is
+    // clicked and 84px below the fold when the click resolves, so the click
+    // reads as dead — the card the reader pressed is simply gone.
+    //
+    // The card, not the toggle. The toggle sits below the drawer's plate, so
+    // aligning IT to the top of the scroller would cut off the head of the very
+    // thing the reader just asked to see.
+    //
+    // Here rather than inside setOpen, because scrolling is a response to a
+    // press and not a property of being open: setOpen(false) runs once at
+    // construction for all four drawers, and a future caller restoring an
+    // expanded drawer must not yank the page around.
+    //
+    // No-op for the left column, which does not move, and below 560px where the
+    // grid is one column. Costs nothing in either case.
+    if (open) el.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
   });
   setOpen(false);
 }

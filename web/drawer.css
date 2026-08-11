@@ -114,6 +114,11 @@
   min-height: 260px;
   color: var(--ink);
   padding: 2.5rem 1.75rem 2rem;
+  /* The cut tab is absolutely positioned --tab-rise ABOVE this box, so a
+     scrollIntoView that aligns the box to the top of the scroller would slice
+     the tab off the card it names. Same value and same fallback the tab's own
+     `top` uses, so the two cannot drift apart. */
+  scroll-margin-top: var(--tab-rise, 1.75rem);
 }
 
 .drawer::before {
