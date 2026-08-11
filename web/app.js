@@ -263,6 +263,17 @@ function scrollBehavior() {
     : "smooth";
 }
 
+/** Append one line to the run's log.
+ *
+ *  #timeline carries aria-live="polite", so every call here is also an
+ *  announcement. One honest limit, recorded at the point it applies rather
+ *  than in a doc nobody opens: the FIRST entry of a build is appended in the
+ *  same synchronous task that showRunning() un-hides the panel, and some
+ *  assistive tech drops an insertion into a region that was not in the
+ *  accessibility tree when the task began. Every later entry is unaffected.
+ *  Not worked around with a timeout — a deferred first line would be a
+ *  guess about AT behaviour dressed as a fix, and the run's own second
+ *  event follows within seconds. */
 function addEntry(cls, html) {
   const li = document.createElement("li");
   li.className = cls;
@@ -687,6 +698,13 @@ function openStream(runId, streamKey, { resumed = false } = {}) {
       addEntry("warn", escapeHtml(ev.message));
     } else if (ev.type === "complete") {
       endRun(source);
+      // The one terminal branch that announced nothing. `partial` and `error`
+      // both already call addEntry, so #timeline's live region speaks them;
+      // this one went straight to showResults, and a screen-reader user who
+      // had been told the department was assembling was never told it had
+      // finished. Appended before the stage switches, so the region is still
+      // the visible panel's when it speaks.
+      addEntry("done", "The room is filed.");
       showResults(runId);
       refreshRail(runId);
     } else if (ev.type === "partial") {

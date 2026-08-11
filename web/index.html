@@ -191,7 +191,20 @@
              first thing under the heading rather than the last thing under
              four full-height cards. -->
         <div id="progress-failure" class="progress-failure hidden"></div>
-        <ul id="timeline"></ul>
+        <!-- The app's only announcement of a run in progress, and until the
+             glow campaign's wave 3 there was none: a grep of all 22 files in
+             web/ for aria-live, role=status, role=alert, role=log, aria-busy
+             and aria-atomic returned exactly two live regions, both on the
+             check surface. Between pressing Build and the room appearing —
+             146 to 420+ seconds — a screen-reader user was told nothing.
+
+             `additions` only, and this element only. Each <li> is a discrete
+             event appended once and never rewritten, and the sole removal
+             (resetProgress) runs before the panel is revealed, so a polite
+             region here speaks exactly the run's own log. #search-meter and
+             the drawer bodies are deliberately NOT live: updateMeter rewrites
+             them on a 1000ms interval and they would babble over it. -->
+        <ul id="timeline" aria-live="polite" aria-relevant="additions"></ul>
         <p id="search-meter" class="meter"></p>
       </section>
 
