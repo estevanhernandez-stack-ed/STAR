@@ -1239,3 +1239,59 @@ A desktop client reaches STAR today through the second case. The OAuth authoriza
 is still the real fix and is still correctly cut, but the practical gap it leaves is narrower
 than this cycle assumed. `claude_desktop_config.json` was written to
 `%APPDATA%\Claude\` with the token placeholdered.
+
+## Where this session ended — 2026-08-11
+
+Clean tree, nothing unpushed, `star-00016-snb` serving, 606 tests green,
+`ruff check star tests scripts harness` at 0. Live at **https://star.626labs.dev**.
+
+### Shipped after `/reflect`, which is to say after the cycle formally closed
+
+An **OAuth 2.1 authorization server** (`star/oauth/`, `docs/spec-oauth-as.md`), built
+because the cut `scope.md` made was correct about the judging criteria and wrong about
+the experience — a desktop client's connector flow begins by asking where the
+authorization server is, and STAR answered 404 four ways. Discovery, PKCE `S256`, both
+registration paths, audience-bound tokens, and an SSRF guard whose own test found that
+Python's `ipaddress` does not call the RFC 6598 CGNAT range private.
+
+Then the judge critique arrived (`docs/judge-critique-2026-08-11.md`) and set the
+agenda. Its headline finding is closed and measured; the before/after table is appended
+to that file.
+
+### The four defects a judge found that the build had not
+
+1. **The check confirmed nouns and missed the world.** Nine green stamps on a scene
+   salted with three procedural errors. Two defects wearing one coat: extraction
+   harvesting nouns, and — only visible once that was fixed — a verdict standard that
+   asked whether one invented moment could be *proven impossible*. The desk had
+   researched the duplicator error correctly, written it in the note, and stamped the
+   claim unverifiable.
+2. **Bibles truncated mid-word, silently, on two of three rooms.** `max_output_tokens`
+   on a thinking model bounds thinking PLUS output. More sources in produced less bible
+   out; the room that researched hardest shipped the worst document.
+3. **The connector card showed another product's mark.** Nothing to do with serving a
+   favicon. `serverInfo` is `Implementation`, seven fields, and STAR sent two — so the
+   client fell back to guessing from the registrable domain.
+4. **The card and the consent screen were dead ends for anyone already linked.**
+   Firebase binds a Google account to exactly one uid, so "attach" is refused forever
+   on a new machine. `prd.md` specified the message in cycle #19; nothing built the
+   mechanism, and it was one field away.
+
+### What is still open, in the order to take it
+
+- **Bible completeness check.** The thinking budget stops new truncations; nothing
+  DETECTS one. Ends-mid-sentence, plus a length floor against findings volume.
+- **A salted-scene persona in the harness.** The durable version of the measurement run
+  by hand tonight, and the thing that would have caught #1 without a judge.
+- **The errored room's reason.** It charges the budget and says nothing but a guess.
+- **Repo hygiene** before the visibility flip: `__pycache__`, `.superpowers`, and a
+  decision about what the public repo contains on purpose.
+- **Room lifecycle** — retitle and delete. Three of seven rooms are "Untitled".
+- **Part 3 of the critique**, which is cycle #20 rather than a fix list: ask-the-room as
+  a one-question tool, `get_room` shape argument, a delete tool at the agent door, and
+  premise notes on the treatment.
+
+### Still builder-owned
+
+Visibility flip, README screenshot, the ≤3-minute video, Devpost. The credential sweep
+is done and clean; every gate in front of the flip is verified.
