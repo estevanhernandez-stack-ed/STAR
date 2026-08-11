@@ -34,7 +34,11 @@
         </div>
       </div>
 
-      <button id="new-room-btn" class="rail-new" type="button">New room</button>
+      <button id="new-room-btn" class="rail-new" type="button" data-armed="false">New room</button>
+      <!-- Written by web/app.js only while a run is live, and only after the
+           first press. Empty in the document so nothing is announced or read
+           until there is something to say. -->
+      <p id="new-room-notice" class="rail-new-notice"></p>
 
       <nav class="rail-list" id="rail-list" aria-label="Saved rooms list">
         <!-- Rendered by shell.js's renderRail(). -->

@@ -314,6 +314,36 @@ a {
   border-color: var(--manila);
 }
 
+/* Armed — the second press is the one that starts a new build and leaves the
+   running one spending. Only the boundary moves, and it moves to the shade
+   #timeline li.error::before already uses: color-mix(--oxide 70%, --manila) is
+   #BC5C40, which is 3.86:1 on --drawer-shadow and clears the 3:1 floor a
+   control's own visual boundary has to meet. Raw --oxide is 2.79:1 there, the
+   worst pair in the app, which is why it is not used. The label stays
+   --manila, unchanged and already measured. */
+.rail-new[data-armed="true"] {
+  border-color: color-mix(in srgb, var(--oxide) 70%, var(--manila));
+}
+
+/* The sentence the first press puts up. --pencil-text rather than any oxide:
+   this is TEXT on the rail's dark ground, so it needs the 4.5:1 floor and not
+   the 3:1 one, and --pencil-text is the token tokens.css derives for exactly
+   this — 5.72:1 on --drawer-shadow, recorded there, no new pair.
+   The warning is carried by the words and by the button's own boundary; a
+   colour that reads as alarm and measures 2.79:1 would be the trade this
+   codebase keeps refusing. */
+.rail-new-notice {
+  margin: 0.5rem 0 0;
+  color: var(--pencil-text);
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+.rail-new-notice:empty {
+  margin: 0;
+}
+
 .rail-list {
   display: flex;
   flex-direction: column;

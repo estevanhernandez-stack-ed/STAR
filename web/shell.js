@@ -39,6 +39,11 @@ let _renderRoom = null; // (runId) => Promise<void> | void
 // showPreviousStage(); null until the first stage change, which is why that
 // function falls back to intake rather than trusting it.
 let _lastStageBeforeAccount = null;
+// The run currently streaming, or null. Set by web/app.js at both ends of a
+// run's life. The rail needs it because a row for a run in flight has to go
+// somewhere different from a row for a filed room, and this file is the one
+// that owns what a rail click does.
+let _liveRunId = null;
 // Did the last attempt to READ the list fail? Remembered rather than passed,
 // because showIntake() and loadRoom() redraw the rail from this cache without
 // going near the network — and an empty `_rooms` means two different things
@@ -47,6 +52,16 @@ let _lastStageBeforeAccount = null;
 let _unreadable = false;
 
 /** Register the function that paints a loaded room onto the stage. */
+/** Tell the rail which run is streaming, or that none is.
+ *
+ *  Called from both ends of a run's life in web/app.js — openStream sets it,
+ *  endRun clears it — because a stale value here would send a reader to a live
+ *  surface for a run that has already finished, which is the one failure this
+ *  is meant to prevent in the other direction. */
+export function setLiveRun(runId) {
+  _liveRunId = runId;
+}
+
 export function setRoomRenderer(fn) {
   _renderRoom = fn;
 }
@@ -131,13 +146,36 @@ export function renderRail(rooms, activeRunId, { unreadable = _unreadable } = {}
       (isFlagged ? " flagged" : "");
     btn.dataset.runId = room.run_id;
     btn.setAttribute("aria-current", room.run_id === _activeRunId ? "true" : "false");
+    // A run in flight has no title and no era yet, and star/store.py writes the
+    // document at creation off an empty story_profile — so the ordinary
+    // fallbacks say two false things about it. "Untitled room" claims the
+    // department read the treatment and found no title; "Era unstated" claims
+    // it looked for a period and found none. Neither has happened. The row says
+    // what is actually true instead, in the vocabulary web/app.js already uses
+    // for this state ("Still in the department").
+    const title = isRunning ? "In the department" : room.title || "Untitled room";
+    const meta = isRunning
+      ? "Researching now"
+      : `${escapeHtml(room.era || "Era unstated")} &middot; ${escapeHtml(formatDate(room.created_at) || "—")}`;
     btn.innerHTML = `
       <span class="rail-room-marker" aria-hidden="true"></span>
       <span class="rail-room-text">
-        <span class="rail-room-title">${escapeHtml(room.title || "Untitled room")}</span>
-        <span class="rail-room-meta">${escapeHtml(room.era || "Era unstated")} &middot; ${escapeHtml(formatDate(room.created_at) || "—")}</span>
+        <span class="rail-room-title">${escapeHtml(title)}</span>
+        <span class="rail-room-meta">${isRunning ? escapeHtml(meta) : meta}</span>
       </span>`;
-    btn.addEventListener("click", () => loadRoom(room.run_id));
+    // A run in flight is not a filed room, and loadRoom would treat it as one:
+    // it fetches the room, finds no story_profile yet, and paints the "still in
+    // the department" placeholder over a stream that is at that moment writing
+    // into the progress panel's hidden DOM. The live surface already exists —
+    // showRunning() had two callers and neither was a control, so once a reader
+    // opened Your card mid-build there was no way back to their own run.
+    btn.addEventListener("click", () => {
+      if (_liveRunId !== null && room.run_id === _liveRunId) {
+        showRunning();
+        return;
+      }
+      loadRoom(room.run_id);
+    });
     railList.appendChild(btn);
   }
 }

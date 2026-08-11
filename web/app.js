@@ -40,6 +40,7 @@ import {
   showRunning,
   showRoom,
   refreshRail,
+  setLiveRun,
   setRoomRenderer,
 } from "/shell.js";
 import { initAccount, openAccount } from "/account.js";
@@ -127,7 +128,46 @@ let lastEventId = null;
 let activeSource = null;
 
 $("build-btn").addEventListener("click", buildRoom);
+
+/* The first press's sentence, when a run is live.
+   It says what continues and where to find it, and it does not say when the
+   run will finish: star/config.py records 146s to 420s+ for one fixed
+   treatment, so there is no number here that would not be a guess. */
+const NEW_ROOM_ARMED = "Start a new one anyway";
+const NEW_ROOM_NOTICE =
+  "The build already running keeps going, and keeps spending searches. It is " +
+  "in the rail under its own row, and it files there when it is done.";
+
+/** Put the control back to its resting state. Called on the second press and
+ *  whenever a run ends, so a build that finishes while the button is armed
+ *  does not leave a warning about a run that is already filed. */
+function disarmNewRoom() {
+  const btn = $("new-room-btn");
+  btn.setAttribute("data-armed", "false");
+  btn.replaceChildren(document.createTextNode("New room"));
+  $("new-room-notice").replaceChildren();
+}
+
+/* Armed only while a run is live, and the reason is money rather than tidiness.
+   resetProgress() calls closeStream(), and closing the SSE response ends the
+   GENERATOR only: star/server.py's stream_events is a bare `while True` with no
+   disconnect check, and the pipeline is a separate task held by a strong ref in
+   _runs[run_id]. The searches and the Gemini calls carry on, against a budget
+   the live demo shares, with nothing on screen still pointed at them.
+
+   Two presses, using the idiom web/account.js and web/scriptcheck.js already
+   ship for their irreversible controls rather than inventing a third. With no
+   run live the control behaves exactly as it did — one press, straight through
+   — because there is nothing to warn about. */
 $("new-room-btn").addEventListener("click", () => {
+  const btn = $("new-room-btn");
+  if (liveRunId !== null && btn.getAttribute("data-armed") !== "true") {
+    btn.setAttribute("data-armed", "true");
+    btn.replaceChildren(document.createTextNode(NEW_ROOM_ARMED));
+    $("new-room-notice").replaceChildren(document.createTextNode(NEW_ROOM_NOTICE));
+    return;
+  }
+  disarmNewRoom();
   showIntake();
   resetProgress();
   $("treatment").value = "";
@@ -483,6 +523,15 @@ async function buildRoom() {
   startElapsedTimer();
   addEntry("done", "Treatment received. The department is assembling.");
   openStream(runId, streamKey);
+  // The run exists server-side the moment this POST returns — star/server.py
+  // persists it with status "running" at creation — but nothing asked the rail
+  // to redraw until the run ENDED. So web/shell.js's running-marker branch was
+  // unreachable on this path, and a live build showed "Nothing filed yet" in
+  // the rail beside four drawers actively searching.
+  //
+  // Deliberately after openStream, and not awaited: the stream is what the
+  // reader is waiting on, and it must not queue behind a list fetch.
+  refreshRail(runId);
 }
 
 /** Opens one run's event stream and drives the progress panel off it.
@@ -508,6 +557,9 @@ async function buildRoom() {
 function openStream(runId, streamKey, { resumed = false } = {}) {
   closeStream();
   liveRunId = runId;
+  // The rail's own copy, so a row for this run knows to go to the live surface
+  // rather than fetching a room that has no story_profile yet.
+  setLiveRun(runId);
   liveStreamKey = streamKey;
 
   // encodeURIComponent on both: runId and streamKey are server-minted hex
@@ -652,6 +704,14 @@ function endRun(source) {
   if (activeSource === source) activeSource = null;
   liveRunId = null;
   liveStreamKey = null;
+  // Cleared here rather than in each terminal branch, for the same reason the
+  // pair above is: a stale live-run id would send a reader from the rail to a
+  // progress panel for a run that has already filed.
+  setLiveRun(null);
+  // And the armed control goes back to resting: a run that finishes while the
+  // button is armed would otherwise leave a warning about spending on a run
+  // that has already stopped spending.
+  disarmNewRoom();
 }
 
 /** Clears the room view back to its resting state before a repaint.
