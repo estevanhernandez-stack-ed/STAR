@@ -106,6 +106,19 @@ const LINKED_REACH =
   "These rooms are readable from any browser you sign in to with this " +
   "account, and by any agent holding one of the tokens below.";
 
+/* THE SECOND DOOR, and the card was a dead end without it.
+   Attaching upgrades THIS session and keeps its rooms. It is also refused,
+   permanently, for anyone who has already attached once: Firebase holds a
+   Google account against exactly one uid, so a reader on a new machine or a
+   cleared browser can only ever be told the account is already linked
+   elsewhere. Signing in is the door that opens for them, and it costs what it
+   costs -- this session's rooms stay where they are. Both are offered, and
+   which one a reader wants is theirs to know, not this card's to guess. */
+const SIGN_IN_OFFER =
+  "Already have an account? Sign in to it instead. The rooms this browser " +
+  "filed while signed out stay where they are and do not come along.";
+const SIGN_IN_ACTION = "Sign in with Google";
+
 const SIGN_OUT = "Sign out";
 const SIGN_OUT_CONFIRM = "Sign out for good";
 
@@ -244,6 +257,12 @@ function buildIdentity(state, handlers) {
       link.setAttribute("type", "button");
       link.addEventListener("click", () => handlers.onLink());
       block.appendChild(link);
+
+      block.appendChild(el("p", "account-signin-offer", SIGN_IN_OFFER));
+      const signIn = el("button", "account-signin-btn", SIGN_IN_ACTION);
+      signIn.setAttribute("type", "button");
+      signIn.addEventListener("click", () => handlers.onSignIn());
+      block.appendChild(signIn);
     } else {
       block.appendChild(el("p", "account-line", LINK_UNAVAILABLE));
     }
@@ -556,6 +575,21 @@ const HANDLERS = {
     // means the navigation is under way and anything drawn now would be drawn
     // on a page that is already going.
     const result = await beginGoogleLink({ returnTo: returnTo() });
+    if (result && result.status === "failed") {
+      redraw({ linkMessage: result.message });
+    }
+  },
+
+  /** Become an account that already exists, rather than upgrading this one.
+   *
+   *  The mode is passed explicitly and is never inferred from a failed link.
+   *  `prd.md` is direct about it: the already-linked refusal is surfaced as
+   *  itself and the department never silently switches accounts. So a reader
+   *  who wants the other door presses the other door, having read what it
+   *  costs — the rooms this session filed stay behind, which is the sentence
+   *  printed directly above this control. */
+  async onSignIn() {
+    const result = await beginGoogleLink({ returnTo: returnTo(), mode: "signin" });
     if (result && result.status === "failed") {
       redraw({ linkMessage: result.message });
     }
