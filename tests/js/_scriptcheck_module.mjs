@@ -2,7 +2,7 @@
 // itself — the pytest wrapper globs `test_*.mjs`, and this file is deliberately
 // outside that, the same way _auth_module.mjs is.
 //
-// web/scriptcheck.js has exactly two imports and both are absolute browser-root
+// web/scriptcheck.js has exactly three imports and all are absolute browser-root
 // paths that only resolve inside the app's own server:
 //
 //   /anchor.js   the matcher. Rewritten to a file:// URL of the REAL
@@ -14,6 +14,10 @@
 //   /auth.js     the authed fetch. Rewritten to a call through a global the
 //                test owns, so the network is deterministic and nothing here
 //                touches a real endpoint.
+//   /excerpt.js  the ledger-excerpt reducer. Rewritten to a file:// URL of the
+//                REAL web/excerpt.js, for the same reason /anchor.js is: it
+//                decides what a citation quotes, and a stand-in would prove
+//                nothing about the text that actually reaches the card.
 //
 // Everything else in web/scriptcheck.js runs byte-identical to what ships.
 //
@@ -39,17 +43,19 @@ import { pathToFileURL } from "node:url";
 const REPO_ROOT = new URL("../../", import.meta.url);
 export const SOURCE_PATH = new URL("web/scriptcheck.js", REPO_ROOT);
 const ANCHOR_PATH = new URL("web/anchor.js", REPO_ROOT);
+const EXCERPT_PATH = new URL("web/excerpt.js", REPO_ROOT);
 
 const IMPORT_ANCHOR = 'import { anchor } from "/anchor.js";';
 const IMPORT_AUTH = 'import { authedFetch } from "/auth.js";';
+const IMPORT_EXCERPT = 'import { excerptProse } from "/excerpt.js";';
 
-/** A fresh ES module instance of web/scriptcheck.js with its two browser-root
- *  imports rewritten. Fresh per call, so a scenario cannot inherit another
+/** A fresh ES module instance of web/scriptcheck.js with its three
+ *  browser-root imports rewritten. Fresh per call, so a scenario cannot inherit another
  *  scenario's module state. */
 export function loadPatchedModule() {
   const original = readFileSync(SOURCE_PATH, "utf8");
 
-  for (const line of [IMPORT_ANCHOR, IMPORT_AUTH]) {
+  for (const line of [IMPORT_ANCHOR, IMPORT_AUTH, IMPORT_EXCERPT]) {
     const occurrences = original.split(line).length - 1;
     assert.equal(
       occurrences,
@@ -62,6 +68,10 @@ export function loadPatchedModule() {
 
   const patched = original
     .replace(IMPORT_ANCHOR, `import { anchor } from ${JSON.stringify(ANCHOR_PATH.href)};`)
+    .replace(
+      IMPORT_EXCERPT,
+      `import { excerptProse } from ${JSON.stringify(EXCERPT_PATH.href)};`
+    )
     .replace(
       IMPORT_AUTH,
       "const authedFetch = (...args) => globalThis.__starAuthedFetch(...args);"

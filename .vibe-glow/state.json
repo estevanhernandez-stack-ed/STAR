@@ -71,6 +71,23 @@
         "F-023",
         "F-024"
       ]
+    },
+    {
+      "id": 4,
+      "name": "the-evidence-itself",
+      "status": "clean",
+      "findings": [
+        "F-025"
+      ],
+      "rationale": "One finding, because it is the app's primary evidence surface and no lens filed it. Measured on the filed Gdansk room: 17 of 17 citation-rail excerpts and 10 of 12 drawer clips render raw scraped markdown as literal characters, uncapped, at a median of 1462 characters. The citation block is 82% of a card whose answer is 1.2% of it. F-002 was scoped alongside this and deliberately held back: its real fix is a star/verdicts.py contract change that would push unannotated claims into unverifiable, and that needs its own measurement rather than a decision made while building something else.",
+      "branch": "glow/wave-4-the-evidence-itself",
+      "deferred": {
+        "F-002": "Held for wave 5. Its fix direction demotes VERDICT_READING to a slug, which would make the four of nine cards that carry no note worse rather than better. Blocked on whether confirmed and anachronism should require a note the way unverifiable already does."
+      },
+      "closedClean": [
+        "F-025"
+      ],
+      "closeOut": "ran 2026-08-11 pre-merge. F-025 closed in one commit, because the module, both wirings and both comment corrections are one behaviour change with one test. The format check the brief demanded first paid for itself: both renderers described an HTML payload with entities, and across all 104 stored excerpts 5 carry <strong>, none carry an entity, and the large majority are markdown. It also corrected the brief itself, which said to drop structural lines and join what was left — joining manufactures a passage the page never contained, so a structural line now ends a run instead. Close-out found two defects the wave introduced: scriptcheck.js's corrected comment cited 2 <strong> excerpts against the 104-excerpt sentence when 2 was the single-room figure and 5 is the right one, and the new test carried a dead binding. Results measured on both surfaces: 0 of 104 rail excerpts and 0 of 12 drawer clips carry markup, median 1462 to 244 characters, the Walkman card 1730px to 764px, and 0 of 9 cards need scrolling where 9 of 9 did."
     }
   ]
 }
