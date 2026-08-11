@@ -1022,13 +1022,25 @@ def carried(result: dict) -> dict:
 # -- the surface itself ------------------------------------------------------
 
 
-def test_the_four_tools_are_the_whole_surface_and_there_is_no_fifth():
-    """`get_room` IS `build_room`'s poll. A fifth tool for run status would be
-    a second name for one answer, and an agent would have to learn which of
-    two calls tells the truth about a room."""
+def test_no_tool_is_a_second_name_for_another_tools_answer():
+    """The rule this file has always enforced, stated as the rule rather than
+    as a count.
+
+    `get_room` IS `build_room`'s poll. A separate run-status tool would be a
+    second name for one answer, and an agent would have to learn which of two
+    calls tells the truth about a room. That is still refused.
+
+    `ask_room` joined in 2026-08 and is not that. The three readers are
+    distinguished by what they SELECT, not by what they know: `list_rooms`
+    selects across rooms, `get_room` selects a whole room or a named part of
+    one, and `ask_room` selects the findings that overlap a question. No two of
+    them answer the same question with different words, which is the property
+    the count was standing in for.
+    """
     assert [tool["name"] for tool in tools.TOOLS] == [
         "list_rooms",
         "get_room",
+        "ask_room",
         "build_room",
         "check_scene",
     ]
@@ -1105,11 +1117,14 @@ def test_the_instructions_explain_the_department_rather_than_padding_the_handsha
     assert "several minutes" in instructions
     assert "live web search actually returned" in instructions
     assert "stored with its room" in instructions
-    assert "four tools and no fifth" in instructions
+    assert "five tools" in instructions
+    # The cheapest way in is named in the handshake, because an agent that
+    # only reads INSTRUCTIONS should not have to discover it from tools/list.
+    assert "ask_room" in instructions
 
 
 @pytest.mark.asyncio
-async def test_tools_list_puts_the_four_on_the_wire_with_their_descriptions():
+async def test_tools_list_puts_them_all_on_the_wire_with_their_descriptions():
     store, _ = a_token_store()
     token = await issue(store)
 
@@ -1120,6 +1135,7 @@ async def test_tools_list_puts_the_four_on_the_wire_with_their_descriptions():
     assert [tool["name"] for tool in listed] == [
         "list_rooms",
         "get_room",
+        "ask_room",
         "build_room",
         "check_scene",
     ]
@@ -1926,3 +1942,187 @@ async def test_a_running_room_is_unaffected_by_shape():
         await invoke("get_room", {"run_id": "abc", "shape": "bible"}, read_room=_running)
     )
     assert body == {"run_id": "abc", "status": "running", "shape": "bible", "room": None}
+
+
+# -- ask_room ----------------------------------------------------------------
+#
+# The adoption tool: an agent that knows nothing about a room's structure can
+# ask it a question. Its whole discipline is that it RETRIEVES and never
+# SYNTHESISES — it returns the department's own findings, ranked by overlap
+# with the question, and writes no answer of its own. That keeps it inside the
+# door's cost model (reads are free, and a model call would not be) and inside
+# the app's epistemology: nothing on this surface asserts what was not checked.
+
+
+@pytest.mark.asyncio
+async def test_ask_room_returns_the_findings_that_overlap_the_question():
+    result = await invoke(
+        "ask_room",
+        {"run_id": "abc", "question": "what did the shipyard gate look like"},
+        read_room=_read_full,
+    )
+    body = carried(result)
+
+    assert body["matches"], "the setting finding shares 'gate' and 'shipyard'"
+    match = body["matches"][0]
+    assert match["fact"] == "Gate No. 2 is the shipyard's main gate."
+    assert match["category"] == "setting"
+    assert match["citations"][0]["url"] == "https://example.org/gate"
+    assert "excerpt" not in match["citations"][0], "quotes are 72% of a room"
+    assert body["searched"] == 1, "one finding was in scope"
+
+
+@pytest.mark.asyncio
+async def test_ask_room_says_plainly_when_a_room_does_not_answer():
+    """The honesty case, and the reason this tool does not call a model.
+
+    A room researched for one thing does not contain another, and the useful
+    answer is to say so and point at `build_room` — not to stretch the closest
+    finding into a response.
+    """
+    result = await invoke(
+        "ask_room",
+        {"run_id": "abc", "question": "what were the tram timetables in Lisbon"},
+        read_room=_read_full,
+    )
+    body = carried(result)
+    text = said(result)
+
+    assert body["matches"] == []
+    assert body["matched"] == 0
+    assert "does not answer it" in text
+    assert "not a failure of the search" in text, (
+        "an empty result is a fact about the research, and saying so is the "
+        "difference between a useful answer and a shrug"
+    )
+    assert "`build_room`" in text, "and it says how to get research that would"
+
+
+@pytest.mark.asyncio
+async def test_ask_room_never_writes_an_answer_of_its_own():
+    """Every fact returned is verbatim from the room.
+
+    This is the property that keeps the tool inside the app's epistemology. If
+    it ever paraphrases, the surface starts asserting things no ledger backs.
+    """
+    room = _full_room()
+    result = await invoke(
+        "ask_room",
+        {"run_id": "abc", "question": "shipyard gate"},
+        read_room=_read_full,
+    )
+    filed = {
+        f["fact"] for doc in room["categories"].values() for f in doc["findings"]
+    }
+    for match in carried(result)["matches"]:
+        assert match["fact"] in filed, "a returned fact must be one the room filed"
+    assert "not a model reading the room" in tools._TOOLS_BY_NAME["ask_room"]["description"]
+
+
+@pytest.mark.asyncio
+async def test_ask_room_ranks_by_overlap_and_says_when_it_is_showing_a_slice():
+    """Best first, and honest about the cut when more matched than fit."""
+
+    async def _many(uid, run_id):
+        # Twelve, written out, NOT _ASK_LIMIT + 4. Deriving the fixture from
+        # the constant makes the assertions below follow the constant, and a
+        # mutation that raised the cap to 400 passed this test unchanged.
+        findings = [
+            {"fact": f"The gate had {n} guards posted overnight.", "citations": [], "unverified_urls": []}
+            for n in range(12)
+        ]
+        # One finding overlaps far more of the question than the rest.
+        findings[3]["fact"] = "The shipyard gate carried strike decorations overnight."
+        return {"status": "complete", "result": {"categories": {"setting": {"findings": findings}}}}
+
+    result = await invoke(
+        "ask_room",
+        {"run_id": "abc", "question": "shipyard gate strike decorations"},
+        read_room=_many,
+    )
+    body = carried(result)
+    assert body["matches"][0]["fact"].startswith("The shipyard gate carried strike")
+    assert len(body["matches"]) == 8, "capped at eight, stated as a number"
+    assert body["matched"] == 12, "and the true total is reported, not the cap"
+    assert len(body["matches"]) < body["matched"], "so an agent knows it has a slice"
+    assert "closest" in said(result)
+
+
+@pytest.mark.asyncio
+async def test_ask_room_can_be_narrowed_to_one_drawer():
+    result = await invoke(
+        "ask_room",
+        {"run_id": "abc", "question": "gate", "category": "logistics"},
+        read_room=_read_full,
+    )
+    body = carried(result)
+    assert body["matches"] == [], "the gate finding is in setting, not logistics"
+    assert "`logistics` drawer" in said(result)
+
+
+@pytest.mark.asyncio
+async def test_ask_room_on_a_running_room_says_to_wait_rather_than_answering():
+    async def _running(uid, run_id):
+        return {"status": "running", "result": None}
+
+    result = await invoke(
+        "ask_room", {"run_id": "abc", "question": "anything"}, read_room=_running
+    )
+    assert result["isError"] is False
+    assert "still being built" in said(result)
+    body = carried(result)
+    assert body["matches"] == []
+    assert body["question"] == "anything", (
+        "the question comes back even when there is nothing to match it "
+        "against — an agent correlating replies should not have to remember "
+        "which call this was"
+    )
+
+
+@pytest.mark.asyncio
+async def test_ask_room_needs_a_question_and_says_so():
+    result = await invoke("ask_room", {"run_id": "abc"}, read_room=_read_full)
+    assert result["isError"] is True
+    text = said(result)
+    assert "`question`" in text
+    assert "did not send it" in text
+
+
+@pytest.mark.asyncio
+async def test_ask_room_costs_nothing_and_its_description_says_which_calls_do():
+    """The door's second rule: every description names what a call costs."""
+    description = tools._TOOLS_BY_NAME["ask_room"]["description"]
+    assert "Costs nothing" in description
+    assert "spends no searches" in description
+
+
+@pytest.mark.asyncio
+async def test_ask_room_does_not_rank_on_url_text():
+    """Urls are matched-on noise: every wikipedia source shares tokens with
+    every other, so scoring them would float whichever finding happens to cite
+    the most encyclopaedia pages above the one that answers the question."""
+
+    async def _rooms(uid, run_id):
+        return {"status": "complete", "result": {"categories": {"setting": {"findings": [
+            {
+                "fact": "Nothing to do with the subject at hand.",
+                "citations": [{"url": "https://en.wikipedia.org/wiki/Falowiec_mimeograph_duplicator",
+                               "title": "Unrelated page", "excerpt": ""}],
+                "unverified_urls": [],
+            },
+            {
+                "fact": "The mimeograph duplicator was hand-cranked.",
+                "citations": [{"url": "https://example.org/x", "title": "Printing", "excerpt": ""}],
+                "unverified_urls": [],
+            },
+        ]}}}}
+
+    body = carried(await invoke(
+        "ask_room",
+        {"run_id": "abc", "question": "mimeograph duplicator"},
+        read_room=_rooms,
+    ))
+    assert body["matches"][0]["fact"].startswith("The mimeograph duplicator"), (
+        "the finding whose FACT answers the question outranks the one whose "
+        "url merely contains the words"
+    )

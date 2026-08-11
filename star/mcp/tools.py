@@ -37,6 +37,7 @@ from typing import Any
 from fastapi import HTTPException
 
 from star import config
+from star.findings import _tokenize
 from star.models import Category
 
 # How often an agent should poll `get_room`. Named in the tool descriptions,
@@ -86,8 +87,13 @@ INSTRUCTIONS = (
     "across four categories (setting, objects and props, logistics, forces "
     "and conflicts), and files what comes back as findings, each one carrying "
     "the sources behind it, plus a research bible.\n\n"
-    "There are four tools and no fifth. `list_rooms` and `get_room` read; "
+    "There are five tools. `list_rooms`, `get_room` and `ask_room` read; "
     "`build_room` and `check_scene` spend.\n\n"
+    "`ask_room` is the cheapest way in: give it a question and it returns the "
+    "findings that bear on it, with their sources, out of a room that already "
+    "exists. It searches what was filed and never writes an answer of its "
+    "own, so what comes back is the department's words rather than a "
+    "summary of them.\n\n"
     "Building a room takes several minutes, so `build_room` hands back a "
     "`run_id` straight away instead of holding the connection open. Poll "
     f"`get_room` with that id about every {POLL_SECONDS} seconds until the "
@@ -311,6 +317,54 @@ TOOLS: tuple[dict, ...] = (
                 },
             },
             "required": ["run_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "ask_room",
+        "description": (
+            "Ask a filed room a question and get back the findings that bear "
+            "on it, each with the sources behind it.\n\n"
+            f"Needs `run_id`, {_ROOM_ID}, and `question` — a plain question "
+            "about the world of the story, in the writer's own words.\n\n"
+            "**This is a search over what the department already filed. It is "
+            "not new research, and it is not a model reading the room for "
+            "you.** It matches your question against the text of each finding "
+            "and returns the closest ones, ranked, unchanged, with their urls "
+            "and titles. It does not summarise them, does not answer in its "
+            "own words, and never says anything the room does not already "
+            "say. If nothing in the room bears on the question it says so "
+            "plainly rather than reaching: a room that was never researched "
+            "for something does not contain it, and `build_room` is how you "
+            "get research that does.\n\n"
+            "Quoted excerpts are left out, the same as `get_room`'s "
+            "`findings` shape, because they are about 72% of a room by size "
+            "and every source is fetchable at the url returned beside it.\n\n"
+            "Costs nothing, spends no searches, and is never rate-limited — "
+            "it reads a room that already exists. `category` narrows the "
+            "search to one drawer."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "run_id": {"type": "string", "description": _ROOM_ID},
+                "question": {
+                    "type": "string",
+                    "description": (
+                        "a plain question about the story's world, in the "
+                        "writer's own words"
+                    ),
+                },
+                "category": {
+                    "type": "string",
+                    "enum": [c.value for c in Category],
+                    "description": (
+                        "one drawer to search: `setting`, `objects_props`, "
+                        "`logistics` or `forces_conflicts`. Defaults to all four"
+                    ),
+                },
+            },
+            "required": ["run_id", "question"],
             "additionalProperties": False,
         },
     },
@@ -798,6 +852,129 @@ def _shape_note(shape: str, category: str | None) -> str:
     return f"This is the whole room, filtered to the `{category}` drawer."
 
 
+# How many findings one question gets back. Not an argument: every property in
+# these schemas is a string and the suite holds them to it, so a numeric `limit`
+# would be the one exception an agent has to discover. Eight is enough to answer
+# a question and small enough that the reply stays cheap; the report says how
+# many matched in total, so an agent knows when it is seeing a slice.
+_ASK_LIMIT = 8
+
+
+def _rank_findings(room: dict, question: str, category: str | None) -> tuple[list[dict], int]:
+    """The findings whose text overlaps the question, best first.
+
+    Token overlap, using star/findings.py's own `_tokenize` rather than a
+    second one — the same scoring `_best_excerpt` already uses to pick which
+    excerpt belongs to a fact, and imported for the reason star/verdicts.py
+    imports four other names from that module instead of copying them.
+
+    Scored against the fact AND its source titles, because a question about
+    "the shipyard gate" should reach a finding whose fact says "Brama nr 2" if
+    the source it rests on is titled "Gate No. 2 of the Gdansk Shipyard". The
+    citation urls are deliberately NOT scored: a url matches on domain noise
+    and would rank every wikipedia source above a real answer.
+    """
+    wanted = _tokenize(question)
+    scored: list[tuple[int, dict]] = []
+    for name, doc in (room.get("categories") or {}).items():
+        if category and name != category:
+            continue
+        for finding in (doc or {}).get("findings") or []:
+            finding = finding or {}
+            text = " ".join(
+                [str(finding.get("fact") or "")]
+                + [str((c or {}).get("title") or "") for c in finding.get("citations") or []]
+            )
+            score = len(wanted & _tokenize(text))
+            if not score:
+                continue
+            scored.append((score, {
+                "category": name,
+                "fact": finding.get("fact") or "",
+                "matched_terms": score,
+                # url and title only, for the reason get_room's `findings`
+                # shape drops excerpts: they are 72% of a room and every one
+                # of them is fetchable at the url beside it.
+                "citations": [
+                    {"url": (c or {}).get("url") or "", "title": (c or {}).get("title") or ""}
+                    for c in finding.get("citations") or []
+                ],
+                "unverified_urls": finding.get("unverified_urls") or [],
+            }))
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+    return [item for _, item in scored[:_ASK_LIMIT]], len(scored)
+
+
+def _searched_count(room: dict, category: str | None) -> int:
+    return sum(
+        len((doc or {}).get("findings") or [])
+        for name, doc in (room.get("categories") or {}).items()
+        if not category or name == category
+    )
+
+
+async def _ask_room(arguments: dict, calls: Calls, identity) -> dict:
+    values = _arguments(_TOOLS_BY_NAME["ask_room"], arguments)
+    run_id = values["run_id"]
+    question = values["question"]
+    category = values.get("category")
+
+    room = await calls.read_room(identity.uid, run_id)
+    status = room.get("status") or "unknown"
+    result = room.get("result")
+
+    # No early return for `running`. Mutation testing found this branch was
+    # dead weight: `_room_report` already answers STILL_BUILDING for that
+    # status, so removing the branch changed no text — and the branch was
+    # quietly WORSE, because it dropped `question` from the payload that the
+    # nothing-filed path below carries. One path, one shape.
+    if not isinstance(result, dict) or not _filed_anything(result):
+        return _payload(
+            _room_report(status, result),
+            {"run_id": run_id, "status": status, "question": question, "matches": []},
+        )
+
+    matches, total = _rank_findings(result, question, category)
+    searched = _searched_count(result, category)
+    drawer = f" in the `{category}` drawer" if category else ""
+
+    if not matches:
+        report = (
+            f"Nothing{drawer} in this room bears on that question. The "
+            f"department researched {searched} findings here and none of them "
+            "share wording with what you asked, so this room does not answer "
+            "it — that is a fact about the research, not a failure of the "
+            "search. Read the room with `get_room` if you want to judge that "
+            "yourself, or `build_room` a new room from a treatment that asks "
+            "for this."
+        )
+    else:
+        more = (
+            f" {total} findings matched in total; the closest {len(matches)} "
+            "are below."
+            if total > len(matches)
+            else ""
+        )
+        report = (
+            f"{len(matches)} of {searched} findings{drawer} share wording with "
+            f"that question, closest first.{more} These are the department's "
+            "own findings, returned unchanged and with the sources behind "
+            "them. Nothing here was written to answer you: this is a text "
+            "match over what was already filed, so read the facts and judge "
+            "whether they bear on what you asked. Quoted excerpts are left "
+            "out; each source is fetchable at its url."
+        )
+
+    return _payload(report, {
+        "run_id": run_id,
+        "status": status,
+        "question": question,
+        "searched": searched,
+        "matched": total,
+        "matches": matches,
+    })
+
+
 async def _build_room(arguments: dict, calls: Calls, identity) -> dict:
     values = _arguments(_TOOLS_BY_NAME["build_room"], arguments)
     treatment = values["treatment"]
@@ -976,6 +1153,7 @@ _RUNNERS: dict[str, Callable[[dict, "Calls", Any], Any]] = {
     "get_room": _get_room,
     "build_room": _build_room,
     "check_scene": _check_scene,
+    "ask_room": _ask_room,
 }
 
 
