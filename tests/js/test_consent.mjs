@@ -654,6 +654,66 @@ test("the reader is told nothing has been granted before they answer", () => {
 
 /* ------------------------------------------------------------------ */
 
+/* --- an unattached session cannot approve --------------------------- */
+/** `renderConsent` reads `linked` off the params object, and `readParams` does
+ *  not produce it: the page discovers it from the reader's own ID token after
+ *  the first paint. So these build the params directly rather than through a
+ *  query string, which is the shape `start()` actually hands the renderer. */
+function session(account, linked, overrides = {}) {
+  return { ...readParams(query(request(overrides))), account, linked };
+}
+test("an unattached session cannot approve, and is told why", () => {
+  const root = renderConsent(session("this browser's anonymous session", false), noHandlers());
+  const buttons = withClass(root, "decide-btn").filter(
+    (b) => b.getAttribute("data-decision")
+  );
+  const approve = buttons.find((b) => b.getAttribute("data-decision") === "approve");
+  const deny = buttons.find((b) => b.getAttribute("data-decision") === "deny");
+  assert.equal(approve.disabled, true, "approve is blocked");
+  assert.notEqual(deny.disabled, true, "deny is never blocked");
+  // Disabled AND explained. A control that is greyed out and silent tells a
+  // reader they are stuck without telling them what is missing.
+  const why = text(root);
+  assert.match(why, /not attached to an account/i);
+  assert.match(why, /nobody can recover/i, "says what approving anyway would cost");
+  assert.equal(
+    approve.getAttribute("aria-describedby"),
+    "consent-why-blocked",
+    "the reason is wired to the control for a screen reader too"
+  );
+});
+test("a linked session may approve", () => {
+  const root = renderConsent(session("writer@example.com", true), noHandlers());
+  const approve = withClass(root, "decide-btn").find(
+    (b) => b.getAttribute("data-decision") === "approve"
+  );
+  assert.notEqual(approve.disabled, true);
+  assert.doesNotMatch(text(root), /not attached to an account/i);
+});
+test("the way out is offered beside the refusal, not instead of it", () => {
+  let attached = 0;
+  const root = renderConsent(session("this browser's anonymous session", false), {
+    ...noHandlers(),
+    onAttach: () => {
+      attached += 1;
+    },
+  });
+  const attach = withClass(root, "consent-attach")[0];
+  assert.ok(attach, "an unattached reader is given something to press");
+  assert.equal(attach.nodeName, "BUTTON");
+  assert.match(text(attach), /attach a google account/i);
+  attach.dispatch("click");
+  assert.equal(attached, 1, "pressing it starts the link");
+  // And the refusal is still on screen. Replacing the reason with the remedy
+  // would leave a reader who declines the sign-in with no idea what happened.
+  assert.match(text(root), /not attached to an account/i);
+});
+test("an unattached reader with no attach handler is refused, not stranded silently", () => {
+  const root = renderConsent(session("this browser's anonymous session", false), noHandlers());
+  assert.equal(withClass(root, "consent-attach").length, 0, "no control that cannot work");
+  assert.match(text(root), /not attached to an account/i, "the reason survives anyway");
+});
+
 let failed = 0;
 for (const [name, fn] of tests) {
   try {

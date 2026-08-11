@@ -216,6 +216,19 @@ const NO_STATE_KEY =
 
 const WORKING = "Sending your answer to the department.";
 
+/* Said where the blocked control is, not at the top of the page, because a
+   reason belongs beside the thing it explains. Names what is missing, what it
+   would cost to approve anyway, and what to do instead. */
+const UNATTACHED =
+  "This browser is not attached to an account, so there is nothing here worth " +
+  "granting. Rooms filed by an unattached session live with this browser " +
+  "alone, and a client given access to one would hold a lasting credential to " +
+  "an account nobody can recover. Attach a Google account and the request " +
+  "comes back with your own rooms behind it.";
+
+const ATTACH = "Attach a Google account, then come back";
+const ATTACHING = "Sending you to Google. This request is held until you return.";
+
 const UNREACHABLE =
   "The department could not be reached, so your answer was not recorded and " +
   "nothing has been granted. Try again.";
@@ -450,12 +463,49 @@ function buildDecide(params, handlers) {
     const button = el("button", "decide-btn", label);
     button.setAttribute("type", "button");
     button.setAttribute("data-decision", decision);
+    // AN UNATTACHED SESSION CANNOT APPROVE, and the reason is not caution.
+    //
+    // A grant binds to whatever account answers. An anonymous session is one
+    // browser's localStorage entry, so approving from it hands a client a
+    // durable credential to an account that holds nothing and that nobody can
+    // recover — the same argument that stops `POST /api/tokens` issuing to an
+    // unlinked uid, arriving at the other end of the same flow.
+    //
+    // Deny stays live. A reader who did not want this should always be able to
+    // say so, and refusing them the answer that grants nothing would be the
+    // one asymmetry this screen must never have.
+    if (decision === "approve" && params.account && !params.linked) {
+      button.disabled = true;
+      button.setAttribute("aria-describedby", "consent-why-blocked");
+    }
     button.addEventListener("click", () => press(decision));
     buttons.push(button);
     row.appendChild(button);
   }
 
   block.appendChild(row);
+
+  // The reason, and a way out of it. A control that is disabled and silent
+  // tells a reader they are stuck; this one says what is missing and puts the
+  // fix in reach, which is the same rule the card follows for its own issue
+  // control.
+  if (params.account && !params.linked) {
+    const why = el("p", "consent-refusal", UNATTACHED);
+    why.setAttribute("id", "consent-why-blocked");
+    block.appendChild(why);
+
+    if (handlers.onAttach) {
+      const attach = el("button", "decide-btn consent-attach", ATTACH);
+      attach.setAttribute("type", "button");
+      attach.addEventListener("click", () => {
+        attach.disabled = true;
+        status.replaceChildren(document.createTextNode(ATTACHING));
+        handlers.onAttach();
+      });
+      block.appendChild(attach);
+    }
+  }
+
   block.appendChild(el("p", "consent-note", DECIDE_NOTE));
   block.appendChild(status);
   block.appendChild(refusal);
@@ -593,21 +643,24 @@ async function signedInAs() {
   try {
     const { getIdToken } = await import("/auth.js");
     const token = await getIdToken();
-    if (!token) return "";
+    if (!token) return { account: "", linked: false };
     const claims = JSON.parse(
       atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))
     );
     const identities = (claims.firebase || {}).identities || {};
-    // The email of a linked account if there is one. A session with no
-    // federated identity gets named as what it is rather than left blank: a
-    // reader approving from a browser the department has never seen before is
-    // about to hand over an account with nothing in it, and that is worth
-    // saying out loud on the screen where they press the control.
+    // Linked means a federated identity, read the same way and in the same
+    // order `web/auth.js`'s linkedProvider and `star/auth.py`'s linked_provider
+    // both read it: identities first, provider second. A third place that
+    // disagreed with those two about what "attached" means would refuse a real
+    // account on one screen and admit it on another.
     const federated = Object.keys(identities).some((k) => k.includes("."));
-    if (claims.email) return claims.email;
-    return federated ? "" : "this browser's anonymous session";
+    const linked = federated || (claims.firebase || {}).sign_in_provider === "google.com";
+    return {
+      linked,
+      account: claims.email || (linked ? "a linked account" : "this browser's anonymous session"),
+    };
   } catch {
-    return "";
+    return { account: "", linked: false };
   }
 }
 
@@ -619,6 +672,21 @@ async function start() {
     mount.replaceChildren(
       renderConsent(params, {
         onDecide: (decision, controls) => submit(params.stateKey, decision, controls),
+        /** Sign in without losing the request that sent them here.
+         *
+         *  `returnTo` is this exact URL, `state_key` and all, so the reader
+         *  comes back to the same pending authorization rather than to a page
+         *  that has forgotten why they were sent. It survives the round trip
+         *  because auth.js stashes it in sessionStorage and app.js navigates to
+         *  it when the link completes.
+         *
+         *  The pending authorization is held for ten minutes, which is more
+         *  than a Google round trip costs and is the reason this offer can be
+         *  made at all. */
+        onAttach: async () => {
+          const { beginGoogleLink } = await import("/auth.js");
+          await beginGoogleLink({ returnTo: location.pathname + location.search });
+        },
       })
     );
 
@@ -629,7 +697,9 @@ async function start() {
   // client sat waiting for a redirect.
   draw();
   if (!params.account) {
-    params.account = await signedInAs();
+    const who = await signedInAs();
+    params.account = who.account;
+    params.linked = who.linked;
     if (params.account) draw();
   }
 }

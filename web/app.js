@@ -1185,7 +1185,28 @@ setLiveRunProvider(() =>
   // the first screen. The outcome is cached inside auth.js and web/account.js
   // reads it when the reader opens the card — which is the only place on this
   // app where that sentence belongs.
-  await completeGoogleLink();
+  const linked = await completeGoogleLink();
+
+  // A link that began somewhere else goes back there.
+  //
+  // `beginGoogleLink` has always stashed a `returnTo` and `completeGoogleLink`
+  // has always handed it back, and until now nothing navigated to it — which
+  // worked only because the one caller was the card, whose `returnTo` is this
+  // page. The OAuth consent screen is the second caller and it is not: a reader
+  // sent to sign in from `/consent.html?...` would land here, correctly linked,
+  // with the request that sent them abandoned and a client still waiting.
+  //
+  // Safe because `auth.js` filters the value to a same-origin absolute path
+  // before it is ever stashed, so this cannot become an open redirect no matter
+  // what a caller passes. The guard against a redirect loop is that the card's
+  // own `returnTo` is this path, so it fails the comparison and does nothing.
+  if (linked?.status === "linked" && linked.returnTo) {
+    const here = `${location.pathname}${location.search}`;
+    if (linked.returnTo !== here) {
+      location.assign(linked.returnTo);
+      return;
+    }
+  }
 
   let token;
   try {
