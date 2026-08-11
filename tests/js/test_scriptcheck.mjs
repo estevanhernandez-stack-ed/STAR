@@ -264,15 +264,25 @@ function testTheStylesheetMapsVerdictsToTheDirectionPalette() {
   const base = css.match(/\n\.mark\s*\{[^}]*\}/)[0];
   assert.ok(base.includes("--pencil"), "the default mark, unverifiable, is pencil");
 
-  const stamp = css.match(/\.rail-unsourced-stamp\s*\{[^}]*\}/)[0];
+  // The UNSOURCED stamp moved to web/shell.css in wave 7 (F-017), where it is
+  // now one rule serving this surface and the drawer clip's identical stamp
+  // instead of the same eleven declarations written out in two files. The fact
+  // this asserts is unchanged; only its address is.
+  const shell = stripComments(read("web/shell.css"));
+  const stamp = shell.match(/\.clip-stamp,\n\.rail-unsourced-stamp\s*\{[^}]*\}/)[0];
   assert.ok(stamp.includes("--oxide"), "the UNSOURCED stamp is oxide");
 
   // Nothing is added to the palette, and the two make-or-break rules hold.
   assert.equal(/green|#[0-9a-f]{3,8}\b/i.test(css), false,
     "no raw hex and no green — every colour is a token from web/tokens.css");
   assert.equal(/gradient/i.test(css), false, "no gradient anywhere: aniline is flat stamp ink");
-  for (const [, degrees] of css.matchAll(/rotate\((-?[\d.]+)deg\)/g)) {
-    assert.ok(Math.abs(Number(degrees)) <= 2.5, `rotation ${degrees}deg exceeds the 2.5deg ceiling`);
+  // The 2.5deg ceiling follows the rule it governs. Checking only scene.css
+  // would have gone quietly green the moment the stamp's rotate(-2deg) moved
+  // out of it, which is exactly what wave 7 did.
+  for (const source of [css, shell]) {
+    for (const [, degrees] of source.matchAll(/rotate\((-?[\d.]+)deg\)/g)) {
+      assert.ok(Math.abs(Number(degrees)) <= 2.5, `rotation ${degrees}deg exceeds the 2.5deg ceiling`);
+    }
   }
 }
 

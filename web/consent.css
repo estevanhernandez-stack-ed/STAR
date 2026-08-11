@@ -134,7 +134,7 @@ body.consent-page {
 }
 
 .star-mark {
-  font-size: 1.7rem;
+  font-size: var(--mark-lg);
   line-height: 1;
   color: var(--manila);
 }

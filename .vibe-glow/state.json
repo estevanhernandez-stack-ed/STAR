@@ -124,7 +124,7 @@
     {
       "id": 7,
       "name": "said-twice-meant-once",
-      "status": "open",
+      "status": "clean",
       "findings": [
         "F-018",
         "F-014",
@@ -134,7 +134,16 @@
         "F-020"
       ],
       "branch": "glow/wave-7-said-twice-meant-once",
-      "rationale": "Six rows, one shape: a value declared more than once and drifting. Two of them (F-017, F-019) render byte-identical pixels, which is why wave 3 passed on them — so the wave's argument is F-016, where the same duplication has ALREADY drifted far enough to be visible as an 8px left-edge break between two stacked cards in 10-bible. Ship the visible defect and close the two that would become it. F-018 goes first because it corrects the measuring stick every other wave is judged against."
+      "rationale": "Six rows, one shape: a value declared more than once and drifting. Two of them (F-017, F-019) render byte-identical pixels, which is why wave 3 passed on them — so the wave's argument is F-016, where the same duplication has ALREADY drifted far enough to be visible as an 8px left-edge break between two stacked cards in 10-bible. Ship the visible defect and close the two that would become it. F-018 goes first because it corrects the measuring stick every other wave is judged against.",
+      "closedClean": [
+        "F-018",
+        "F-014",
+        "F-016",
+        "F-017",
+        "F-019",
+        "F-020"
+      ],
+      "closeOut": "ran 2026-08-11, three commits. The argument for the two zero-pixel rows was F-016, where the same duplication had already drifted into a visible 8px step between two stacked cards; measured 0 after. The thesis then turned up inside the wave's own evidence: two of F-017's four pairs had already drifted 0.05rem apart, so merging them moves the rail's margins by 0.8px — recorded rather than presented as a no-op. An existing test's 2.5deg rotation ceiling would have gone quietly green when the stamp moved files, and now follows the rule across both."
     }
   ]
 }
