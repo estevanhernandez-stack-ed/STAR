@@ -58,14 +58,15 @@ a {
      #build-btn     global focus ring           1.88:1  (Task 6)
      .bible-body a  global focus ring           2.76:1  (Task 6)
 
-   SEVEN elements are the whole set of paper surfaces this app mounts, and
+   EIGHT elements are the whole set of paper surfaces this app mounts, and
    everything on paper is inside one of them: .intake (manila, holds the
    onionskin retention slip), .docket (manila, holds the onionskin chips),
    .drawer (manila, holds the onionskin clips and the manila receipts inside
    them), .check (manila, holds the onionskin scene page and rail cards, and
    the manila citation fragments inside those), .account (manila, holds the
-   onionskin plaintext slip and the token rows), .bible (onionskin), and
-   .banner (onionskin, below). So the defaults are set once, HERE, for those
+   onionskin plaintext slip and the token rows), .bible (onionskin), .banner
+   (onionskin, below), and .progress-failure (onionskin, below). So the
+   defaults are set once, HERE, for those
    subtrees — a control or a link that lands on paper tomorrow inherits a
    ratio that already clears the floor, instead of inheriting a dark-ground
    value and waiting to be measured.
@@ -93,6 +94,15 @@ a {
    broken; it is also exactly where the sixth instance lands, because a dismiss
    button added there would take the global --pencil ring at 2.76:1 on
    onionskin, which is the .bible-body a bug verbatim.
+
+   .progress-failure joined in the glow campaign's wave 1, and it is the first
+   member to arrive already holding a focusable control rather than latent: it
+   mounts "Start a new room" on onionskin, which without this rule would take
+   the global --pencil ring at 2.76:1 — the .bible-body a bug verbatim, and the
+   sixth instance the .banner paragraph above predicted would land there. It
+   did land, one surface over. The count in this comment was updated in the same
+   edit as the three selector lists, which is the whole discipline this block
+   asks for.
 
    The global rules above are deliberately NOT weakened. --pencil is right
    where --pencil is right: 4.07:1 on --cabinet and 4.80:1 on --drawer-shadow,
@@ -130,13 +140,14 @@ a {
 .check,
 .account,
 .bible,
-.banner {
+.banner,
+.progress-failure {
   color: var(--ink);
 }
 
 /* --ink is 8.63:1 on --manila and 12.70:1 on --onionskin. Both clear the 3:1
    non-text floor a focus indicator has to meet, against either paper. */
-:is(.intake, .docket, .drawer, .check, .account, .bible, .banner) :focus-visible {
+:is(.intake, .docket, .drawer, .check, .account, .bible, .banner, .progress-failure) :focus-visible {
   outline-color: var(--ink);
 }
 
@@ -145,7 +156,7 @@ a {
    manila and 8.10:1 on onionskin. Still one pad, still a flat solid, still
    derived from the token — the rule DIRECTION.md sets is against washes and
    gradients, not against deriving a shade for the surface it lands on. */
-:is(.intake, .docket, .drawer, .check, .account, .bible, .banner) a {
+:is(.intake, .docket, .drawer, .check, .account, .bible, .banner, .progress-failure) a {
   color: color-mix(in srgb, var(--aniline) 70%, var(--ink));
 }
 
@@ -165,6 +176,54 @@ a {
   font-family: var(--label);
   font-size: var(--label-md);
   text-align: center;
+}
+
+/* A failed run's reason, pinned above the drawer grid.
+   Same argument as .banner directly above, and deliberately the same pair
+   rather than a second one: this also sits on the cabinet's dark ground, and
+   --oxide on --drawer-shadow is 2.79:1, the worst text pair in the app. On
+   --onionskin it is 4.75:1 — already measured, already the UNSOURCED stamp's
+   pair, nothing new to record. It is a slip pinned to the run, which is what
+   .banner is to the app.
+   Left rule rather than .banner's bottom rule: this one is a block inside a
+   surface, not a bar across the top of everything. */
+.progress-failure {
+  background: var(--onionskin);
+  color: var(--oxide);
+  border-left: 3px solid var(--oxide);
+  border-radius: 3px;
+  margin: 0 0 1.5rem;
+  padding: 0.85rem 1rem;
+  max-width: 66ch;
+}
+
+.progress-failure-line {
+  margin: 0 0 0.85rem;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+/* --ink on --onionskin is 12.70:1 (recorded, web/bible.css), so the rule round
+   this control clears the 3:1 boundary floor with room to spare. Bordered
+   rather than filled: recovering from a failure is not the act this app fills
+   a control for. */
+.progress-failure-btn {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--ink);
+  border-radius: 3px;
+  padding: 0.45rem 1rem;
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.progress-failure-btn:hover {
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
 }
 
 /* ---------------------------------------------------------------------

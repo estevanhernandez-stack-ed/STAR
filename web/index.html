@@ -148,7 +148,16 @@
       </section>
 
       <section id="progress-panel" class="panel hidden">
-        <h2>The department is working<span class="ellipsis"></span></h2>
+        <!-- The heading is rewritten on a terminal error (web/app.js's
+             markRunFailed). Until this wave nothing wrote it at all, so a
+             paid, failed build sat under "The department is working" with the
+             ellipsis still pulsing while four drawers read "Did not file". -->
+        <h2 id="progress-heading">The department is working<span class="ellipsis"></span></h2>
+        <!-- Empty and hidden until a run fails. It sits here, above the drawer
+             grid resetProgress inserts before #timeline, so the reason is the
+             first thing under the heading rather than the last thing under
+             four full-height cards. -->
+        <div id="progress-failure" class="progress-failure hidden"></div>
         <ul id="timeline"></ul>
         <p id="search-meter" class="meter"></p>
       </section>

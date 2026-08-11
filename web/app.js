@@ -310,6 +310,17 @@ function stopElapsedTimer() {
 function resetProgress() {
   stopElapsedTimer();
   closeStream();
+  // The heading and the failure block are panel state, so they reset with the
+  // panel. Without this the next build would start under "The department
+  // stopped" with the previous run's reason still pinned above the drawers.
+  const heading = $("progress-heading");
+  heading.replaceChildren(document.createTextNode(WORKING_HEADING));
+  const dots = document.createElement("span");
+  dots.className = "ellipsis";
+  heading.appendChild(dots);
+  const failure = $("progress-failure");
+  failure.replaceChildren();
+  failure.classList.add("hidden");
   timeline.innerHTML = "";
   $("search-meter").textContent = "";
   searchCount = 0;
@@ -327,6 +338,65 @@ function resetProgress() {
   } else {
     progressPanel.insertBefore(grid, timeline);
   }
+}
+
+/* The progress panel's two headings, kept together so the pair can be read in
+   one place. The working one is duplicated in web/index.html because it is the
+   panel's resting state and has to be in the markup; this constant is what
+   restores it. */
+const WORKING_HEADING = "The department is working";
+const FAILED_HEADING = "The department stopped";
+const START_OVER = "Start a new room";
+
+/** The panel's terminal-failure state.
+ *
+ *  Two things, and the first was missing entirely: nothing in this app wrote
+ *  #progress-heading, so a run that failed went on claiming the department was
+ *  working, under a pulsing ellipsis, while sweepUnfiledDrawers filled all four
+ *  cards with "Did not file". The screen contradicted itself, and after a build
+ *  that spent real search budget the contradiction was the loudest thing on it.
+ *
+ *  The reason then goes ABOVE the drawer grid. It is in the timeline below as
+ *  well — that is the run's chronological record and it keeps it — but the
+ *  timeline sits under four cards at their 260px floor, and this is the surface
+ *  a reader is looking at when they find out they paid for nothing.
+ *
+ *  No ETA, no retry-time, no advice about treatment length. star/config.py
+ *  records 146s to 420s+ for ONE FIXED treatment, so length is not the measured
+ *  variable and guidance about it would be a guess printed as help. */
+function markRunFailed(message) {
+  const heading = $("progress-heading");
+  // replaceChildren, not textContent: it takes the .ellipsis span with it, and
+  // the pulse is the half of this that a reader sees from across the room.
+  heading.replaceChildren(document.createTextNode(FAILED_HEADING));
+
+  const box = $("progress-failure");
+  box.replaceChildren();
+
+  const line = document.createElement("p");
+  line.className = "progress-failure-line";
+  // textContent rather than the escapeHtml-into-innerHTML the timeline uses.
+  // Same result for these two server strings, stricter by construction.
+  line.textContent = message;
+  box.appendChild(line);
+
+  const again = document.createElement("button");
+  again.type = "button";
+  again.className = "progress-failure-btn";
+  again.textContent = START_OVER;
+  again.addEventListener("click", () => {
+    // What the rail's "New room" does, minus the one line that made it a poor
+    // recovery path from here: it clears #treatment, and that is the only write
+    // to the field in this app. A reader whose build just failed should not
+    // have to go and find their treatment again to try it.
+    showIntake();
+    resetProgress();
+    $("intake-error").textContent = "";
+    $("build-btn").disabled = false;
+  });
+  box.appendChild(again);
+
+  box.classList.remove("hidden");
 }
 
 /** Marks every drawer that never reached "filed" by the time the run ended
@@ -545,6 +615,7 @@ function openStream(runId, streamKey, { resumed = false } = {}) {
     } else if (ev.type === "error") {
       endRun(source);
       addEntry("error", `Something broke: ${escapeHtml(ev.message)}`);
+      markRunFailed(ev.message);
       $("build-btn").disabled = false;
     }
   };
