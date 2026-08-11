@@ -183,3 +183,50 @@ Three directions remain, and none is a copy edit:
 Rule 11 stays in the measuring stick. It found C-07 and it is the right question
 for a note that is genuinely a label. It is recorded here as the wrong
 instrument for *this* complaint.
+
+---
+
+## Postscript: the specimen, proposed and killed
+
+After the audit, one architectural move was proposed: replace the intake's
+40-word provenance paragraph with a **specimen** — a rendered stamp, domain /
+`RET 10 AUG 2026` / `FILED BY OBJ`, fields labelled. Demonstration instead of
+description, in the morgue's own vocabulary.
+
+It went to three independent reviews before any code was written. All three said
+do not ship, on three unrelated grounds.
+
+**It fabricates provenance.** Every stamp in this app is derived. A specimen
+would be the first one authored — a hand-typed provenance string in
+`index.html`, on the one surface with no ledger behind it. `RET 10 AUG 2026`
+frozen in markup is true for one day and quietly false afterwards, and it is the
+only stamp in the codebase with no data path to disagree with it. The code
+already rejected this from the opposite direction three times over
+(`clip.js:201-208`, `drawer.js:218-228`, `app.js:286-304`).
+
+**It reinstates a bug caught at critical severity.** `shell.css:640-656` records
+that this paragraph once read "the source it came from", which was false because
+a Finding can carry `citations: []`. The quantifier fix — "the sources that came
+back for it" — allows zero. A rendered mark has no quantifier and asserts the
+universal again, in a form no wording review can catch.
+
+**It does not pay.** The 40 words carry four clauses; the stamp face carries
+two. With honest field labels the specimen is 26-39 words against 40 removed, on
+a 156-word surface: between a 9% saving and none. It would be the eighth stamp
+implementation, in a file whose header says it contains none, and below 900px it
+renders beneath the Build button — after the action, which was the whole premise.
+
+**And it was not the architecture change it was sold as.** The reviewer's line
+is the finding: *"swapping a sentence for a picture of a mark is a string edit
+wearing a design change's clothes."* Moving where an obligation discharges means
+changing which surface owns the duty. Re-rendering it in place is not that.
+
+One premise behind the proposal was also wrong and is corrected here:
+DIRECTION.md's reader who may never build a room is the argument for keeping
+**the bible**, the one surface that reads well cold. Nothing in the direction
+asks the intake to carry a demonstration.
+
+Rule 11 has been amended — see "A mark is derived, never authored" — because the
+rule licensed this, and would have licensed it again.
+
+**The intake's provenance paragraph stands unchanged.**

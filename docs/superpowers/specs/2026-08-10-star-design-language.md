@@ -243,6 +243,47 @@ food — the texture of a place in its period" is a sentence doing a plate's job
 **The test, so this is checkable rather than felt:** strike every verb. If the
 note still says the same thing, it was a mark all along.
 
+### A mark is derived, never authored
+
+Added 2026-08-11, after this rule licensed a proposal that three independent
+reviews then killed. **The flaw was in the rule, not only in the proposal.**
+
+Rule 11 quotes `teatrnn.pl / RET 10 AUG 2026 / FILED BY OBJ` as proof that a
+mark outperforms a paragraph, and cites DIRECTION.md's "delivered as motion
+rather than as a claim" as its authority. Read carelessly — and it was — that
+licenses replacing a sentence with a *picture* of a mark. It borrowed the moving
+stamp's authority to license a still one.
+
+The stamp's authority is not its typography. It is that every field is derived
+from something that happened. `buildFiledHead` does `[code, date].filter(Boolean)`
+and prints `LOG` alone rather than fill a slot it cannot support.
+`web/drawer.js:340-348` refuses to default `retrieved` from `date`, because that
+would be "a fabricated provenance claim on the exact element whose whole job is
+provenance." `web/clip.js:201-208` invents no domain. Three files, one
+discipline.
+
+**So: a note may become a mark only where the mark's values come from data. A
+hand-authored mark is a badge, and DIRECTION.md's signature section is titled
+"the stamp is an event, not a badge."** A mark with no mechanism behind it is
+the only kind of mark this app must never render — it is a trust signal with
+nothing under it, which the aversion research names as the harm, and it is
+uncatchable afterwards because no verb test and no grep reads a picture.
+
+Two further traps this rule now names, both found the hard way:
+
+- **A mark has no quantifier.** `web/shell.css:640-656` records that the intake's
+  provenance sentence once read "the source it came from" and was killed at
+  critical severity, because `star/findings.py` keeps a Finding whose every
+  cited URL failed the ledger check with `citations: []`. The fix was the
+  quantifier — "the sources that came back for it", which allows zero. A
+  rendered mark asserts the universal again, in a form no wording review
+  catches. Where a sentence carries a quantifier, a hedge, or a "where there was
+  one", it is not convertible.
+- **A mark cannot state a failure behaviour.** "A cited link that never came back
+  from a search is stamped, not dropped" survives the verb test and is the half a
+  hostile reader cares about. No mark says it, and demonstrating it would mean
+  fabricating a failure.
+
 ### Why rules 9 and 11 are two rules
 
 Rule 9 catches a thing said too often. Rule 11 catches a thing said in the wrong
