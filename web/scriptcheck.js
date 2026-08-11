@@ -204,6 +204,32 @@ const REASON_LINE = {
  *  a non-button element gets none of that natively. */
 function buildScenePage(scene, claims, select) {
   const page = el("div", "scene-page");
+  // A tab stop, a role, and a name, which have to land together — a tab stop
+  // with no name is worse than no tab stop, and the name alone does not make
+  // the box reachable.
+  //
+  // THE TAB STOP IS THE FIX. scene.css caps this at 32rem and scrolls it, and
+  // the zero-marks state is designed for: server.py writes a dedicated cover
+  // note for a scene of pure interior dialogue that asserts nothing about the
+  // world, and the rail ships its own copy for it. In that state the scroller
+  // holds no focusable child at all, so a keyboard-only reader could not reach
+  // their own pasted pages. Safari alone, now: Firefox has made scrollers tab
+  // stops since Firefox 4 and Chrome since stable 132.
+  //
+  // The stop is permanent on purpose. A short scene that never overflows still
+  // gets one. Making it conditional means measuring overflow after layout and
+  // re-measuring on every reflow, font swap and resize, and a tab stop that
+  // comes and goes is worse than one that is always there.
+  //
+  // THE ROLE IS NOT WHAT NAMES IT. Chromium already exposes this label on the
+  // bare div — measured in the live accessibility tree on 2026-08-11, which
+  // reported `generic "The scene, with each checked line marked"`. The role
+  // makes that conformant rather than tolerated, since `generic` is
+  // name-prohibited, and earns the scene a landmark stop on the way past.
+  // region over group deliberately: the marked scene is a major perceivable
+  // section, which is the case MDN says group should not carry.
+  page.setAttribute("role", "region");
+  page.setAttribute("tabindex", "0");
   page.setAttribute("aria-label", "The scene, with each checked line marked");
   const { segments, unanchored } = anchor(scene, claims);
   const marks = [];
