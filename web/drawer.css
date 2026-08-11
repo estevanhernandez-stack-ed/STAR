@@ -180,9 +180,33 @@
   z-index: 0;
   top: calc(var(--tab-rise, 1.75rem) * -1);
   left: 1.5rem;
-  padding: 0.4rem 1.15rem 0.55rem;
+  /* The bottom padding is the tuck, and it is the whole fix.
+     A hanging folder's cut tab is part of the BACK panel: its base is hidden
+     behind the front face. Measured before this change, on the filed room: the
+     tab sits at top -28px and stood 29.6px tall, so exactly 1.6px of its base
+     fell under the face — which a pixel scan of the render reads as zero, and
+     the register filed it as 0px overlap. Both figures are true; the clip-path
+     below means the painted extent is narrower than the box.
+
+     1.05rem is +8px of height with the top edge pinned by --tab-rise, so the
+     base now runs ~9.6px under the face. Only the top padding positions the
+     label, so nothing a reader can see moves: this adds hidden height. */
+  padding: 0.4rem 1.15rem 1.05rem;
   background: var(--manila-edge);
-  clip-path: polygon(6% 0%, 94% 0%, 100% 100%, 0% 100%);
+  /* The cut, re-sloped for the taller box, because these coordinates are
+     percentages OF that box and a taller tab with the same numbers is a
+     differently-angled tab.
+
+     What a reader sees is only the top 28px, where the sides run from 6% inset
+     at the crown out toward the base. Measured: with the old 29.6px box the
+     sides reached 0.59px of inset at the face line; with the new 37.6px box and
+     the old percentages they reached 2.77px, leaving the visible tab's bottom
+     edge ~4.4px narrower and the taper visibly shallower. Carrying the slope
+     past the box (-1.6% / 101.6%) puts the sides back on their original angle,
+     so the silhouette above the face is unchanged. The corners beyond the box
+     paint nothing — the background stops at the border box, and that part of
+     the tab is behind the face regardless. */
+  clip-path: polygon(6% 0%, 94% 0%, 101.6% 100%, -1.6% 100%);
 }
 
 .drawer-tab-label {
