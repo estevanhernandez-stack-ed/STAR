@@ -18,5 +18,14 @@
     "The prefers-reduced-motion override must stay AFTER the default in web/tokens.css — both rules target :root at equal specificity, so source order decides. Reordering silently defeats the accessibility feature; it already shipped broken once.",
     "Copy never says \"verified\", never promises a duration, never flatters the user — institutional register, evidence-first. DIRECTION.md's \"What the UI is now obliged to do\" outranks any copy finding."
   ],
-  "waves": []
+  "waves": [
+    {
+      "id": 1,
+      "name": "runs-and-work",
+      "status": "open",
+      "findings": ["F-001", "F-003", "F-004", "F-005", "F-013"],
+      "rationale": "The five findings where a user loses work, loses a credential, or keeps paying for a run they can no longer see. One blast radius across app.js, shell.js, scriptcheck.js, account.js and auth.js, and four of the five are small edits against machinery the app already ships.",
+      "executor": "vibe-cartographer"
+    }
+  ]
 }
