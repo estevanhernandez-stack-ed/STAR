@@ -447,8 +447,21 @@ function buildDecide(params, handlers) {
     return block;
   }
 
+  // Roles go on these two imperatively, and NOT on the .consent-refusal class.
+  // Six of the seven refusal paragraphs in this file are built with their text
+  // already in them, as static first-paint prose; a class-wide role would make
+  // six paragraphs assertive live regions at page load. These two are the only
+  // pair created empty and written into later, which is the shape a live region
+  // needs.
+  //
+  // status for one and alert for the other, because they carry different kinds
+  // of news. WORKING and ATTACHING are progress, and progress that interrupts
+  // is the babbling this app already refused to ship on the search meter. A
+  // refusal is the reader's answer not going through, and that interrupts.
   const status = el("p", "consent-status");
+  status.setAttribute("role", "status");
   const refusal = el("p", "consent-refusal");
+  refusal.setAttribute("role", "alert");
   const row = el("div", "decide-row");
   const buttons = [];
 

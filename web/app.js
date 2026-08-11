@@ -132,6 +132,26 @@ let activeSource = null;
 
 $("build-btn").addEventListener("click", buildRoom);
 
+/** The banner's own sentence, moved out of index.html so that revealing it is a
+ *  content change rather than a class change. Unchanged wording. */
+const AUTH_UNREACHABLE =
+  "Could not start a session with the department. Check your connection and reload.";
+
+/** Show or hide #auth-error, writing and clearing its text rather than only
+ *  toggling .hidden.
+ *
+ *  Clearing on hide is the load-bearing half: leave the sentence in place and
+ *  the next reveal writes the same words over themselves, which is a mutation
+ *  a screen reader may treat as nothing new. Empty-to-text is unambiguous. */
+function showAuthError(show) {
+  const banner = $("auth-error");
+  // No-argument replaceChildren, not replaceChildren(""), which would append an
+  // empty text node and leave the element non-empty to CSS and to the tree.
+  if (show) banner.replaceChildren(document.createTextNode(AUTH_UNREACHABLE));
+  else banner.replaceChildren();
+  banner.classList.toggle("hidden", !show);
+}
+
 /* The first press's sentence, when a run is live.
    It says what continues and where to find it, and it does not say when the
    run will finish: star/config.py records 146s to 420s+ for one fixed
@@ -508,11 +528,11 @@ async function buildRoom() {
     token = null;
   }
   if (!token) {
-    $("auth-error").classList.remove("hidden");
+    showAuthError(true);
     $("build-btn").disabled = false;
     return;
   }
-  $("auth-error").classList.add("hidden");
+  showAuthError(false);
 
   let runId;
   let streamKey;
@@ -1437,7 +1457,7 @@ setLiveRunProvider(() =>
     token = null;
   }
   if (!token) {
-    $("auth-error").classList.remove("hidden");
+    showAuthError(true);
     return;
   }
   // The rail is drawn either way. A resumed run marks itself active in it
