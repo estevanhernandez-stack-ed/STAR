@@ -5,6 +5,13 @@
    turns a run_id into stage content via setRoomRenderer(); this file only
    ever calls it by name.
 
+   Since the glow campaign's wave 1 it owns a THIRD thing: which run is
+   streaming, set from both ends of a run's life in app.js via setLiveRun().
+   It is here rather than there because this file owns what a rail click does,
+   and a row for a run in flight has to go somewhere different from a row for a
+   filed room — showRunning() rather than loadRoom(), which would fetch a room
+   with no story_profile yet and paint a placeholder over a live stream.
+
    Since Task 4 the stage has four states, not three. The fourth is the card
    (web/account.js), reached from the entry at the FOOT of the rail and from
    nowhere else — that placement is the requirement, not a layout preference:
