@@ -44,6 +44,20 @@
         "F-005",
         "F-013"
       ]
+    },
+    {
+      "id": 3,
+      "name": "without-sight-or-a-mouse",
+      "status": "open",
+      "findings": [
+        "F-012",
+        "F-006",
+        "F-010",
+        "F-009",
+        "F-021"
+      ],
+      "rationale": "The five findings that make the app usable without sight or a mouse. Chosen over the higher-ranked F-002 because that one still carries two unresolved design questions, and over the plugin's consistency-first default because those four render byte-identical pixels and make nothing downstream cheaper. This class is invisible in all 14 captures and undetectable by axe or Lighthouse, which is why it is still here.",
+      "branch": "glow/wave-3-without-sight-or-a-mouse"
     }
   ]
 }
