@@ -1295,3 +1295,34 @@ to that file.
 
 Visibility flip, README screenshot, the ≤3-minute video, Devpost. The credential sweep
 is done and clean; every gate in front of the flip is verified.
+
+## /checklist — cycle #20 (glow wave 1)
+
+Cart cycle #20 is a vibe-glow wave rather than an app cycle. Its input is
+`docs/glow-wave-1-brief.md`, not `spec.md`; its backlog is the findings register at
+`docs/superpowers/research/2026-08-10-star-ui-audit-findings.md`.
+
+The number collides with a note left at the end of cycle #19, which had penciled #20 for the
+judge critique's Part 3 — ask-the-room, `get_room` shape, a delete tool, premise notes. That
+work moves to #21. Recording it here so the two do not get confused later.
+
+**Sequencing decision.** Three independent fixes first (F-004, F-005, F-013), then the run
+lifecycle (F-001), then resume layered on it (F-003). Not riskiest-first, deliberately: the run
+lifecycle items all touch a live SSE stream, and banking three real fixes before going near it
+means a failed checkpoint reverts to a branch that already earned its keep.
+
+**What the audit changed about the work.** Three of the five items are smaller than the finding
+that produced them, because the adversarial pass traced the code rather than the claim:
+
+- The failed-build error line is **not** off-screen — `addEntry` already scrolls every entry
+  into view. Only the stale heading is broken. No layout move needed.
+- The issued token already survives the stage switch (`stage()` only adds `.hidden`) and already
+  lives in module scope. Nothing needs storing; a render path needs to read it.
+- The resume machinery ships end to end and is wired to one trigger. It needs an export and a
+  clear-on-terminal, not new plumbing.
+
+The brief carries these corrections inline so the build reads the corrected work.
+
+**Deepening rounds: 0.** Standing pattern, and the register already survived 67 adversarial
+reviews — a fourth pass over the same five items would be re-litigating an argument that was
+already had properly.
