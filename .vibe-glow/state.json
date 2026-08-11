@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "app": "STAR",
-  "stage": "waves",
+  "stage": "done",
   "adapter": "web-playwright",
   "evidenceDir": "docs/ui-evidence",
   "designLanguagePath": "docs/superpowers/specs/2026-08-10-star-design-language.md",
@@ -165,5 +165,14 @@
       "rationale": "Everything left. Three of the four are one defect wearing three hats — a reader action leaving them with nowhere to stand — and two of those were filed by this campaign's own builds rather than by the audit.",
       "closeOut": "ran 2026-08-11. Verified in the live DOM: a failed build returns focus to build-btn where it previously went to BODY, and opening a filed check lands focus back on that same row. Ten mutations caught, three of which needed the test tightened first."
     }
-  ]
+  ],
+  "reveal": {
+    "date": "2026-08-11",
+    "precondition": "re-derived from the register's 25 rows, not from wave summaries: no gaps in F-001..F-025, no duplicate ids, one distinct status value (clean), all 7 severity-4 rows clean",
+    "flagship": "No new theme or token set was applied, and that is the finding rather than a skipped step. This campaign ADOPTED DIRECTION.md at stage 0 instead of inventing an identity, so THE MORGUE was already the shipping layer and its signature moment — the stamp press, drawer.css's stamp-press and scene.css's verdict-press — was already built. Inventing a second visual layer at reveal would have contradicted the stage-0 decision and risked the nine invariants seven waves were measured against. The reveal instead PROVED the flagship survived: manila holds 70.71% of the filed room's stage against a 40% floor where round 1 measured 70.70%, onionskin 1.21% in both, same capture and same method.",
+    "evidence": "round 2 in docs/ui-evidence/round-2/ — four re-captures at 1440x900. Round 1 left intact, because the register cites those captures as evidence for specific findings and overwriting them would make a finding's evidence show the fixed state.",
+    "release": "not shipped by the campaign. This repo has no tags, no CHANGELOG and no version ritual — pyproject has read 0.1.0 since the initial commit — so none was invented. Its release is scripts/deploy.sh to Cloud Run, which needs gcloud credentials and GOOGLE_OAUTH_CLIENT_ID and is the builder's to run.",
+    "retro": "docs/dogfood/star-2026-08-11.md, written into this repo because vibe-glow's source repo is not on this machine (the plugin runs from a version cache). Move it to vibe-glow/docs/dogfood/ when that repo is to hand.",
+    "notes": "docs/glow-reveal.md"
+  }
 }
