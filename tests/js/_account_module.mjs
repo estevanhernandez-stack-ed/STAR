@@ -59,7 +59,15 @@ const AUTH_SHIM = [
   "const signOutNotice = (...a) => globalThis.__starAuth.signOutNotice(...a);",
 ].join("\n");
 
-const SHELL_SHIM = "const refreshRail = (...a) => globalThis.__starShell.refreshRail(...a);";
+/* Every name web/account.js pulls out of web/shell.js, bound late for the same
+   reason the auth names are. Adding one here is not optional bookkeeping: the
+   import above is replaced wholesale, so a name web/account.js imports and
+   this list omits becomes a free identifier that throws the moment a handler
+   touches it — invisible at module load, and only at the click. */
+const SHELL_SHIM = [
+  "const refreshRail = (...a) => globalThis.__starShell.refreshRail(...a);",
+  "const showPreviousStage = (...a) => globalThis.__starShell.showPreviousStage(...a);",
+].join("\n");
 
 function writeModule(prefix, source) {
   const dir = mkdtempSync(join(tmpdir(), `star-${prefix}-test-`));

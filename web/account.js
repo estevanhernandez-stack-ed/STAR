@@ -56,7 +56,7 @@ import {
   signOut,
   signOutNotice,
 } from "/auth.js";
-import { refreshRail } from "/shell.js";
+import { refreshRail, showPreviousStage } from "/shell.js";
 
 /* ---------------------------------------------------------------------
    The copy. Kept together so the register can be read in one place rather
@@ -65,6 +65,12 @@ import { refreshRail } from "/shell.js";
 --------------------------------------------------------------------- */
 
 const HEADING = "Your card";
+/* The card is the only stage with no exit of its own. Until it had one, the
+   way back was clicking the open room in the rail — which ran a full room
+   re-render and took any unsubmitted scene with it. Naming the destination
+   rather than saying "Back" because the card can be opened from three
+   different surfaces and a bare arrow would not say which one it returns to. */
+const BACK = "Back to where you were";
 
 const IDENTITY_LEGEND = "Identity";
 const TOKENS_LEGEND = "Issued tokens";
@@ -442,6 +448,15 @@ function buildTokens(state, handlers) {
  *  exercised against a stubbed document with no network at all. */
 export function renderAccountCard(state, handlers = {}) {
   const root = el("div", "account-card");
+  // Rendered only when a handler exists, so the stubbed-document tests that
+  // exercise this function without a shell keep working and this file keeps
+  // performing no I/O of its own.
+  if (handlers.onBack) {
+    const back = el("button", "account-back", BACK);
+    back.type = "button";
+    back.addEventListener("click", handlers.onBack);
+    root.appendChild(back);
+  }
   root.appendChild(el("h2", "account-heading", HEADING));
   root.appendChild(buildIdentity(state, handlers));
   root.appendChild(buildTokens(state, handlers));
@@ -570,6 +585,16 @@ async function failureDetail(res) {
 }
 
 const HANDLERS = {
+  /** Leave the card for the surface the reader came from.
+   *
+   *  Nothing is read, nothing is re-fetched and no room is loaded — the card
+   *  holds no unsaved state, and the surface being returned to may hold plenty
+   *  (a scene typed and not yet checked, a live build's timeline). A panel
+   *  swap is the whole of it, by design. */
+  onBack() {
+    showPreviousStage();
+  },
+
   async onLink() {
     // Comes back only if the page could not leave. A "redirecting" result
     // means the navigation is under way and anything drawn now would be drawn

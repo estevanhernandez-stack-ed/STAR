@@ -35,6 +35,10 @@ const PANELS = [intakePanel, progressPanel, resultsPanel, accountPanel];
 let _rooms = [];
 let _activeRunId = null;
 let _renderRoom = null; // (runId) => Promise<void> | void
+// The last stage that was not the card. Written by stage(), read by
+// showPreviousStage(); null until the first stage change, which is why that
+// function falls back to intake rather than trusting it.
+let _lastStageBeforeAccount = null;
 // Did the last attempt to READ the list fail? Remembered rather than passed,
 // because showIntake() and loadRoom() redraw the rail from this cache without
 // going near the network — and an empty `_rooms` means two different things
@@ -186,6 +190,11 @@ export async function refreshRail(activeRunId) {
  *  back exactly as far along as it has got. Nothing in this file closes a
  *  stream, and nothing in it re-fetches a room. */
 function stage(panel) {
+  // Where the reader was before the card, so they can be put back exactly
+  // there. Recorded here rather than at the call sites because this is the one
+  // function every stage change passes through, and a second bookkeeping spot
+  // is a second thing to forget.
+  if (panel !== accountPanel) _lastStageBeforeAccount = panel;
   for (const el of PANELS) el.classList.toggle("hidden", el !== panel);
   // The rail entry carries the selection the way a rail room does, so "which
   // surface am I on" has one answer in one place.
@@ -216,4 +225,15 @@ export function showRoom() {
  *  stream last left it. */
 export function showAccount() {
   stage(accountPanel);
+}
+
+/** Back out of the card to whatever the reader was looking at.
+ *
+ *  A panel swap and nothing else — deliberately not loadRoom(), which would
+ *  re-fetch the room and run resetRoomView over a surface the reader never
+ *  left. The card is the only stage with no way out of its own, and the rail
+ *  was carrying that job: clicking the open room to get back is what made an
+ *  unsubmitted scene disposable. */
+export function showPreviousStage() {
+  stage(_lastStageBeforeAccount || intakePanel);
 }

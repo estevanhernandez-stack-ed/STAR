@@ -600,7 +600,7 @@ function endRun(source) {
  *  The title goes to a transitional string rather than being blanked or left
  *  alone: blank collapses the docket's heading row mid-navigation, and leaving
  *  the previous room's title is the leak itself. */
-function resetRoomView() {
+function resetRoomView(nextRunId) {
   setRoomMode("drawers");
   bibleBtn.classList.add("hidden");
   checkBtn.classList.add("hidden");
@@ -610,7 +610,11 @@ function resetRoomView() {
   // The same cross-room leak this function exists to close, on the surface
   // where it would cost the most: a scene pasted against room A left sitting
   // in the box under room B's title, over a marked scene citing A's ledger.
-  resetCheck();
+  //
+  // The room id goes through so a re-entry into the room already open keeps an
+  // unsubmitted scene. That is not a weakening of the leak fix: a leak needs
+  // two rooms, and this is the one case where there is only one.
+  resetCheck(nextRunId);
   $("result-title").textContent = "Opening the room";
   $("result-stats").textContent = "";
 }
@@ -624,7 +628,7 @@ function resetRoomView() {
 async function showResults(runId) {
   // First, before the request goes out. shell.js's loadRoom has already
   // revealed the stage by the time this runs — see resetRoomView.
-  resetRoomView();
+  resetRoomView(runId);
 
   const res = await authedFetch(`/api/rooms/${runId}`);
   if (!res.ok) {

@@ -662,11 +662,33 @@ export function setCheckRoom(runId) {
 
 /** Everything this surface is holding, let go of. Called on a room change and
  *  from web/app.js's resetRoomView, which runs before a room load is even
- *  issued — the same placement that fixed the cross-room leak in the drawers. */
-export function resetCheck() {
-  roomId = null;
+ *  issued — the same placement that fixed the cross-room leak in the drawers.
+ *
+ *  `nextRunId` is the room about to be painted. Passing it keeps an
+ *  unsubmitted scene alive when the reader re-enters the room they are already
+ *  in — which is the way back from Your card, since that surface reaches this
+ *  one only through the rail. Without it, that click destroyed pages of typed
+ *  text that live nowhere else: nothing in web/ stores #scene, and an in-page
+ *  `.value = ""` with no navigation is outside browser form restore.
+ *
+ *  The comparison happens HERE rather than in the caller because `roomId` is
+ *  this module's state and the caller no longer has the old room to compare
+ *  against — shell.js's loadRoom marks the NEW room active before app.js's
+ *  resetRoomView runs.
+ *
+ *  Called with no argument it behaves exactly as it did: a full let-go. */
+export function resetCheck(nextRunId) {
+  const sameRoom = nextRunId != null && nextRunId === roomId;
+  // Held across a same-room reset so setCheckRoom's `if (runId === roomId)`
+  // guard can actually fire. Nulling it unconditionally is what disarmed that
+  // guard — it can never match a roomId this function just erased, so the
+  // room paint that follows called clearCheck a second time and wiped the
+  // scene this reset had just been careful to keep.
+  if (!sameRoom) roomId = null;
+  // Both branches. clearCheck empties the filed row below, so the list has to
+  // be re-fetched the next time the mode is opened, same room or not.
   loadedFiledFor = null;
-  if (els) clearCheck({ keepScene: false });
+  if (els) clearCheck({ keepScene: sameRoom });
 }
 
 function clearCheck({ keepScene }) {
