@@ -82,7 +82,64 @@ non-negotiables:
   L1 (planner premise), plus 8,000-char treatment cap. Review's L2 was a
   false alarm (README hackathon name is correct).
 
-## Status: not done — in priority order
+## Standing items — 2026-08-11
+
+**Supersedes the Aug 6 list below**, which is kept as history. Items 2, 3 and 4
+of that list are done: Cloud Run is deployed (revision `star-00017-ssr`),
+Firestore persistence ships in `star/store.py`, and Pipeline B — Script Check —
+is built and has since been through a seven-wave UI campaign. Item 5, the
+markdown/zip export, has no endpoint and is still open. Item 7's first half is
+done: model IDs are pinned in `star/config.py` with env overrides, not floating
+on `-latest`.
+
+**Where the argument now stands.** The naysayer's objections are about **reach
+and lifecycle**, no longer about trust. That distinction is the whole point: a
+trust problem could not have been shipped out of later, and it was the one that
+had to be solved first. What is left is reachability and what happens to a room
+after it exists — both of which can be built at any time.
+
+Carried forward as roadmap, not blockers:
+
+1. **`get_room` returns the whole room and takes no shape argument.** The
+   biggest remaining agent-door defect. Measured 2026-08-11 against the two
+   stored rooms: **31,047 and 29,536 tokens** per call (124,186 and 118,142
+   characters). The tool's `inputSchema` accepts `run_id` and nothing else, so
+   an agent asking what is in a room has no way to ask for less.
+
+   The breakdown says what to build. On the larger room, **72.3% of the payload
+   is raw source `excerpt` text** and **4.4% is the research facts themselves**;
+   27 findings carry 89,735 characters of excerpt between them. Dropping
+   excerpts alone takes the call to **8,613 tokens**; the research bible on its
+   own is **652**. So a `shape` argument — `bible` / `plan` / `findings` /
+   `full` — is a 97% reduction at the small end and a 72% one even at the
+   permissive end.
+
+   Note the overlap with the glow campaign: `web/excerpt.js` already reduces
+   these same excerpts to a median 244 characters for the UI, because they
+   arrive as raw scraped markdown. **The agent door sends them raw.** The
+   reducer exists; nothing server-side calls it.
+
+2. **No delete over MCP.** The door exposes exactly four tools — `list_rooms`,
+   `get_room`, `build_room`, `check_scene` (`star/mcp/tools.py:227`). An agent
+   can create rooms and never remove one. Lifecycle, and the naysayer is right
+   about it.
+
+3. **Error rooms charge budget and explain nothing.** A failed build still
+   spends against the cap, and what comes back does not tell the caller what it
+   spent or why it stopped. Builder's observation, not measured here.
+
+4. **Two old damaged bibles still report `complete`.** Rooms that predate the
+   bible fixes carry truncated bibles while their status says the build
+   finished. Status is describing the run, not the artefact, and for these two
+   those diverged. Builder's observation, not measured here — worth checking
+   whether it is those two rooms only or a class.
+
+5. **Adoption — `ask_room` first.** The door has no question-shaped tool. An
+   agent can read a room or build one, but cannot ask it anything, so the
+   cheapest possible adoption path does not exist. Build this before the other
+   adoption items.
+
+## Status: not done — in priority order (from 2026-08-06, superseded)
 
 1. **Verify repo is public + MIT badge in About; push everything** including
    `docs/` (review + this handoff). At handoff, `server.py`, `web/`, review
