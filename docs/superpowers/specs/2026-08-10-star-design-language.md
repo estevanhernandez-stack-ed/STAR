@@ -210,6 +210,20 @@ carry into any fix: `star/verdicts.py:91` requires a note only for
 line at all — a reordering that assumes the note is present has no case for
 that card.
 
+**Closed in wave 5, 2026-08-11, and the hole above is what took two waves to get
+past.** It is not a hole. `star/agents/script_check.py:196-199` instructs the
+verifier that the note is *optional* on `confirmed` and `anachronism` — "the
+qualifier a writer needs" — so a card with no note is the designed common case,
+not an edge one: 4 of the 9 claims in the filed Gdansk check carry none. The
+answer was never the note. **It is the source quotation**, decided by the builder
+on 2026-08-11, and the card now ranks it accordingly: the gloss became a slug
+beside the stamp, and the standing caveat moved below the evidence it describes.
+
+The evidence paragraphs above are kept as written because they are dated
+observations of `13-check-annotated`, which is still what that capture shows. The
+measured result after: the citation block is a median **62.2%** of the card
+across all nine, where the note it replaced as "the answer" was **1.2%**.
+
 (The earlier draft said "third" and cited `14-check-citation` for the fold. Both
 were wrong: the position is fourth, and in `14` the whole card sits below the
 fold because the capture was taken with the stage scrolled, which is a capture
