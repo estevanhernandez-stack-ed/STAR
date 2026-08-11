@@ -173,6 +173,7 @@ def test_the_whole_flow_ends_with_a_token_that_opens_the_door(door):
     assert [t["name"] for t in opened.json()["result"]["tools"]] == [
         "list_rooms",
         "get_room",
+        "ask_room",
         "build_room",
         "check_scene",
     ]
