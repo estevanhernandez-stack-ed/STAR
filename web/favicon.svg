@@ -11,6 +11,12 @@
      gradients is not a stylesheet rule, it is the design's, and a favicon is
      the easiest place in a project to quietly break it.
 
+     BOLDER THAN THE RAIL'S GLYPH, on purpose. The first cut traced the ✶ at
+     its printed weight and measured 6% mark coverage at 16 pixels, which reads
+     in a tab and a connector list as a dark square with something in it. At
+     4.6 units it measures 18%. A favicon is not a small version of a wordmark,
+     it is a different drawing of the same idea.
+
      Drawn on a 32-unit grid with a full-bleed ground, because a transparent
      favicon inverts against a dark client chrome and this mark is manila-on-
      green in every other place it appears. -->
@@ -20,11 +26,11 @@
   <!-- Six points: one vertical bar, two crossed diagonals. The same six-armed
        ✶ the rail prints, kept as three strokes so it stays legible at 16px
        where a filled star closes up into a blob. -->
-  <g stroke="#D2B98C" stroke-width="2.6" stroke-linecap="round">
-    <line x1="16" y1="4.5" x2="16" y2="27.5"/>
-    <line x1="6.2" y1="10.2" x2="25.8" y2="21.8"/>
-    <line x1="6.2" y1="21.8" x2="25.8" y2="10.2"/>
+  <g stroke="#D2B98C" stroke-width="4.6" stroke-linecap="round">
+    <line x1="16" y1="4" x2="16" y2="28"/>
+    <line x1="5.6" y1="9.9" x2="26.4" y2="22.1"/>
+    <line x1="5.6" y1="22.1" x2="26.4" y2="9.9"/>
   </g>
   <!-- The stamp. Aniline, flat, centred: filed. -->
-  <circle cx="16" cy="16" r="3.4" fill="#5C3D91"/>
+  <circle cx="16" cy="16" r="4.6" fill="#5C3D91"/>
 </svg>
