@@ -172,7 +172,13 @@
     "flagship": "No new theme or token set was applied, and that is the finding rather than a skipped step. This campaign ADOPTED DIRECTION.md at stage 0 instead of inventing an identity, so THE MORGUE was already the shipping layer and its signature moment — the stamp press, drawer.css's stamp-press and scene.css's verdict-press — was already built. Inventing a second visual layer at reveal would have contradicted the stage-0 decision and risked the nine invariants seven waves were measured against. The reveal instead PROVED the flagship survived: manila holds 70.71% of the filed room's stage against a 40% floor where round 1 measured 70.70%, onionskin 1.21% in both, same capture and same method.",
     "evidence": "round 2 in docs/ui-evidence/round-2/ — four re-captures at 1440x900. Round 1 left intact, because the register cites those captures as evidence for specific findings and overwriting them would make a finding's evidence show the fixed state.",
     "release": "not shipped by the campaign. This repo has no tags, no CHANGELOG and no version ritual — pyproject has read 0.1.0 since the initial commit — so none was invented. Its release is scripts/deploy.sh to Cloud Run, which needs gcloud credentials and GOOGLE_OAUTH_CLIENT_ID and is the builder's to run.",
-    "retro": "docs/dogfood/star-2026-08-11.md, written into this repo because vibe-glow's source repo is not on this machine (the plugin runs from a version cache). Move it to vibe-glow/docs/dogfood/ when that repo is to hand.",
-    "notes": "docs/glow-reveal.md"
+    "retro": "C:/Users/estev/Projects/vibe-glow-docs/docs/dogfood/star-2026-08-11.md — a holding repo, created 2026-08-11 because vibe-glow has no source checkout on this machine (the plugin runs from a version cache and vibe-plugins carries no entry for it). Paths there mirror the plugin repo's, so it moves across as a copy when a real checkout exists. Not kept in this repo as well: a second copy is how the drift this campaign spent a wave closing starts.",
+    "notes": "docs/glow-reveal.md",
+    "deployed": {
+      "at": "2026-08-11",
+      "revision": "star-00017-ssr (from star-00016-snb)",
+      "url": "https://star-cdhog5ebsq-uc.a.run.app",
+      "verified": "root 200; the campaign's code confirmed live by the presence of web/excerpt.js, which only this campaign created; GOOGLE.clientId still non-empty in /config.js, which is the trap deploy.sh warns about — --set-env-vars replaces the service's whole variable set, so deploying without it silently strips OAuth from a running service."
+    }
   }
 }
