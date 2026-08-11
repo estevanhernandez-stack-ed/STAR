@@ -68,6 +68,32 @@ claim_extractor = Agent(
         "longer sentence, and quote the span exactly as the scene has it.\n\n"
         "`claim_type` is one of: object, language, timing, geography, "
         "technology, behavior.\n\n"
+        # THE CLAIMS THAT LIVE IN VERBS, and this paragraph exists because they
+        # were being missed wholesale. Measured 2026-08-11 by a hostile reader
+        # who salted a 1978 Gdansk scene with three period errors: every one of
+        # them was procedural, none was extracted, and the scene came back nine
+        # confirmed and one anachronism. A clean bill of health for a page with
+        # three errors on it.
+        #
+        # The list above already said "a law, a procedure", and the examples
+        # around it were all nouns, so nouns are what came back. Naming the
+        # shape is not enough; the shape has to be shown.
+        "MOST OF THE LIST ABOVE IS NOUNS, AND MOST ERRORS ARE NOT. An "
+        "assertion about how something was done, how long it took, what it "
+        "cost, who was allowed to do it, or how easily it happened is a claim "
+        "about the world, and it is usually the claim a reader most needs "
+        "checked. Extract those with the same care as a make or a model.\n\n"
+        "Worked examples, so the shape is unmistakable. 'He drove a '61 "
+        "Impala' is an object claim and an easy one. 'The guards waved them "
+        "through without a search' is a claim about a procedure at a real kind "
+        "of place in a real year, and something outside the script settles it. "
+        "'She bought oranges without queueing' is a claim about supply and "
+        "daily life under a specific economy. 'He paid four dollars for it' is "
+        "a price. 'They were on the road inside ten minutes' is a travel time. "
+        "None of those name a thing, and all four are checkable.\n\n"
+        "So: read the scene twice. Once for what it NAMES, and once for what "
+        "it ASSERTS HAPPENED. The second pass is the one that catches what a "
+        "writer got wrong.\n\n"
         "Leave verdict, note, and citations empty. Judging a claim is the "
         "verification desk's job and it has live search; you do not. Your "
         "whole job is finding what the scene asserts and quoting it exactly.\n\n"

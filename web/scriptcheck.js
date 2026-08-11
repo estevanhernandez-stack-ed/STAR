@@ -451,6 +451,15 @@ export function renderCheckResult(payload, { onDelete = null } = {}) {
   const cover = String(payload?.cover_note || "").trim();
   if (cover) root.appendChild(el("p", "check-cover", cover));
 
+  // What the check did NOT examine, next to the count of what it did.
+  //
+  // A row of stamps is read as a verdict on the page, not on the claims that
+  // happened to be extracted from it — which is how a scene salted with three
+  // procedural errors came back looking clean on 2026-08-11. Every stamp there
+  // was honest. The summary was not, and this is the sentence that makes it so.
+  const scope = String(payload?.scope_note || "").trim();
+  if (scope) root.appendChild(el("p", "check-scope", scope));
+
   root.appendChild(el("p", "check-meter", meterLine(payload, claims)));
   for (const line of uncertaintyLines(payload, claims)) {
     root.appendChild(el("p", "check-uncertainty", line));

@@ -145,6 +145,10 @@ def scene_to_document(result: dict, scene: str) -> dict:
         "search_count": result.get("search_count") or 0,
         "budget_exhausted": bool(result.get("budget_exhausted")),
         "cover_note": result.get("cover_note") or "",
+        # Persisted for the same reason the claims are. A replayed check that
+        # dropped this would read CLEANER than the one that ran, which is the
+        # exact failure the note exists to prevent, arriving a day later.
+        "scope_note": result.get("scope_note") or "",
     }
 
 
@@ -168,6 +172,7 @@ def document_to_scene(doc: dict) -> dict:
         "search_count": doc.get("search_count") or 0,
         "budget_exhausted": bool(doc.get("budget_exhausted")),
         "cover_note": doc.get("cover_note") or "",
+        "scope_note": doc.get("scope_note") or "",
     }
 
 

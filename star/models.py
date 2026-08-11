@@ -170,6 +170,12 @@ class ScriptCheckResult(BaseModel):
         description="One plain line about what this check had to work with. "
         "Empty when the claims speak for themselves.",
     )
+    scope_note: str = Field(
+        default="",
+        description="What this check examined, and what it did not. Computed "
+        "from the claim types actually extracted, never from a model's account "
+        "of its own coverage.",
+    )
 
 
 class McpToken(BaseModel):

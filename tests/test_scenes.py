@@ -829,6 +829,7 @@ def test_a_filed_check_keeps_the_scene_and_everything_the_schema_names():
         "search_count",
         "budget_exhausted",
         "cover_note",
+        "scope_note",
     }
 
 
@@ -1034,6 +1035,7 @@ RESULT = {
     "search_count": 3,
     "budget_exhausted": False,
     "cover_note": "",
+    "scope_note": "",
 }
 
 

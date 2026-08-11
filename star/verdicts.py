@@ -326,6 +326,76 @@ def _unreached(claim: Claim) -> ClaimResult:
     )
 
 
+# The claim vocabulary, grouped as a reader thinks rather than as the schema
+# lists it. The split is the point of `_scope_note` below: the first group is
+# what this check reliably finds, and the second is what it has been measured
+# missing.
+_NAMED_THINGS = {
+    "object": "objects",
+    "technology": "technology",
+    "geography": "places",
+    "language": "words and phrases",
+}
+_ASSERTED_HAPPENINGS = {
+    "behavior": "how people behaved or what they were allowed to do",
+    "timing": "timings and durations",
+}
+
+
+def _scope_note(claims: list[ClaimResult]) -> str:
+    """What this check examined, and -- said out loud -- what it did not.
+
+    THE FINDING THIS EXISTS FOR. A hostile reader salted a 1978 Gdansk scene
+    with three period errors on 2026-08-11 and the check returned nine
+    confirmed, one anachronism, zero unverifiable. Every planted error was
+    procedural -- guards waving a shift through without a search, oranges
+    bought without queueing, a duplicating machine that was the wrong machine
+    -- and not one of them was ever EXTRACTED, so not one was ever checked. The
+    scene came back with a clean bill of health it had not earned.
+
+    Nothing malfunctioned at any step. Every claim that was checked was checked
+    honestly, hydrated against a real ledger, and stamped correctly. The lie was
+    in the shape of the summary: nine green stamps on a page carrying three
+    errors, with nothing saying which parts had been looked at.
+
+    That is the failure this project's own aversion research names -- citation
+    presence reading as a trust signal independent of accuracy -- arriving
+    through the one door every other guard here faces the other way. Hydration,
+    the downgrade and the unsourced stamp all defend against OVERCLAIMING A
+    SOURCE. None of them defends against underclaiming what the check left
+    alone.
+
+    So this counts what was actually extracted, by type, and names which kinds
+    of assertion are missing from the claim set. It does NOT guess how many
+    unchecked assertions the scene contained: knowing that would mean finding
+    them, and anything findable would have been checked. Printing "three
+    unexamined claims" without having found them would be the same invention
+    the whole ledger apparatus exists to refuse.
+    """
+    if not claims:
+        return ""
+
+    seen = {str(c.claim_type or "").strip().lower() for c in claims}
+    named = sorted({label for key, label in _NAMED_THINGS.items() if key in seen})
+    asserted = sorted(
+        {label for key, label in _ASSERTED_HAPPENINGS.items() if key in seen}
+    )
+
+    count = len(claims)
+    plural = "claim" if count == 1 else "claims"
+    examined = ", ".join(named + asserted) or "claims of no stated kind"
+    note = f"This check examined {count} {plural}, about {examined}."
+
+    missing = [label for key, label in _ASSERTED_HAPPENINGS.items() if key not in seen]
+    if missing:
+        note += (
+            " Nothing here is a claim about "
+            + " or ".join(sorted(missing))
+            + ". If the scene asserts any of that, it was not examined."
+        )
+    return note
+
+
 def annotate(
     prose: str | None,
     claims: list[Claim],
@@ -415,4 +485,5 @@ def annotate(
         field_notes="\n".join(notes).strip(),
         search_count=search_count,
         budget_exhausted=budget_exhausted,
+        scope_note=_scope_note(claim_results),
     )

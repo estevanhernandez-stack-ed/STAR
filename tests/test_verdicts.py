@@ -10,9 +10,12 @@ about each other rather than against their literal text, so the swap is an
 edit to two constants.
 """
 
+import re
+
+from star import verdicts
 from star.findings import parse_finding_line
 from star.ledger import SourceLedger
-from star.models import Claim, Verdict
+from star.models import Claim, ClaimResult, Verdict
 from star.verdicts import annotate, parse_verdict_line
 
 # -- the two ledgers ---------------------------------------------------------
@@ -653,3 +656,76 @@ def test_the_whole_fixture_files_every_claim_it_was_given():
         claim.text for claim in SCENE_CLAIMS
     ]
     assert result.field_notes.count("\n") == 2
+
+
+# --- the scope note: what the check did NOT look at -------------------------
+
+
+def _typed(*types):
+    """Claims that differ only in kind, which is all the scope note reads."""
+    return [
+        ClaimResult(text=f"claim {i}", claim_type=t, verdict=Verdict.CONFIRMED, note="n")
+        for i, t in enumerate(types)
+    ]
+
+
+def test_a_check_that_found_only_nouns_says_so():
+    """The Gdansk shape, and the reason this function exists.
+
+    Nine confirmed and one anachronism on a scene salted with three procedural
+    errors, none of which was ever extracted. Every stamp was honest; the
+    summary was not, because nothing said which kinds of claim had been looked
+    at. The note has to name the absence, not just the presence.
+    """
+    note = verdicts._scope_note(_typed("object", "object", "technology", "geography"))
+
+    assert "examined 4 claims" in note
+    assert "objects" in note and "technology" in note and "places" in note
+    assert "not examined" in note, "the absence is the half that matters"
+    assert "how people behaved" in note
+
+
+def test_a_check_that_did_reach_the_verbs_claims_no_gap():
+    """The warning has to be earned, or it becomes noise a reader learns to
+    skip past on the checks where it is true."""
+    note = verdicts._scope_note(_typed("object", "behavior", "timing"))
+
+    assert "examined 3 claims" in note
+    assert "not examined" not in note
+    assert "Nothing here is a claim about" not in note
+
+
+def test_the_note_never_counts_what_it_did_not_find():
+    """It says a KIND is missing, never a number of missed claims.
+
+    Knowing how many unexamined assertions a scene held would mean having found
+    them, and anything findable would have been checked. A number here would be
+    the same invention the hydration and downgrade rules exist to refuse.
+    """
+    note = verdicts._scope_note(_typed("object", "object", "object"))
+
+    assert "3 claims" in note, "it counts what it examined"
+    # No second number anywhere: nothing claims a count of what was missed.
+    assert len(re.findall(r"\d+", note)) == 1
+
+
+def test_a_scene_with_no_claims_gets_no_scope_note():
+    """`cover_note` already says the scene asserted nothing about the world.
+    A second sentence listing what was not examined would be true and useless."""
+    assert verdicts._scope_note([]) == ""
+
+
+def test_annotate_puts_the_scope_note_on_the_result():
+    """Computed in the annotator rather than in a renderer, for the same reason
+    the `verified` rule is: the MCP door hands this payload to an agent with no
+    renderer between it and the reader."""
+    claims = [Claim(text="a 1961 Impala", claim_type="object")]
+    prose = "- confirmed | a 1961 Impala | https://cars.example/i | Matches."
+    ledger = SourceLedger()
+    ledger.record("verifier", [{"url": "https://cars.example/i", "title": "I",
+                                "excerpts": ["The 1961 Impala."]}])
+
+    result = verdicts.annotate(prose, claims, SourceLedger(), ledger, False)
+
+    assert "examined 1 claim" in result.scope_note
+    assert "not examined" in result.scope_note

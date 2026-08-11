@@ -746,6 +746,11 @@ async def _check_scene(arguments: dict, calls: Calls, identity) -> dict:
     ]
     if result.get("cover_note"):
         lines.append(result["cover_note"])
+    # Directly under the tally, because the tally is what it qualifies. A count
+    # of confirmed claims reads as a verdict on the whole scene unless the next
+    # sentence says which kinds of claim were looked at.
+    if result.get("scope_note"):
+        lines.append(result["scope_note"])
     provenance = _provenance(claims)
     if provenance:
         lines.append(provenance)

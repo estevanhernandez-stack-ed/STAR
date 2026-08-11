@@ -181,6 +181,10 @@
    sources of its own. Styled as a statement, NOT as an alert: no oxide, no
    border colour that means "flagged". It is the same .docket-note register
    web/app.js's partial room already uses, for the same reason. */
+/* The scope note sits with the cover note: same voice, same weight. It is the
+   department qualifying its own tally, so it must not read as a warning banner
+   the eye learns to skip, nor as fine print. */
+.check-scope,
 .check-cover {
   margin: 1.25rem 0 0;
   max-width: 74ch;
