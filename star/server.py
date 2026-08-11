@@ -103,6 +103,30 @@ async def _deny_framing(request: Request, call_next):
     response = await call_next(request)
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
+
+    # REVALIDATE, ALWAYS, unless the handler already said something stricter.
+    #
+    # StaticFiles sends an `etag` and a `last-modified` and no `Cache-Control`
+    # at all, which leaves a browser applying HEURISTIC freshness: it may serve
+    # a stored copy for a while without asking whether it is still current.
+    # This app has no build step, so nothing is content-hashed — `consent.js` is
+    # `consent.js` forever — and the only signal a deploy happened is the etag
+    # nobody was required to check.
+    #
+    # Measured 2026-08-10, and it cost a wrong diagnosis before it cost
+    # anything else: a fix deployed correctly, `curl` returned the new file, and
+    # the browser kept enforcing the old page's Content-Security-Policy. The
+    # deploy had taken and the reader had not. On a demo that is a recording of
+    # a version nobody shipped.
+    #
+    # `no-cache` is not `no-store`: the copy is kept and revalidated, so the
+    # etag turns almost every request into a 304 with no body. Cheap for a
+    # single-instance service and correct for one whose filenames never change.
+    #
+    # Never overwrite a handler that set its own. `/oauth/token` sends
+    # `no-store` because its body is a bearer credential, and quietly relaxing
+    # that to `no-cache` here would put an access token in a proxy's store.
+    response.headers.setdefault("Cache-Control", "no-cache")
     return response
 
 _runner = InMemoryRunner(agent=build_room, app_name="star")
