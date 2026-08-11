@@ -157,20 +157,54 @@ function verdictOf(claim) {
    than reconstructed from six call sites.
 --------------------------------------------------------------------- */
 
-const VERDICT_READING = {
-  confirmed: "The department read this line as supported by the sources below.",
-  anachronism:
-    "The department read this line as out of period for what the sources below describe.",
-  unverifiable: "The department could not settle this line.",
+/* The scope on the stamp, as a slug rather than a sentence.
+ *
+ *  This was three sentences beginning "The department read this line as…",
+ *  rendered as a full paragraph directly above the note. Rule 11's own test
+ *  condemns them: strike every verb from "The department read this line as
+ *  supported by the sources below" and it says exactly the same thing, so it
+ *  was a mark all along. It also ranked above the answer, which is rule 10.
+ *
+ *  WHY "the sources below" IS SAFE HERE, and why this comment exists at all.
+ *  The measuring stick's amendment "a mark has no quantifier" was written after
+ *  the intake shipped "the source it came from" and had to be killed at
+ *  critical severity, because star/findings.py can keep a Finding whose every
+ *  cited URL failed the ledger check. A definite plural that a payload can
+ *  contradict is exactly that defect.
+ *
+ *  It cannot happen on these two. star/verdicts.py:275-277 downgrades any
+ *  `confirmed` or `anachronism` carrying no citations to `unverifiable` before
+ *  the payload is ever written, so those two verdicts always arrive with at
+ *  least one source and the phrase asserts nothing the card cannot show. The
+ *  third makes no claim about sources at all, which is the one case that can
+ *  legitimately have none. The guarantee is a mechanism, not a hope — but it
+ *  lives in another file, so it is named here rather than left to be
+ *  rediscovered. */
+const VERDICT_SLUG = {
+  confirmed: "as read from the sources below",
+  anachronism: "out of period for the sources below",
+  unverifiable: "not settled",
 };
 
-/* The scope, stated next to every verdict. Two sentences: what a verdict is,
-   and what the reader still has to do themselves. The second is the one that
-   cannot be cut — web/clip.js's ledgerCheckCopy ends on the same beat, for the
-   same documented reason. */
+/* Two sentences: what a verdict is, and what the reader still has to do
+   themselves. The second is the one that cannot be cut — web/clip.js's
+   ledgerCheckCopy ends on the same beat, for the same documented reason, and
+   the measuring stick's rule 9 records that an earlier attempt to relocate this
+   paragraph was rejected for dropping exactly that clause.
+
+   It now renders BELOW the citations rather than above them. Rule 10 is that
+   the answer outranks the disclaimer, and once the source quotation is the
+   answer — which is what it is, decided 2026-08-11 — a standing paragraph
+   above the evidence is that violation restated. "Each source below" became
+   "Each source here" for the same reason: the direction word was the only
+   thing in it that depended on the position.
+
+   The stamp is still scoped, which is what the file header requires. VERDICT_SLUG
+   sits beside it and says the verdict is a reading of the sources, so no card
+   renders a stamp with nothing qualifying it. */
 const VERDICT_SCOPE =
   "A verdict is the department's reading of the sources shown, not a check of " +
-  "the line against the world. Each source below opens where it came from, so " +
+  "the line against the world. Each source here opens where it came from, so " +
   "you can read it and judge for yourself.";
 
 /* An unverifiable with no source at all has nothing to hand the reader, so the
@@ -366,6 +400,10 @@ function buildRailCard(claim) {
   const stamp = el("span", "verdict-stamp", verdict);
   stamp.setAttribute("data-verdict", verdict);
   head.appendChild(stamp);
+  // The scope rides with the stamp instead of taking a paragraph above the
+  // answer. Between the stamp and the claim type, because it qualifies the
+  // stamp and not the type.
+  head.appendChild(el("span", "rail-slug", VERDICT_SLUG[verdict]));
   const type = String(claim?.claim_type || "").trim();
   if (type) head.appendChild(el("span", "rail-type", type.replace(/_/g, " ")));
   card.appendChild(head);
@@ -373,8 +411,11 @@ function buildRailCard(claim) {
   const text = String(claim?.text || "").trim();
   if (text) card.appendChild(el("p", "rail-claim", text));
 
-  card.appendChild(el("p", "rail-line", VERDICT_READING[verdict]));
-
+  // The note, when the verifier wrote one. It is a QUALIFIER and not the
+  // answer — star/agents/script_check.py:196-199 instructs that it is optional
+  // on confirmed and anachronism, "the year the thing actually arrives or the
+  // place it belongs" — and 4 of the 9 claims in the filed Gdansk check carry
+  // none. Nothing is invented to fill that gap. The source below answers those.
   const note = String(claim?.note || "").trim();
   if (note) card.appendChild(el("p", "rail-line", note));
 
@@ -387,15 +428,19 @@ function buildRailCard(claim) {
     .map((citation, index) => buildCitation(citation, origins[index]))
     .filter(Boolean);
 
-  card.appendChild(
-    el("p", "rail-caveat", items.length ? VERDICT_SCOPE : VERDICT_SCOPE_NO_SOURCES)
-  );
-
   if (items.length) {
+    // The answer, and therefore first of these three. The caveat that used to
+    // sit above it now follows it, because it describes what is above it.
     card.appendChild(el("p", "rail-sublegend", "What answered it"));
     const list = el("ul", "rail-citations");
     for (const item of items) list.appendChild(item);
     card.appendChild(list);
+    card.appendChild(el("p", "rail-caveat", VERDICT_SCOPE));
+  } else {
+    // Nothing to rank it below. VERDICT_SCOPE_NO_SOURCES is written for a card
+    // with no citation list at all, and moving a paragraph under an absent list
+    // would put it nowhere.
+    card.appendChild(el("p", "rail-caveat", VERDICT_SCOPE_NO_SOURCES));
   }
 
   const unsourced = (Array.isArray(claim?.unsourced_urls) ? claim.unsourced_urls : [])

@@ -88,6 +88,20 @@
         "F-025"
       ],
       "closeOut": "ran 2026-08-11 pre-merge. F-025 closed in one commit, because the module, both wirings and both comment corrections are one behaviour change with one test. The format check the brief demanded first paid for itself: both renderers described an HTML payload with entities, and across all 104 stored excerpts 5 carry <strong>, none carry an entity, and the large majority are markdown. It also corrected the brief itself, which said to drop structural lines and join what was left — joining manufactures a passage the page never contained, so a structural line now ends a run instead. Close-out found two defects the wave introduced: scriptcheck.js's corrected comment cited 2 <strong> excerpts against the 104-excerpt sentence when 2 was the single-room figure and 5 is the right one, and the new test carried a dead binding. Results measured on both surfaces: 0 of 104 rail excerpts and 0 of 12 drawer clips carry markup, median 1462 to 244 characters, the Walkman card 1730px to 764px, and 0 of 9 cards need scrolling where 9 of 9 did."
+    },
+    {
+      "id": 5,
+      "name": "the-answer-outranks-the-gloss",
+      "status": "clean",
+      "findings": [
+        "F-002"
+      ],
+      "closedClean": [
+        "F-002"
+      ],
+      "branch": "glow/wave-5-the-answer-outranks-the-gloss",
+      "rationale": "The highest-ranked row in the register, blocked for two waves on one builder decision: is the answer the note, or the source quotation? Answered 2026-08-11 as the source quotation, which made it a frontend wave with no contract risk. Wave 4 is what made that answer available — before it, a no-note card fell back to 2900 characters of raw markdown.",
+      "closeOut": "Built and closed the same day. The row's second 'hole to close first' was a misreading rather than a hole: the verifier prompt makes the note optional on confirmed and anachronism, so a card without one is the designed common case (4 of 9 real claims), and the card had been built as though the note were the answer. Citation block is now a median 62.2% of the card where the note was 1.2%. The quantifier trap on 'the sources below' was checked against verdicts.py:275-277 rather than assumed, and the test pins the server's guarded tuple to the card's promising slugs."
     }
   ]
 }

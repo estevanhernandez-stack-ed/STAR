@@ -422,6 +422,23 @@
   margin: 0;
 }
 
+/* The scope on the stamp, riding beside it instead of taking a paragraph above
+   the answer. Lower case on purpose: the claim type next to it is uppercase and
+   these two must not read as one run of label text, and "AS READ FROM THE
+   SOURCES BELOW" set in caps is a shout where this is an aside.
+
+   No new colour pair. --ink at 0.75 on onionskin is 6.24:1, the value
+   .rail-type already carries and the same measurement recorded there, so
+   invariant 5 has nothing new to restate. */
+.rail-slug {
+  margin-left: 0.6rem;
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+  letter-spacing: 0.03em;
+  color: var(--ink);
+  opacity: 0.75; /* 6.24:1 on onionskin — the pair .rail-type records */
+}
+
 .rail-type {
   margin-left: 0.6rem;
   font-family: var(--slug);

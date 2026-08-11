@@ -209,6 +209,39 @@ drawer clips carry markup, median **1462 to 244** characters, the Sony Walkman
 card **1730px to 764px**, its citation block **82% to 59.6%**, and **0 of 9**
 cards need scrolling where 9 of 9 did.
 
+**Wave 5 — the answer outranks the gloss.** `F-002`, the highest-ranked row in
+the register, closed 2026-08-11. It was blocked for two waves on a question only
+the builder could answer, and the answer was **the source quote is the answer**.
+
+The row's "two holes to close first" turned out to be one hole and one
+misreading. `REASON_LINE` did need a slot and has one, between the note and the
+evidence. But "a `confirmed` card can render with no fact line at all" is not a
+hole — `star/agents/script_check.py:196-199` tells the verifier the note is
+*optional* on `confirmed` and `anachronism`, so a card without one is the
+designed common case. **4 of the 9 claims in the filed check carry no note.** The
+card had been built as though the note were the answer, and that mismatch is what
+F-002 was circling for two waves without naming.
+
+What shipped: `VERDICT_READING` became `VERDICT_SLUG` beside the stamp, which
+rule 11's own verb test had already condemned — strike the verbs from "The
+department read this line as supported by the sources below" and it says the same
+thing. `.rail-caveat` moved below the citations, keeping both sentences, because
+the second carries rule 2's click-through beat and rule 9 records an earlier
+relocation rejected for dropping it.
+
+**The quantifier trap was checked rather than assumed.** "the sources below" is a
+definite plural, and the stick's own amendment exists because the intake once
+shipped one a payload could contradict. `star/verdicts.py:275-277` downgrades any
+`confirmed` or `anachronism` with no citations to `unverifiable` before the
+payload is written, so the two verdicts that promise sources always have one. The
+test asserts the server's guarded tuple and the card's promising slugs stay the
+same two verdicts, so the card cannot start asserting a source it may not have.
+
+Measured after, across all nine cards: the citation block is a median **62.2%**
+of the card (range 49.1–67.4%), where the note it replaced as "the answer" was
+**1.2%** on the Walkman card. Order is now head, claim, note, reason, legend,
+citations, caveat. Still 0 of 9 needing scroll.
+
 **Wave 4 — the evidence itself.** Scoped 2026-08-11 from a measurement of the
 citation card, taken because the builder's own reaction to `13-check-annotated`
 mid-campaign was that it "looks like a hackathon demo app" and `F-002` was the
@@ -250,7 +283,7 @@ findings, and that rule is worth nothing if it bends when the fix is one line.
 | id | surface | lens | sev | vis | evidence | verdict | fix direction | status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | F-001 | rail, during a build | qol | 4 | 4 | `app.js:411-416`; `shell.js:119-127`; `server.py:895-915`, `:836`; `06-progress-running` | A run in flight has no rail row — the capture shows "Nothing filed yet" beside four live SEARCHING drawers — because no `refreshRail` follows the POST, so `shell.js`'s already-written running-marker branch is unreached on the build path. "New room" then calls `resetProgress` → `closeStream`, and `generate()` is a bare `while True` with no disconnect check while the pipeline is a separate task held by a strong ref, so the searches and Gemini calls keep running and keep spending. | Call `refreshRail(runId)` immediately after `POST /api/rooms` succeeds. Route that row's click to `showRunning()` when `run_id === liveRunId`. Arm "New room" while a run is live using the two-press pattern `account.js:213` already ships. Note: the room IS persisted at creation, so the work is not lost — what is lost is the live view and any signal that money is still being spent. The row will read "Untitled room · Era unstated" until the terminal write (`store.py:62-63`). | clean |
-| F-002 | citation rail card | copy | 4 | 4 | `scriptcheck.js:321-368`; `:147-152`; `:339-340`; `13-check-annotated` | Rule 10. The answer renders **fourth** — stamp, claim, `VERDICT_READING`, then the fact — and the fact and the explanation above it are both `el("p", "rail-line", …)`, byte-identical treatment, so nothing ranks the answer over the gloss on it. | Cut `VERDICT_READING` from a paragraph to a slug beside the stamp, keeping the source-relativizer: confirmed → "as read from the sources below"; anachronism → "out of period for the sources below"; unverifiable → "not settled". **Two holes to close first:** `REASON_LINE` (`:342-343`) renders between note and scope on a budget-exhausted claim and the proposed order has no slot for it; and `verdicts.py:91` requires a note only for `unverifiable`, so a `confirmed` or `anachronism` card can render with no fact line at all, where the slug becomes the entire answer. | open |
+| F-002 | citation rail card | copy | 4 | 4 | `scriptcheck.js:321-368`; `:147-152`; `:339-340`; `13-check-annotated` | Rule 10. The answer renders **fourth** — stamp, claim, `VERDICT_READING`, then the fact — and the fact and the explanation above it are both `el("p", "rail-line", …)`, byte-identical treatment, so nothing ranks the answer over the gloss on it. | Cut `VERDICT_READING` from a paragraph to a slug beside the stamp, keeping the source-relativizer: confirmed → "as read from the sources below"; anachronism → "out of period for the sources below"; unverifiable → "not settled". **Two holes to close first:** `REASON_LINE` (`:342-343`) renders between note and scope on a budget-exhausted claim and the proposed order has no slot for it; and `verdicts.py:91` requires a note only for `unverifiable`, so a `confirmed` or `anachronism` card can render with no fact line at all, where the slug becomes the entire answer. | clean |
 | F-003 | progress, on reload mid-build | qol | 4 | 3 | `auth.js:874-890`, `:897-908`, `:557`; `app.js:1114-1144`, `:321`, `:459-462`; `server.py:271-293`, `:895-913`, `:593`; `scripts/deploy.sh:72-73` | Reload, crash or a locked phone during a 146-420s build drops the only stream key, and the app's own copy admits the wall. The resume machinery already exists and is wired to exactly one trigger (the OAuth return): `stashLiveRun` writes to sessionStorage, `takeStashedRun` deletes on read, `openStream({resumed:true})` replays from event 0 with a monotonic guard, `run["events"]` is append-only, `_evict_old_runs` never touches a running entry, and deploy pins `--max-instances=1 --min-instances=1` so the reconnect lands on the same warm process. | Export `stashLiveRun` and call it from `openStream()` on every run, not only from `beginGoogleLink`; `init()`'s existing `resumeStashedRun()` picks it up. Add a companion clear-on-terminal export — `endRun` nulls the ids but nothing removes the stash, and an unstashed finished run would reopen that room on the next load. Rewrite `app.js:1141`'s OAuth-specific timeline line. ~10-15 lines, not zero. Covers reload and same-tab lock; not a closed tab. | clean |
 | F-004 | check panel, via the rail | qol | 4 | 3 | `shell.js:136`, `:145-151`; `app.js:613`, `:627`; `scriptcheck.js:666-670`, `:681`, `:653` | Clicking the room you are **already in** — the natural way back from Your card, which has no back control — destroys unsubmitted scene text. Every rail row wires to `loadRoom` with no comparison to the active run; `showResults` runs `resetRoomView` first, which calls bare `resetCheck` → `clearCheck({keepScene:false})` → `els.input.value = ""`. Unrecoverable: no storage touches `#scene`, and an in-page `.value = ""` with no navigation is outside browser form restore. | `resetRoomView(runId)` → `resetCheck({ keepScene: runId === currentRoomId })`. Note the existing guard is not merely late, it is **disarmed**: `resetCheck` sets `roomId = null` before `setCheckRoom`'s `if (runId === roomId) return` can match. `clearCheck`'s `keepScene` flag exists but all three call sites pass `false`, so there is no live path to inherit. Also give the account panel a back control. | clean |
 | F-005 | progress, terminal error | qol | 4 | 3 | `app.js:545-549`, `:328`, `:577-584`; `index.html:151`; `shell.css:667-670`, `:685-689`; `drawer.js:375-382` | After a **paid, failed** build the heading still reads "The department is working" with a live animated ellipsis. Nothing anywhere writes `#progress-panel`'s h2 — the error branch is `endRun` + `addEntry` + re-enable, with no `stage()` call — and `.ellipsis::after`'s `pulse` animation is killed only by `prefers-reduced-motion`. `sweepUnfiledDrawers` renders the same "Did not file" message in every unfiled drawer. | Rewrite the panel heading on `ev.type === "error"`. That is the load-bearing half and the half no code does. Mount the failure message above the drawer grid rather than into the timeline below it, and add a "Start a new room" control that preserves the treatment. **Correction to the lens:** the error line is NOT off-screen — `addEntry` calls `scrollIntoView` on every appended entry including this one. The defect is a stale heading contradicting the message, not a hidden message. | clean |
