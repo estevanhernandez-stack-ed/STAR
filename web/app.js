@@ -536,7 +536,13 @@ async function buildRoom() {
   }
   if (!token) {
     showAuthError(true);
+    // Re-enable, THEN focus. Disabling the button the reader pressed dropped
+    // focus to <body>, and re-enabling does not hand it back — measured in
+    // Chromium: focus build-btn, disable, activeElement is BODY, re-enable,
+    // still BODY. focus() on a disabled element is a no-op, so the order here
+    // is load-bearing rather than stylistic.
     $("build-btn").disabled = false;
+    $("build-btn").focus();
     return;
   }
   showAuthError(false);
@@ -579,6 +585,11 @@ async function buildRoom() {
   } catch (err) {
     $("intake-error").textContent = err.message;
     $("build-btn").disabled = false;
+    // The other exit, and the same reason. F-010 gave this error span
+    // role="alert" so it announces wherever focus sits; an alert still does not
+    // give a keyboard reader anywhere to stand, and without this they tab from
+    // the top of the document.
+    $("build-btn").focus();
     return;
   }
 
@@ -744,7 +755,19 @@ function openStream(runId, streamKey, { resumed = false } = {}) {
       refreshRail(runId);
     } else if (ev.type === "error") {
       endRun(source);
-      addEntry("error", `Something broke: ${escapeHtml(ev.message)}`);
+      // The server's sentence alone. This read "Something broke: The department
+      // hit an unexpected problem and stopped" — the failure stated twice, the
+      // second time in a register nothing else in the app uses. Both messages
+      // star/server.py can send here declare the failure in their first clause
+      // ("...was stopped before anything could be filed", "...hit an unexpected
+      // problem and stopped"), so the prefix framed nothing. The bare-exception
+      // case it was written for was deleted from the server in b676afe/1798a9e
+      // because it leaked library names and a stray credential.
+      //
+      // Note for anyone tempted to lean on colour instead: #timeline li.error
+      // recolours only the 9px dot, not the text, unlike .warn which recolours
+      // both. This line is distinguished by what it says, not by how it looks.
+      addEntry("error", escapeHtml(ev.message));
       markRunFailed(ev.message);
       $("build-btn").disabled = false;
     }

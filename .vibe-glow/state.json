@@ -144,6 +144,26 @@
         "F-020"
       ],
       "closeOut": "ran 2026-08-11, three commits. The argument for the two zero-pixel rows was F-016, where the same duplication had already drifted into a visible 8px step between two stacked cards; measured 0 after. The thesis then turned up inside the wave's own evidence: two of F-017's four pairs had already drifted 0.05rem apart, so merging them moves the rail's margins by 0.8px — recorded rather than presented as a no-op. An existing test's 2.5deg rotation ceiling would have gone quietly green when the stamp moved files, and now follows the rule across both."
+    },
+    {
+      "id": 8,
+      "name": "the-last-four",
+      "status": "clean",
+      "findings": [
+        "F-015",
+        "F-022",
+        "F-023",
+        "F-024"
+      ],
+      "closedClean": [
+        "F-015",
+        "F-022",
+        "F-023",
+        "F-024"
+      ],
+      "branch": "glow/wave-8-the-last-four",
+      "rationale": "Everything left. Three of the four are one defect wearing three hats — a reader action leaving them with nowhere to stand — and two of those were filed by this campaign's own builds rather than by the audit.",
+      "closeOut": "ran 2026-08-11. Verified in the live DOM: a failed build returns focus to build-btn where it previously went to BODY, and opening a filed check lands focus back on that same row. Ten mutations caught, three of which needed the test tightened first."
     }
   ]
 }
