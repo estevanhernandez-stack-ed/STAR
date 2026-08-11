@@ -66,6 +66,21 @@ import { excerptProse } from "/excerpt.js";
 
 const VERDICTS = new Set(["confirmed", "anachronism", "unverifiable"]);
 
+/* The filed row a press should be handed back to, or null.
+ *
+ *  openFiledCheck ends by REBUILDING the filed row rather than patching it, and
+ *  the comment there argues why: loadFiledChecks reads aria-current off
+ *  currentSceneId, so one code path decides which entry is marked open and
+ *  there is no second one to disagree with it. That argument is sound and this
+ *  does not touch it — but replaceChildren destroys the button the reader just
+ *  pressed, and focus goes to <body> with it. Observed in Chromium, and the
+ *  rebuild's own comment never mentioned the cost.
+ *
+ *  Set only by openFiledCheck, so the row's OTHER caller — the check panel
+ *  opening for the first time — cannot pull focus out of whatever the reader
+ *  was using. */
+let focusFiledAfterLoad = null;
+
 /* Standard English pluralization, sibilants included — "search" takes "+es".
    The third copy of this in the app (web/clip.js exports it, web/app.js keeps
    its own), and recorded as a known duplication rather than an oversight for
@@ -982,7 +997,10 @@ async function loadFiledChecks() {
     button.setAttribute("aria-current", id === currentSceneId ? "true" : "false");
     button.addEventListener("click", () => openFiledCheck(id));
     els.filedList.appendChild(button);
+    // The same row, rebuilt. Hand the press back to it.
+    if (focusFiledAfterLoad === id) button.focus();
   }
+  focusFiledAfterLoad = null;
   els.filedRow.classList.remove("hidden");
 }
 
@@ -1011,5 +1029,6 @@ async function openFiledCheck(sceneId) {
   // one code path decides which entry is marked open and there is no second
   // one to disagree with it.
   loadedFiledFor = null;
+  focusFiledAfterLoad = sceneId;
   openedCheck();
 }

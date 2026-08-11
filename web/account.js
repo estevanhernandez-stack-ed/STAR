@@ -612,6 +612,37 @@ function draw() {
 function redraw(patch = {}) {
   card = { ...card, issued: null, issueError: "", ...patch };
   draw();
+  // A refusal the reader just caused gets the reader sent to it.
+  //
+  // Two failures render here — a failed Google link and a failed token issue —
+  // and until now neither reached a screen reader at all: no role, no live
+  // region, no focus move, on the surface holding the credential.
+  //
+  // FOCUS RATHER THAN role="alert", and the reason is mechanical. Both
+  // refusals are built WITH their text by renderAccountCard, inside a subtree
+  // draw() inserts whole; a role on a node that arrives already populated is
+  // the fragile insert-with-text alert, and unlike the progress timeline's
+  // first entry — where it costs one announcement out of many — here it is
+  // every announcement there is. renderAccountCard also has to stay pure:
+  // tests/js/test_token_retention.mjs exercises it against a stubbed document
+  // and guards that it performs no I/O of its own.
+  //
+  // Only on a patch that CARRIES one. redraw clears issueError on every other
+  // path, so an ordinary revoke or a fresh read cannot steal focus.
+  if (patch.issueError || patch.linkMessage) focusRefusal();
+}
+
+/** Send focus to the refusal this draw just put on the card.
+ *
+ *  tabindex="-1" so it can be reached programmatically and never by Tab: it is
+ *  a sentence, not a control, and a permanent stop on it would be a stop that
+ *  does nothing. The paper-surface rule in web/shell.css already gives .account
+ *  an --ink focus ring at 8.63:1 on manila, so no new pair. */
+function focusRefusal() {
+  const refusal = panel && panel.querySelector(".account-refusal");
+  if (!refusal) return;
+  refusal.setAttribute("tabindex", "-1");
+  refusal.focus();
 }
 
 async function failureDetail(res) {
