@@ -674,7 +674,7 @@ test("an unattached session cannot approve, and is told why", () => {
   // Disabled AND explained. A control that is greyed out and silent tells a
   // reader they are stuck without telling them what is missing.
   const why = text(root);
-  assert.match(why, /not attached to an account/i);
+  assert.match(why, /not signed in to an account/i);
   assert.match(why, /nobody can recover/i, "says what approving anyway would cost");
   assert.equal(
     approve.getAttribute("aria-describedby"),
@@ -688,7 +688,7 @@ test("a linked session may approve", () => {
     (b) => b.getAttribute("data-decision") === "approve"
   );
   assert.notEqual(approve.disabled, true);
-  assert.doesNotMatch(text(root), /not attached to an account/i);
+  assert.doesNotMatch(text(root), /not signed in to an account/i);
 });
 test("the way out is offered beside the refusal, not instead of it", () => {
   let attached = 0;
@@ -701,17 +701,17 @@ test("the way out is offered beside the refusal, not instead of it", () => {
   const attach = withClass(root, "consent-attach")[0];
   assert.ok(attach, "an unattached reader is given something to press");
   assert.equal(attach.nodeName, "BUTTON");
-  assert.match(text(attach), /attach a google account/i);
+  assert.match(text(attach), /sign in with google/i);
   attach.dispatch("click");
   assert.equal(attached, 1, "pressing it starts the link");
   // And the refusal is still on screen. Replacing the reason with the remedy
   // would leave a reader who declines the sign-in with no idea what happened.
-  assert.match(text(root), /not attached to an account/i);
+  assert.match(text(root), /not signed in to an account/i);
 });
 test("an unattached reader with no attach handler is refused, not stranded silently", () => {
   const root = renderConsent(session("this browser's anonymous session", false), noHandlers());
   assert.equal(withClass(root, "consent-attach").length, 0, "no control that cannot work");
-  assert.match(text(root), /not attached to an account/i, "the reason survives anyway");
+  assert.match(text(root), /not signed in to an account/i, "the reason survives anyway");
 });
 
 let failed = 0;

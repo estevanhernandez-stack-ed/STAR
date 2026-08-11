@@ -52,11 +52,19 @@
        policy exactly correct for a page with no identity silently stopped the
        page from ever having one. It failed the honest way at least: loudly in
        the console and visibly on screen, rather than by approving a grant on
-       behalf of nobody. -->
+       behalf of nobody.
+
+       `img-src` is 'self' rather than 'none' for one file: /favicon.svg.
+       The page still renders no image of its own, and an origin that can
+       serve its own icon is not a widening worth the tab reading as
+       somebody else's site — which is what a missing favicon leaves a
+       client free to guess at. -->
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'none'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; object-src 'none'; base-uri 'none'; form-action 'none'" />
+    content="default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="referrer" content="no-referrer" />
   <meta name="robots" content="noindex, nofollow" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/favicon.svg" />
 
   <link rel="stylesheet" href="/tokens.css" />
   <link rel="stylesheet" href="/consent.css" />

@@ -220,13 +220,22 @@ const WORKING = "Sending your answer to the department.";
    reason belongs beside the thing it explains. Names what is missing, what it
    would cost to approve anyway, and what to do instead. */
 const UNATTACHED =
-  "This browser is not attached to an account, so there is nothing here worth " +
-  "granting. Rooms filed by an unattached session live with this browser " +
+  "This browser is not signed in to an account, so there is nothing here " +
+  "worth granting. Rooms filed by a signed-out session live with this browser " +
   "alone, and a client given access to one would hold a lasting credential to " +
-  "an account nobody can recover. Attach a Google account and the request " +
-  "comes back with your own rooms behind it.";
+  "an account nobody can recover. Sign in and the request comes back with " +
+  "your own rooms behind it. Anything this browser filed while signed out " +
+  "stays where it is and does not come along.";
 
-const ATTACH = "Attach a Google account, then come back";
+/* SIGN IN, not "attach". The word matters and the first version had it wrong.
+   Attaching is what an anonymous session does ONCE, to become an account.
+   Firebase then holds that Google account against exactly one uid forever, so
+   a reader who has already attached and arrives in a browser without their
+   session — a new machine, a cleared cache, the browser a desktop client
+   opened for this very screen — can only ever be refused if asked to attach
+   again. Signing in is the thing that works for both: it returns the account
+   they already have, or makes one if they have none. */
+const ATTACH = "Sign in with Google";
 const ATTACHING = "Sending you to Google. This request is held until you return.";
 
 const UNREACHABLE =
@@ -685,7 +694,14 @@ async function start() {
          *  made at all. */
         onAttach: async () => {
           const { beginGoogleLink } = await import("/auth.js");
-          await beginGoogleLink({ returnTo: location.pathname + location.search });
+          await beginGoogleLink({
+            returnTo: location.pathname + location.search,
+            // Sign in, never link. This page is reached by readers who
+            // mostly already have an account, and asking Firebase to attach
+            // a Google credential it already holds against another uid is
+            // refused every time with no way forward.
+            mode: "signin",
+          });
         },
       })
     );

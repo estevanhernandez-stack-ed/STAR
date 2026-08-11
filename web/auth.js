@@ -527,7 +527,7 @@ const REFUSAL_CODES = {
  *  build in flight comes back unstreamable without this. The run itself
  *  survives — the asyncio task keeps going and _persist writes at terminal
  *  status — so what is being rescued is the stream, not the research. */
-export async function beginGoogleLink({ returnTo } = {}) {
+export async function beginGoogleLink({ returnTo, mode = "link" } = {}) {
   const clientId = googleClientId();
   if (!clientId) return outcome("unavailable");
 
@@ -547,7 +547,11 @@ export async function beginGoogleLink({ returnTo } = {}) {
   // the return, so it must not start the trip either. This is the "blocked"
   // failure named in prd.md, in the form a redirect flow can actually take —
   // there is no popup here to be blocked.
-  if (!writeStash(LINK_KEY, { state, nonce, uid, returnTo: target })) {
+  // `mode` rides along so the return trip knows which of two events this
+  // was. It is decided here, by the surface that asked, and never inferred
+  // on the way back: a link that quietly became a sign-in would swap a
+  // reader's rooms for a different set without anyone asking.
+  if (!writeStash(LINK_KEY, { state, nonce, uid, returnTo: target, mode })) {
     return outcome("blocked");
   }
   stashLiveRun();
@@ -666,8 +670,32 @@ async function finishGoogleLink(fragment) {
     return outcome("state-mismatch", { returnTo });
   }
 
-  const anonToken = await getIdToken();
-  if (!anonToken) return outcome("network", { returnTo });
+  // SIGN IN, or LINK. One call, one field, two entirely different events.
+  //
+  // Linking is the default and the whole design: it preserves the uid, so the
+  // rooms already on screen come along. It is also the only thing this file
+  // could do until now, and that turned out to be a wall rather than a
+  // simplification. Firebase attaches a Google account to exactly ONE uid, so a
+  // reader who has already linked once and comes back in a browser that does
+  // not have their session — a new machine, a cleared cache, the browser a
+  // desktop client opened for an OAuth consent screen — can only ever be
+  // refused. FEDERATED_USER_ID_ALREADY_LINKED, forever, with no way forward.
+  //
+  // `prd.md > Identity That Outlives The Browser` anticipated exactly this and
+  // said to "offer to sign in as that account instead, and say in the same
+  // breath that the rooms currently on screen would not come along." The
+  // message shipped. The mechanism did not, and it was one field away the whole
+  // time: dropping `idToken` turns this same request from a link into a sign-in
+  // that returns the existing account.
+  //
+  // Which one runs is the caller's, stashed before the redirect, never inferred
+  // here. Silently falling back from link to sign-in would swap a reader's
+  // rooms for a different set without asking, which is the one thing the PRD
+  // says never to do.
+  const signingIn = stash?.mode === "signin";
+
+  const anonToken = signingIn ? null : await getIdToken();
+  if (!signingIn && !anonToken) return outcome("network", { returnTo });
 
   // Captured before the exchange so the abort below has something exact to put
   // back, rather than a reconstruction.
@@ -686,7 +714,10 @@ async function finishGoogleLink(fragment) {
         // to the account represented by this ID token." Drop it and the same
         // call signs in as a brand new account instead, with a new uid and an
         // empty rail. Everything else in this request is routine.
-        idToken: anonToken,
+        // Omitted entirely when signing in. `undefined` would serialise away,
+        // but a spread says the intent out loud: the field is not "empty" in
+        // that mode, it is not part of the request.
+        ...(signingIn ? {} : { idToken: anonToken }),
         returnSecureToken: true,
         returnIdpCredential: true,
       }),
@@ -716,7 +747,14 @@ async function finishGoogleLink(fragment) {
   // the account it already was. Item 1 measured localId coming back
   // byte-identical, so this branch is not expected to fire; it is here because
   // the cost of being wrong about that is the worst outcome in the file.
-  if (data.localId !== stash.uid) {
+  //
+  // NOT CHECKED WHEN SIGNING IN, and the difference is the entire point. A
+  // different localId is the failure that defines linking and the success that
+  // defines signing in: the reader asked to become the account this Google
+  // credential already owns, so a uid that matches the throwaway session they
+  // arrived in would mean the switch did not happen. The rooms not coming along
+  // is what they were told would happen, on the screen where they chose it.
+  if (!signingIn && data.localId !== stash.uid) {
     restoreStored(priorRefreshToken);
     return outcome("uid-mismatch", { returnTo });
   }
@@ -727,7 +765,7 @@ async function finishGoogleLink(fragment) {
 
   return {
     status: "linked",
-    reason: "linked",
+    reason: signingIn ? "signed-in" : "linked",
     message: "",
     uid: data.localId,
     provider: data.providerId || "google.com",

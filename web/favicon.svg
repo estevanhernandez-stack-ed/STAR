@@ -1,0 +1,30 @@
+<!-- The rail's own mark, at 32 pixels.
+
+     `web/index.html` opens with <span class="star-mark">✶</span> on cabinet
+     green, and this is that same mark drawn as geometry rather than as a glyph
+     — a favicon cannot rely on a self-hosted font, and the zero-third-party
+     rule means it will never fetch one.
+
+     Palette straight from web/tokens.css and nothing new: --cabinet #232B27
+     behind, --manila #D2B98C for the mark, --aniline #5C3D91 for the single
+     filed stamp at its centre. Flat fills only. DIRECTION's rule against
+     gradients is not a stylesheet rule, it is the design's, and a favicon is
+     the easiest place in a project to quietly break it.
+
+     Drawn on a 32-unit grid with a full-bleed ground, because a transparent
+     favicon inverts against a dark client chrome and this mark is manila-on-
+     green in every other place it appears. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img"
+     aria-label="STAR">
+  <rect width="32" height="32" rx="5" fill="#232B27"/>
+  <!-- Six points: one vertical bar, two crossed diagonals. The same six-armed
+       ✶ the rail prints, kept as three strokes so it stays legible at 16px
+       where a filled star closes up into a blob. -->
+  <g stroke="#D2B98C" stroke-width="2.6" stroke-linecap="round">
+    <line x1="16" y1="4.5" x2="16" y2="27.5"/>
+    <line x1="6.2" y1="10.2" x2="25.8" y2="21.8"/>
+    <line x1="6.2" y1="21.8" x2="25.8" y2="10.2"/>
+  </g>
+  <!-- The stamp. Aniline, flat, centred: filed. -->
+  <circle cx="16" cy="16" r="3.4" fill="#5C3D91"/>
+</svg>
