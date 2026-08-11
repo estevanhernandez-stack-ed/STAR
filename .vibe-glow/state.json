@@ -71,6 +71,19 @@
         "F-023",
         "F-024"
       ]
+    },
+    {
+      "id": 4,
+      "name": "the-evidence-itself",
+      "status": "open",
+      "findings": [
+        "F-025"
+      ],
+      "rationale": "One finding, because it is the app's primary evidence surface and no lens filed it. Measured on the filed Gdansk room: 17 of 17 citation-rail excerpts and 10 of 12 drawer clips render raw scraped markdown as literal characters, uncapped, at a median of 1462 characters. The citation block is 82% of a card whose answer is 1.2% of it. F-002 was scoped alongside this and deliberately held back: its real fix is a star/verdicts.py contract change that would push unannotated claims into unverifiable, and that needs its own measurement rather than a decision made while building something else.",
+      "branch": "glow/wave-4-the-evidence-itself",
+      "deferred": {
+        "F-002": "Held for wave 5. Its fix direction demotes VERDICT_READING to a slug, which would make the four of nine cards that carry no note worse rather than better. Blocked on whether confirmed and anachronism should require a note the way unverifiable already does."
+      }
     }
   ]
 }
