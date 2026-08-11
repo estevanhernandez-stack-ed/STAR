@@ -450,6 +450,28 @@ export function renderCheckResult(payload, { onDelete = null } = {}) {
   const scene = typeof payload?.scene === "string" ? payload.scene : "";
   const root = el("div", "check-result-body");
 
+  // A region, named by its own meter line, and focusable without being a tab
+  // stop. mountResult moves focus here when a result lands, which is the only
+  // signal that a paid request finished at all.
+  //
+  // Named by the meter rather than a written heading for two reasons. The name
+  // then says what actually landed — "9 claims · 1 live search · filed 10 AUG
+  // 2026" — instead of a label that says a result is a result. And the values
+  // come from the payload, so it is a mark derived from data, not authored
+  // beside it.
+  //
+  // NOT aria-labelledby at the meter's id, which is the obvious way to write
+  // this and does not work. Chromium computes NO NAME for a region whose
+  // labelledby points at its own descendant; the same attribute pointing at a
+  // node outside the region names it correctly. Verified both ways in the live
+  // accessibility tree on 2026-08-11 — the id version passed every source
+  // assertion while shipping an unnamed region, which is the failure mode this
+  // comment exists to stop someone repeating.
+  const meterText = meterLine(payload, claims);
+  root.setAttribute("role", "region");
+  root.setAttribute("tabindex", "-1");
+  root.setAttribute("aria-label", meterText);
+
   // The department's own line about a thin result, first, before the counts
   // that would otherwise read as an empty tally. star/models.py writes it for
   // exactly two cases and neither is a failure.
@@ -465,7 +487,9 @@ export function renderCheckResult(payload, { onDelete = null } = {}) {
   const scope = String(payload?.scope_note || "").trim();
   if (scope) root.appendChild(el("p", "check-scope", scope));
 
-  root.appendChild(el("p", "check-meter", meterLine(payload, claims)));
+  // Same string as the region's name above, deliberately: the name is what the
+  // reader hears on the way in, this is what they read once they are there.
+  root.appendChild(el("p", "check-meter", meterText));
   for (const line of uncertaintyLines(payload, claims)) {
     root.appendChild(el("p", "check-uncertainty", line));
   }
@@ -750,6 +774,14 @@ async function runCheck() {
     return;
   }
 
+  // Disabling the focused button drops focus to <body> in every engine, and
+  // re-enabling it does not give focus back. So from here until one of the two
+  // exits below puts focus somewhere deliberate, a keyboard reader who presses
+  // Tab restarts at the top of the document. Both exits are accounted for.
+  //
+  // The button stays genuinely disabled rather than aria-disabled: it blocks a
+  // second submit at the platform level, which is worth more than the focus it
+  // costs now that the focus is handed back.
   els.run.disabled = true;
   working("The department is pulling the claims and checking them against this room");
 
@@ -770,6 +802,10 @@ async function runCheck() {
     els.status.replaceChildren();
     els.run.disabled = false;
     els.error.replaceChildren(document.createTextNode(err.message));
+    // Failure exit: back to the control they pressed. There is no result to
+    // land in, and the message they need is this button's own neighbour.
+    // Re-enable first — focus() on a disabled button does nothing.
+    els.run.focus();
     return;
   }
 
@@ -778,17 +814,31 @@ async function runCheck() {
   // The POST response carries the claims but not the scene — the server returns
   // the ScriptCheckResult, and the scene is the text this page just sent. Hand
   // it back in so the marked scene has characters to mark.
-  mountResult({ ...payload, scene });
+  //
+  // Success exit: into the result. This is the only thing that tells anyone the
+  // request finished — a status line clearing and a button re-enabling is not a
+  // signal, and the result mounts below the fold.
+  mountResult({ ...payload, scene }, { moveFocus: true });
   loadedFiledFor = null;
   openedCheck();
 }
 
-function mountResult(payload) {
+function mountResult(payload, { moveFocus = false } = {}) {
   currentSceneId = String(payload?.scene_id || "");
-  els.result.replaceChildren(
-    renderCheckResult(payload, { onDelete: currentSceneId ? deleteCheck : null })
-  );
+  const body = renderCheckResult(payload, { onDelete: currentSceneId ? deleteCheck : null });
+  els.result.replaceChildren(body);
   els.result.classList.remove("hidden");
+
+  // Only when the reader asked for this result just now. Opening a filed check
+  // from the row mounts through here too, and stealing focus from a control
+  // somebody is still using is the opposite of the fix.
+  //
+  // No scrollIntoView beside this: focus scrolls the element into view on its
+  // own, and calling both scrolls twice. That native scroll is instant, since
+  // the app declares scroll-behavior nowhere, so it honours reduced motion
+  // without a media query. Add `scroll-behavior: smooth` anywhere above this
+  // and that stops being true.
+  if (moveFocus) body.focus();
 }
 
 async function deleteCheck() {
