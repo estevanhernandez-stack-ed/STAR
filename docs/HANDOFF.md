@@ -121,10 +121,28 @@ Carried forward as roadmap, not blockers:
    arrive as raw scraped markdown. **The agent door sends them raw.** The
    reducer exists; nothing server-side calls it.
 
-2. **No delete over MCP.** The door exposes exactly four tools — `list_rooms`,
-   `get_room`, `build_room`, `check_scene` (`star/mcp/tools.py:227`). An agent
-   can create rooms and never remove one. Lifecycle, and the naysayer is right
-   about it.
+2. **No delete over MCP — and it is blocked on a consent decision, not on
+   code.** The door now exposes five tools (`list_rooms`, `get_room`,
+   `ask_room`, `build_room`, `check_scene`), and an agent can create rooms and
+   never remove one. The naysayer is right that this is a lifecycle gap.
+
+   **But there is no room delete anywhere in the app.** `star/store.py` has
+   `delete_scene` and nothing else; the HTTP door deletes scenes and tokens.
+   So MCP delete is not parity with the web app — it would be a new capability,
+   reached first by an agent.
+
+   And the consent screen makes a promise about exactly this, in the copy a
+   reader sees at the moment they grant access: *"Nothing at this door removes
+   anything. No call the department offers here deletes a room, a check, or a
+   scene."* Shipping `delete_room` makes that sentence false, so it cannot be
+   a coding decision. **Three questions to answer first:** does the web app get
+   room delete too, or does the agent door get a power the person does not;
+   does delete need its own scope (`rooms:delete`) so a reader can grant read
+   and write without it; and what protects a looping agent from deleting a
+   room that cost real money and 146-420 seconds to build — the app already
+   has a two-press arming pattern for destructive actions (`account.js:213`),
+   and the MCP analogue is a confirm argument carrying something the agent can
+   only know by having read the room.
 
 3. **Error rooms charge budget and explain nothing.** A failed build still
    spends against the cap, and what comes back does not tell the caller what it

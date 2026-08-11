@@ -141,6 +141,10 @@ const SCOPES = {
       "Lists every room filed under your account, and opens any one of " +
         "them: the story profile, the research plan, the four drawers of " +
         "findings with the sources behind them, and the research bible.",
+      "It can also ask a room a question and get back the findings that " +
+        "bear on it. That searches what is already filed and writes " +
+        "nothing of its own — the answer is the department's words, not " +
+        "a summary of them.",
       "It costs nothing, spends no searches, and is never rate-limited.",
     ],
   },
@@ -152,8 +156,8 @@ const SCOPES = {
         "count against a daily budget the whole department shares.",
       "A scene sent to be checked is stored with the room it was checked " +
         "against, and stays there until it is deleted from the web app.",
-      "Nothing at this door removes anything. The department offers four " +
-        "calls here, and none of them deletes a room, a check, or a scene.",
+      "Nothing at this door removes anything. No call the department " +
+        "offers here deletes a room, a check, or a scene.",
     ],
   },
 };

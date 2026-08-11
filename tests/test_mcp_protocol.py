@@ -2126,3 +2126,43 @@ async def test_ask_room_does_not_rank_on_url_text():
         "the finding whose FACT answers the question outranks the one whose "
         "url merely contains the words"
     )
+
+
+@pytest.mark.asyncio
+async def test_the_unknown_tool_refusal_counts_the_tools_it_lists():
+    """It said "offers four:" and then listed five, in one sentence.
+
+    The list was generated from the runner map and the number beside it was
+    typed, so adding `ask_room` made the refusal contradict itself. Deriving
+    both from the same object is the fix; asserting it here is what stops the
+    next tool doing it again.
+    """
+    result = await invoke("nonesuch", {})
+    text = said(result)
+    assert result["isError"] is True
+    assert f"offers {len(tools.TOOLS)}:" in text
+    for tool in tools.TOOLS:
+        assert f"`{tool['name']}`" in text, f"{tool['name']} should be listed"
+
+
+def test_the_consent_screen_states_no_tool_count_it_would_have_to_chase():
+    """web/consent.js is a different language reading a list defined in Python.
+
+    It used to say "offers four calls here, and none of them deletes...". The
+    promise is the load-bearing half; the count was decoration that went stale
+    the moment a fifth tool shipped, and no test could have caught it because
+    nothing connects the two files. So the number is gone rather than
+    corrected — the same call the design campaign made about marks that carry
+    a quantifier a payload can contradict.
+    """
+    repo = Path(__file__).resolve().parent.parent
+    consent = (repo / "web" / "consent.js").read_text(encoding="utf-8")
+    # Matched within one literal: the sentence is split across a JS `+`, so a
+    # pattern spanning the join fails on formatting rather than on meaning.
+    assert "No call the department" in consent
+    assert "deletes a room, a check, or a scene" in consent
+    for stale in ("offers four", "offers five", "four calls", "five calls"):
+        assert stale not in consent, (
+            f"'{stale}' is a count of a list that lives in star/mcp/tools.py, "
+            "in a file that cannot see it"
+        )

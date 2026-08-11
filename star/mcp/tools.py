@@ -213,7 +213,7 @@ STILL_BUILDING = (
 )
 
 
-# --- The four tools ---------------------------------------------------------
+# --- The tools --------------------------------------------------------------
 #
 # Descriptions are written for a reader with no screen: what it does, what it
 # needs, what it returns, what it costs. Each is longer than a tool
@@ -1211,8 +1211,8 @@ async def call(name: str, arguments: dict, calls: Calls, identity) -> dict:
     if runner is None:
         offered = ", ".join(f"`{tool}`" for tool in _TOOLS_BY_NAME)
         return text_result(
-            f"There is no tool called `{name}`. This department offers four: "
-            f"{offered}. Call `tools/list` for what each one takes and "
+            f"There is no tool called `{name}`. This department offers "
+            f"{len(_TOOLS_BY_NAME)}: {offered}. Call `tools/list` for what each one takes and "
             "returns.",
             is_error=True,
         )

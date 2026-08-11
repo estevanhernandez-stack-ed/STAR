@@ -174,7 +174,7 @@ def build_mcp_router(
         if message.method == "ping":
             return protocol.result(message.id, {})
         if message.method == "tools/list":
-            # No `nextCursor`. Pagination is optional and four tools is one
+            # No `nextCursor`. Pagination is optional and this surface is one
             # page; omitting the field is what tells a client there is no
             # second page, where an empty string would ask it for one.
             return protocol.result(message.id, {"tools": list(tools.TOOLS)})
