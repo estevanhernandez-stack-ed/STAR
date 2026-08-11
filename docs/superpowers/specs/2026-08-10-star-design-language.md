@@ -58,10 +58,14 @@ Scale, from `web/tokens.css`:
 
 ## Spacing scale — observed, and the one axis nothing ever decided
 
-`web/tokens.css` defines a type scale and no spacing scale. The CSS uses at
-least sixteen distinct values in `padding`, `gap`, and `margin`: 0.2, 0.35, 0.4,
-0.45, 0.5, 0.6, 0.7, 0.75, 0.85, 0.9, 1, 1.1, 1.25, 1.5, 1.75, and 2rem, each
-authored at its call site.
+`web/tokens.css` defines a type scale and no spacing scale. Counted across
+`padding`, `margin`, `gap`, `row-gap`, and `column-gap` in all seven
+stylesheets: **34 distinct rem values across 368 declarations**, each authored
+at its call site.
+
+(An earlier draft of this section said sixteen. That was a partial count taken
+from `padding`/`gap`/`margin` alone and is corrected here rather than left
+standing — a measuring stick carrying a wrong number measures wrong.)
 
 This is stated rather than fixed here, because inventing a ramp is a design
 decision and stage 0 adopted an existing direction instead of making new ones.
@@ -161,37 +165,60 @@ Carried from DIRECTION.md, decided:
 
 ### Added 2026-08-10, from the builder, against round-1 evidence
 
-9. **State a scope obligation once per surface, not once per element.** The
-   obligations above are about honesty, not repetition, and the current
-   implementation confuses the two. Round-1 evidence, counted from the rendered
-   page rather than estimated:
+Rules 9 and 10 are written outside the numbered list above because a heading
+between list items restarts the numbering in most renderers, and these two are
+referenced by number throughout this campaign.
 
-   | Surface | Static explanatory prose, before the reader has done anything |
-   | --- | --- |
-   | Intake | 102 words across 3 paragraphs |
-   | Account | 190 words across 5 paragraphs |
-   | Check panel | 70 words across 2 paragraphs, before a scene is pasted |
-   | Citation rail | 34 words reprinted under each of 9 marks |
+**Rule 9 — state a scope obligation once per surface, not once per element.**
+The obligations above are about honesty, not repetition, and an implementation
+that confuses the two is reprinting rather than informing.
 
-   None of it collapses after first read, moves behind disclosure, or shrinks
-   once the reader has used the thing. `web/scriptcheck.js:154` argues its
-   `VERDICT_SCOPE` sentence "cannot be cut," and the obligation behind it is
-   real — but honouring rule 3 does not require reprinting the same 34 words
-   under every mark a reader clicks. Right rule, wrong cadence.
+**This rule survived stage 1 with no confirmed violation, and the evidence
+table it originally carried was wrong.** It is kept because the rule is sound,
+and corrected here because the campaign measures against this file.
 
-10. **The answer outranks the disclaimer in the visual hierarchy.** In
-    `14-check-citation`, the one line a writer came for — "First model TPS-L2
-    released in July 1979 in Japan" — renders third, at the same weight as its
-    neighbours, between two explanatory paragraphs, with a full-length italic
-    excerpt pushing it toward the fold. An interface that explains its own
-    epistemology more loudly than it delivers the fact reads as a demo of
-    carefulness rather than an instrument, which is the exact register the
-    aversion research says a hostile audience distrusts.
+What the table claimed, and what the audit established:
+
+| Claimed | Established |
+| --- | --- |
+| Citation rail: 36 words "reprinted under each of 9 marks" | The rail holds **one card at a time** — `scriptcheck.js:487` is `railBody.replaceChildren(buildRailCard(claim))`. The sentence renders once on screen, re-rendered per selection. Not a cadence violation. |
+| Intake: 101 words "before the reader has done anything" | 101 is correct, but only 61 precede the field. The 40-word provenance paragraph renders in the right-hand index column beside the Build button, outside the reading path to the textarea. |
+| Account card: 194 words across 6 strings, at `account.js:125-145` | The count is exact. The range is wrong: the six strings span `:72` through `:145`; `:125-145` holds two of them. |
+| Check panel: 69 words across 2 paragraphs | Correct, and compliant — two *different* obligations stated once each is what this rule prescribes. |
+
+The rule's normative content is the cadence clause, not a word budget. Volume
+on a surface is not a violation; the same obligation reprinted per element is.
+Findings citing this rule must show the repetition, not the total.
+
+`web/scriptcheck.js:154-157` argues its `VERDICT_SCOPE` sentence "cannot be
+cut," and that defence held: the relocation proposed against it turned out to
+drop the click-through clause the comment names, which is rule 2's beat.
+
+**Rule 10 — the answer outranks the disclaimer in the visual hierarchy.** In
+`13-check-annotated`, the one line a writer came for — "First model TPS-L2
+released in July 1979 in Japan" — renders **fourth** in `buildRailCard`'s order:
+stamp, claim, the department's reading (`VERDICT_READING`), then the fact. The
+fact and the explanation above it are both `el("p", "rail-line", …)`, byte-
+identical treatment, so nothing in the type ranks the answer over the gloss on
+it. An interface that explains its own epistemology more loudly than it delivers
+the fact reads as a demo of carefulness rather than an instrument, which is the
+exact register the aversion research says a hostile audience distrusts.
+
+This rule was confirmed in stage 1 at severity 4 / visibility 4. One hole to
+carry into any fix: `star/verdicts.py:91` requires a note only for
+`unverifiable`, so a `confirmed` or `anachronism` card can render with no fact
+line at all — a reordering that assumes the note is present has no case for
+that card.
+
+(The earlier draft said "third" and cited `14-check-citation` for the fold. Both
+were wrong: the position is fourth, and in `14` the whole card sits below the
+fold because the capture was taken with the stage scrolled, which is a capture
+artifact and separately a real scroll defect, not intra-card ordering.)
 
 Rules 9 and 10 extend DIRECTION.md rather than restating it. They exist because
-round-1 evidence showed the failure and the builder named it; a wave arguing
-against them argues against the evidence in `docs/ui-evidence/`, not against
-taste.
+round-1 evidence showed a failure and the builder named it. Rule 10 held under
+adversarial review; rule 9 held as a rule but lost its evidence. A wave arguing
+against either argues against the findings register, not against taste.
 
 ## Invariants — verbatim
 
