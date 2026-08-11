@@ -401,7 +401,12 @@ function uncertaintyLines(payload, claims) {
   const unsourced = Number(payload?.unsourced_count);
   if (Number.isFinite(unsourced) && unsourced > 0) {
     lines.push(
-      `${plural(unsourced, "cited link")} in this check was in neither the room's ` +
+      // "appeared in", not "was in": plural() makes the NOUN agree and the verb
+      // was hardcoded singular, so at two or more this shipped "2 cited links
+      // in this check was in neither…". Fixed with a number-agnostic verb
+      // rather than a second conditional, which is how the sibling at
+      // web/clip.js:391 has always avoided it ("never appeared in").
+      `${plural(unsourced, "cited link")} in this check appeared in neither the room's ` +
         "files nor this check's own search results. Each one is marked on the " +
         "claim that cited it."
     );
