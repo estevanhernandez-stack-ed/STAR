@@ -102,6 +102,18 @@
       "branch": "glow/wave-5-the-answer-outranks-the-gloss",
       "rationale": "The highest-ranked row in the register, blocked for two waves on one builder decision: is the answer the note, or the source quotation? Answered 2026-08-11 as the source quotation, which made it a frontend wave with no contract risk. Wave 4 is what made that answer available — before it, a no-note card fell back to 2900 characters of raw markdown.",
       "closeOut": "Built and closed the same day. The row's second 'hole to close first' was a misreading rather than a hole: the verifier prompt makes the note optional on confirmed and anachronism, so a card without one is the designed common case (4 of 9 real claims), and the card had been built as though the note were the answer. Citation block is now a median 62.2% of the card where the note was 1.2%. The quantifier trap on 'the sources below' was checked against verdicts.py:275-277 rather than assumed, and the test pins the server's guarded tuple to the card's promising slugs."
+    },
+    {
+      "id": 6,
+      "name": "the-room-after-it-files",
+      "status": "open",
+      "findings": [
+        "F-007",
+        "F-008",
+        "F-011"
+      ],
+      "rationale": "The three highest-ranked rows left (12, 12, 9) and all three live on one surface: the room a writer opens after a build files. The drawer they click sends itself off screen, the number on the docket says the ledger vouched for searches it only counted as issued, and the drawer's own hanging-folder construction has 1.6px of tuck where it needs about 9. Every figure in the brief was re-measured 2026-08-11 rather than carried from the audit.",
+      "branch": "glow/wave-6-the-room-after-it-files"
     }
   ]
 }
