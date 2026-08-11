@@ -512,7 +512,25 @@ function testTheCountsAreStatedAndNeverGuessed() {
     text.includes("measures the format it wrote in, not whether its judgments are right"),
     "parse_rate is never allowed to read as an accuracy score"
   );
-  assert.ok(text.includes("2 cited links"));
+  // The VERB, not just the noun. This asserted `includes("2 cited links")` and
+  // passed for months over "2 cited links in this check was in neither…" —
+  // plural() makes the noun agree and the verb was hardcoded singular, so the
+  // one assertion that ran this exact payload could not see the defect it was
+  // standing on. Assert the clause.
+  assert.ok(
+    text.includes("2 cited links in this check appeared in neither"),
+    "the unsourced line must agree in number — assert the verb, not the noun"
+  );
+
+  // And the singular, because a number-agnostic verb has to read correctly at
+  // both and only one of them was ever exercised.
+  const one = renderCheckResult(
+    payload({ unsourced_count: 1, claims: [claim()] })
+  ).textContent;
+  assert.ok(
+    one.includes("1 cited link in this check appeared in neither"),
+    "and at one"
+  );
 
   // A payload with no counts on it prints no counts, rather than a confident
   // zero for a check that ran six searches.

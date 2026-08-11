@@ -1,491 +1,201 @@
-# STAR — Build Checklist, cycle #19
+# STAR — Build Checklist, cycle #20
 
-> Vibe Cartographer cycle **#19**, `/checklist`, 2026-08-10. Mode: fully-autonomous
-> (*Autonomous — Self*). Persona: Architect. Deepening rounds: 0, per the builder's standing pattern
-> when the substrate is understood. Inputs: [`docs/spec.md`](spec.md), [`docs/prd.md`](prd.md),
-> [`docs/scope.md`](scope.md), [`docs/builder-profile.md`](builder-profile.md),
-> [`docs/HANDOFF.md`](HANDOFF.md), [`docs/INFRASTRUCTURE.md`](INFRASTRUCTURE.md), the four
-> `docs/design/` files, the five `docs/superpowers/` files,
-> [`process-notes.md`](../process-notes.md), the 626Labs board, and the repo read live.
+> Vibe Cartographer cycle **#20**, `/checklist`, 2026-08-10. Mode: fully-autonomous
+> (*Autonomous — Self*). Persona: Architect. Deepening rounds: 0, per the builder's standing
+> pattern when the substrate is understood.
+>
+> **This cycle is a vibe-glow wave, not an app cycle.** Its authoritative input is
+> [`glow-wave-1-brief.md`](glow-wave-1-brief.md), which supersedes [`spec.md`](spec.md) and
+> [`prd.md`](prd.md) for scope. It ships exactly five findings — F-004, F-005, F-013, F-001,
+> F-003 — from [`superpowers/research/2026-08-10-star-ui-audit-findings.md`](superpowers/research/2026-08-10-star-ui-audit-findings.md),
+> measured against [`superpowers/specs/2026-08-10-star-design-language.md`](superpowers/specs/2026-08-10-star-design-language.md).
+>
+> Cycle #19's whole-app checklist is preserved in git at `053695a`. `process-notes.md` had
+> penciled #20 for the judge critique's Part 3 — that work moves to #21.
 
 ## Build Preferences
 
-- **Build mode:** Autonomous. From the record, not re-asked: `mode: builder`, experience
-  `experienced`, and `builder-profile.md > AI coding agent experience` — "runs Claude Code as an
-  autonomous build system with structured checklists and subagent delegation." Prior Cart cycles
-  chose autonomous at `/checklist` three times running.
+- **Build mode:** Autonomous. From the record, not re-asked: `autonomy_level:
+  fully-autonomous`, experience `experienced`, and 18 prior Cart cycles run as an autonomous
+  build system with structured checklists and subagent delegation.
 - **Comprehension checks:** N/A (autonomous mode).
-- **Git:** Commit after each item. Subject lines in this repo's existing voice — declarative,
-  sentence-case, no conventional-commit prefix ("Guard the progress stream with a per-run key",
-  "Say only what the payload proves about an unfiled drawer"). Commits are the revert points;
-  a checkpoint that fails reverts to the last clean one.
-- **Verification:** On. Checkpoints after items **4, 7, 9, and 11**. Spacing is 4 → 3 → 2 → 2,
-  tightening deliberately: the last two gates sit on the surfaces that carry the design score and
-  the wire contract, and both are places where a defect is invisible until a judge finds it.
-- **Check-in cadence:** N/A (autonomous mode).
+- **Git:** Commit after each item. Declarative sentence-case subjects, no conventional-commit
+  prefix, matching this repo's existing voice ("Guard the progress stream with a per-run key").
+  `Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>` on every commit.
+  Commits are the revert points; a checkpoint that fails reverts to the last clean one.
+- **Verification:** On. Checkpoints after items **3** and **5**. The spacing is deliberate:
+  item 3 closes the three independent fixes, and item 5 closes the run-lifecycle work before
+  resume is layered on top of it.
+- **Timing law:** Items 4, 5, 6 and 7 touch a live SSE run. Each is verified **at least
+  twice**. A single passing run of a race is not verification.
+- **Branch:** `glow/wave-1-runs-and-work`, already checked out, off `glow-identity` so the
+  wave carries the register it is built against.
 
-## Why this order
+## The architectural through-line
 
-Three parts, sequenced 1 → 2 → 3 for a mechanical reason `scope.md` already argued:
-**`check_scene` over MCP requires Pipeline B to exist**, so MCP-first means shipping three tools
-and reopening the server for the fourth. Inside that, four things move:
+Four of these five items are not new machinery. They are wiring that the app already
+contains, connected to one more caller:
 
-1. **Item 1 is a verification, not code, and it is first.** The Google link flow rests on two
-   documented-but-unverified claims, and Google's own copy steers toward the remote `<script>` this
-   project forbids. Discovering that on day four costs the ordering argument that put Part 1 first.
-   It is the one item whose failure changes the shape of two others.
-2. **Identity precedes MCP because a token can only be issued to a linked identity.** That coupling
-   is `prd.md > Decisions this PRD makes` #3, and it is mechanical rather than thematic — an
-   anonymous account's only proof of ownership is a `localStorage` entry.
-3. **The anchor matcher (item 8) is pure and comes before the surface that uses it (item 9).** It is
-   the one piece with real algorithmic risk, and it is fully testable with no pixels.
-4. **The MCP transport (item 10) precedes the tools (item 11)** so conformance is proved against a
-   wire contract before four descriptions are written on top of it.
+- `clearCheck` already takes `keepScene`; nothing has ever passed `true`.
+- `shell.js`'s running-marker branch is already written; the build path never reaches it.
+- The whole resume path — stash, delete-on-read, replay-from-zero, monotonic dedupe, and a
+  Cloud Run deploy pinned to one instance so a reconnect lands warm — already ships, wired to
+  a single trigger.
+- The issued token already lives in module scope; nothing reads it back.
 
-**Gates:** A = identity (1-4), B = Pipeline B (5-7), C = the marked scene (8-9), D = the agent door
-(10-11), E = harness and ship (12-13).
+That shape is why this wave is cheap and why it is worth doing first. The exception is item 5,
+which adds a genuinely new interaction (arming a destructive control), and it reuses the
+two-press pattern the app already ships in two other places rather than inventing a third.
 
-## The cut line, if one is ever needed
+## The invariants that constrain every item
 
-From `scope.md`, written down so it is never decided under pressure. In order of what goes first:
-the export zip (already cut), then the MCP beat in the video, then `check_scene` over MCP — ship
-three tools and note the fourth as next. **Pipeline B and the video never go.**
+From `.vibe-glow/state.json`. These outrank the items below.
+
+- **6 — zero third-party requests.** No toast library, no notification package, no CDN.
+- **7 — no build step.** Plain ES modules, plain CSS. No framework, no bundler.
+- **9 — copy never promises a duration.** `star/config.py` records 146s-420s+ for one fixed
+  treatment; any number is a lie told with the project's own data. Show progress, never an ETA.
+
+---
 
 ## Checklist
 
-- [x] **1. Prove the Google link flow against the live API**
-  Spec ref: `spec.md > Identity: linking without a gate > Build-blocking verification, before the epic's first line of code`
-  Depends on: nothing. Effort: **S** — half a session, no application code.
-  What to build: No code. Three round trips and a console step. (a) Register the OAuth client's
-  Authorized redirect URIs — both `https://star-390753828501.us-central1.run.app/` and
-  `http://localhost:8000/`; missing the dev origin looks like a broken button on a laptop and works
-  fine in production. Confirm *which* client id Firebase's Google provider trusts and whitelist the
-  one in play if it differs (`spec.md > Open issues` #2). (b) Open the authorize URL by hand against
-  the real client id with `response_type=id_token&scope=openid email profile&nonce=…&state=…&prompt=select_account`
-  and confirm a `#id_token=` fragment comes back. (c) One `curl` to
-  `accounts:signInWithIdp?key=$FIREBASE_API_KEY` with `postBody=id_token=<google>&providerId=google.com`,
-  `requestUri=<origin>`, `idToken=<a real anonymous Firebase ID token>`, `returnSecureToken=true` —
-  confirm `localId` comes back unchanged. If the nonce is refused, the first retry is
-  `&nonce=<raw nonce>` in `postBody`. If both fail, the named fallback is the server-side
-  authorization-code exchange (one endpoint, one Secret Manager entry, one extra redirect) — add it
-  as item 1b and **only then** build it. Record the exact request and response shapes in
-  `process-notes.md` either way.
-  Acceptance: `prd.md > Identity That Outlives The Browser` — "linking preserves the uid" is proved
-  before any UI depends on it, and the flow `prd.md > Decisions this PRD makes` #8 names is confirmed
-  against the live API rather than assumed. Same discipline that caught the ADK response envelope on
-  2026-08-09.
-  Verify: paste both round trips into `process-notes.md`. The uid held before the call and the
-  `localId` returned by it are byte-identical strings.
+- [ ] **1. An unsubmitted scene survives re-entering the room you are already in**
+  Spec ref: `glow-wave-1-brief.md > F-004`
+  What to build: Thread room identity through the reset path so a same-room rail click stops
+  wiping the scene box. `resetRoomView(runId)` → `resetCheck({ keepScene: runId === currentRoomId })`,
+  consuming `clearCheck`'s existing but unused `keepScene` parameter (`web/scriptcheck.js:672`,
+  `:681`). Note the existing `setCheckRoom` guard (`:653`) is **disarmed**, not late —
+  `resetCheck` sets `roomId = null` at `:667` before it can match — so do not try to rescue it;
+  pass identity down instead. Then give the account panel a back control that returns to the
+  previous stage without re-entering `showResults`.
+  Acceptance: Typing into `#scene`, opening Your card, and clicking the same room in the rail
+  leaves the text intact. Clicking a *different* room still clears it.
+  Verify: Run `uvicorn star.server:app`, do both paths by hand, and add a Node test under
+  `tests/js/` asserting `keepScene` is true only on a same-room reset. Confirm
+  `app.js:610-612`'s documented cross-room leak fix has not regressed.
 
-- [x] **2. Google link mechanics in the browser**
-  Spec ref: `spec.md > Identity: linking without a gate` — The flow, Error mapping, Sign-out, The redirect that abandons a live run
-  Depends on: 1. Effort: **M**.
-  What to build: `web/auth.js` gains `beginGoogleLink()`, `completeGoogleLink()`, `signOut()`,
-  `linkedProvider()`. `beginGoogleLink` mints nonce + state into `sessionStorage` with `returnTo` —
-  and, if a run is live, `{run_id, stream_key, last_event_id}` too — then `location.assign(...)`.
-  `completeGoogleLink` runs at load: compare `state` against the stash and abort on mismatch,
-  `history.replaceState` to strip the fragment **before anything else**, POST `signInWithIdp` with
-  the current anonymous `idToken` (that field is the whole linking mechanism), assert `localId`
-  equals the uid held before the redirect and hard-abort on mismatch restoring the prior refresh
-  token, then `remember(idToken, refreshToken, expiresIn)` via the existing `web/auth.js:48`. Every
-  row of the spec's error table maps to its own message — a generic "linking failed" fails the
-  criterion. `signOut()` is `safeRemoveStored()` plus clearing in-memory `idToken`/`expiresAt`, so
-  `getIdToken()` mints a fresh anonymous account on the next call. `/config.js` serves
-  `GOOGLE_OAUTH_CLIENT_ID`, and it **stays out of `config.validate_env()`** — its absence is loud by
-  design, so linking reads as unavailable while every other path works. `web/app.js` tracks the last
-  seen SSE event id and, on load with a non-terminal stashed run, reopens the `EventSource` passing
-  `Last-Event-ID` explicitly (`EventSource` sets it on automatic reconnects, not on a fresh
-  construction after a page load). New `tests/js/test_account.mjs`.
-  Acceptance: `prd.md > Identity That Outlives The Browser` — declining or cancelling leaves the
-  anonymous session untouched, same uid, same rooms, no error state on screen; a link that fails in
-  flight names *which* of network / blocked / abandoned happened; the already-linked-elsewhere
-  refusal is surfaced as itself and never silently switches accounts; sign-out says what it will do
-  before it happens; with linking entirely unavailable every existing path still works.
-  Verify: `python -m pytest tests/test_js_auth.py -q` — its glob picks up the new `.mjs` and already
-  asserts the glob is not silently empty. `curl -s localhost:8000/config.js` shows the client id;
-  unset the var and confirm the server still boots and serves `""`. Drive `beginGoogleLink()` from
-  the browser console, link, and confirm the uid survives. Start a build, navigate away and back,
-  and confirm the timeline resumes without duplicating entries.
+- [ ] **2. A failed build stops claiming the department is working**
+  Spec ref: `glow-wave-1-brief.md > F-005`
+  What to build: On `ev.type === "error"` (`web/app.js:545-549`), rewrite `#progress-panel`'s
+  h2 — nothing in the app writes it today, so the static string at `web/index.html:151` stands
+  after a terminal failure — and stop `.ellipsis::after`'s `pulse` (`web/shell.css:667-670`).
+  Mount the failure message above the drawer grid rather than only in the timeline below it.
+  Add a recovery control beside it that starts a new room **without** wiping the treatment;
+  `app.js:133` is the only write to that field in the app.
+  Acceptance: After a terminal error the heading names the failure, the ellipsis is static, the
+  message sits above the four "Did not file" cards, and the treatment textarea still holds what
+  was typed.
+  Verify: Force a terminal error (a stubbed error event or a forced timeout) and read the panel.
+  **Do not** move the error line for being off-screen — it is not; `addEntry` already
+  `scrollIntoView`s every entry including this one (`app.js:228`). **Do not** add an ETA or
+  advice about treatment length (invariant 9).
 
-- [x] **3. The token layer, server-side**
-  Spec ref: `spec.md > MCP tokens` + `spec.md > The card: the account surface > Endpoints`
-  Depends on: 2 (a linked uid is needed to exercise the allow path). Effort: **M**.
-  What to build: `star/auth.py` gains `verify_claims(header) -> dict | None` returning the claim
-  dict; `verify_token` becomes `verify_claims(...)["uid"]` — same swallow-everything contract, same
-  log line, no behaviour change to any existing caller. New `star/tokens.py`: mint
-  `star_<12 hex>.<32 hex>` (two parts because `token_id` appears in URLs, logs, and the card while
-  `secret` is a credential — the same argument `star/server.py:601-620` makes for `run_id` vs
-  `stream_key`), sha256 at rest, and `resolve(header)` in the spec's six steps — reuse
-  `star/auth.py:102`'s `extract_bearer`, `hmac.compare_digest` on the hash, one **generic** refusal
-  covering wrong shape / unknown id / hash mismatch, and the **distinct revoked refusal** at step 5,
-  which is safe only because reaching it required presenting the correct secret. `last_used_at`
-  writes at most once per 60s per token, off the event loop via `asyncio.to_thread`. `star/store.py`
-  gains token CRUD against top-level `/mcp_tokens/{token_id}` — top-level because authentication has
-  only the token in hand and does not know the uid yet, making the lookup one `get()` by document id;
-  the card's list is `where("uid","==",uid)` sorted in Python. `star/models.py` gains `McpToken`,
-  metadata only, never the secret. Three endpoints under `_require_uid`: `POST /api/tokens` (403 when
-  the verified `firebase.sign_in_provider` is `anonymous`, with a message naming the reason; returns
-  the plaintext, the only time it exists on the wire), `GET /api/tokens` (metadata, never the token,
-  never the hash), `DELETE /api/tokens/{token_id}` (soft revoke; 404 when the token is not this
-  uid's — no oracle, matching `get_room`). New `tests/test_tokens.py`.
-  Acceptance: `prd.md > The Department Over MCP`, first story — the token is stored as sha256,
-  displayed once at issue, never recoverable; an anonymous uid cannot mint one; a revoked token's
-  next call says it was revoked rather than failing as though malformed; a well-formed token matching
-  nothing gets the same generic refusal as a malformed one.
-  Verify: `python -m pytest tests/test_tokens.py tests/test_server.py -q`. Issue a token against a
-  linked account and confirm `GET /api/tokens` returns neither the plaintext nor the hash. Revoke it
-  and confirm the refusal string differs from the unknown-token one, and that no other refusal does.
+- [ ] **3. An issued token survives re-entering the card**
+  Spec ref: `glow-wave-1-brief.md > F-013`
+  What to build: Skip the re-read when a live plaintext exists, so `openAccount()`'s
+  unconditional `replaceChildren` (`web/account.js:473`) stops discarding it. Two facts make
+  this cheap and must be built on rather than worked around: `stage()` only adds `.hidden`
+  (`web/shell.js:189`) so the node survives the stage switch intact, and the plaintext already
+  lives in module scope at `card.issued` (`account.js:559-562`). Nothing needs storing — what is
+  missing is a render path that reads what is already held.
+  Acceptance: Issue a token, navigate away and back via the rail, and the same plaintext is
+  still on screen, not re-issued and not lost.
+  Verify: Requires an attached Google account (`account.js:393` disables the control otherwise),
+  so scope the automated test to the render path and do the round trip by hand.
 
-- [x] **4. Your card — the account surface**
-  Spec ref: `spec.md > The card: the account surface` (Naming, Structure, What it shows, Endpoints)
-  Depends on: 2, 3. Effort: **L**. **← Checkpoint 1**
-  What to build: `#account-panel` as a fourth `.panel` inside `<main class="stage">` in
-  `web/index.html`; `showAccount()` in `web/shell.js` alongside `showIntake()` / `showRunning()` /
-  `showRoom()`; the rail gains `Your card` in `--pencil` at its foot, below the room list — not a
-  header item, not a button, not on the intake. New `web/account.js` and `web/account.css`. Two
-  sections. **IDENTITY:** the linked account or its absence, the offer stating in one line what
-  linking actually buys (the rooms stop living with this browser), and sign-out saying what it does
-  before it happens. **ISSUED TOKENS:** label, issued date, last used, a revoke control per token;
-  the issue control is disabled while unattached **with the reason stated, not just greyed out**; the
-  plaintext appears exactly once and the surface says so before issuing. Then re-verify every clause
-  of the intake retention copy against post-link truth: the two clauses `prd.md` names go false on
-  link ("kept under this browser's identity", and the implication behind "nothing is visible without
-  your sign-in token"), and any clause that cannot be verified from the code is **cut rather than
-  softened** — the Task 2 rule from the Phase 3 plan, applied again. Reachable at every stage state
-  including mid-run; `showAccount()` only toggles panel visibility, so `app.js`'s `EventSource` is
-  untouched.
-  Acceptance: `prd.md > Identity That Outlives The Browser`, third and fourth stories — a fourth
-  stage state, not a second HTML page and not a modal; entered only from the bottom of the rail; it
-  shows the linked account or its absence, the link offer, issued tokens as metadata only, and a
-  revoke per token; the plaintext appears exactly once and is announced before it does; reaching it
-  mid-run does not disturb the stream; linking preserves the uid and the rail lists byte-identical
-  rooms immediately before and after; the intake path from landing to a filed room contains zero
-  mentions of Google or of accounts.
-  Verify: list the rail's rooms, link a Google account, diff the rail before and after — byte-
-  identical. Start a build, open the card mid-run, confirm the timeline keeps advancing. Walk the
-  intake path and grep the rendered DOM for "Google" and "account" — zero hits. Confirm Manila still
-  owns more than 40% of the room's filed-state pixel area, measured, not judged.
+> **CHECKPOINT A** — the three independent fixes are in. Run `python -m pytest -q` and
+> `ruff check star tests scripts harness`. Confirm the app still boots and a filed room still
+> opens. Nothing after this point is independent.
 
-- [x] **5. Pipeline B's two agents, and the budget that feeds them**
-  Spec ref: `spec.md > Pipeline B — Script Check` — Shape, `claim_extractor`, `verifier`, Budget and time
-  Depends on: nothing in Gate A. Effort: **M**.
-  What to build: `star/models.py` gains `ClaimSet`, `ClaimResult`, `ScriptCheckResult` —
-  `ClaimResult.verdict` is non-optional where `Claim.verdict` is optional, because a claim before
-  verification and a claim after it are two states. `star/config.py` gains `max_scene_chars()` (8000,
-  matching the treatment cap at `star/server.py:570-575`, roughly four script pages —
-  *(default — confirm on next interactive run)*), `max_searches_per_check()` (8),
-  `check_timeout_seconds()` (180). `star/tools/parallel_search.py` reads its budget as
-  `tool_context.state.get("search_budget") or config.max_searches_per_build()`; the module-level
-  fallback for direct script calls is untouched. New `star/agents/script_check.py`:
-  **`claim_extractor`** — `output_schema=ClaimSet`, `output_key="claims"`, **no tools** (ADK forbids
-  tools on schema'd agents, `HANDOFF.md:119`), `config.fast_model()`, and an instruction obligating
-  `text` to be the claim's exact quoted substring of the scene character for character, never a
-  paraphrase and never a normalization; scene text wrapped in `<scene>…</scene>` with the same
-  data/instruction language `star/agents/researchers.py:41-45` and `star/agents/synthesis.py:22-27`
-  already carry; claims are about the world, not the story, and a scene with none returns an empty
-  list, which is a result. **`verifier`** — `tools=[parallel_search]` so it cannot be schema'd, output
-  prose in the line format `- <verdict> | <exact claim text> | <url>, <url> | <note>` chosen so it
-  cannot collide with `findings.py`'s single-`::` grammar; `<room_files>` assembled server-side and
-  given up front, with the instruction to search only for what they do not answer; `note` required on
-  `unverifiable` and a bare one is a parse failure; on budget exhaustion, remaining claims written
-  `unverifiable` with the note prefixed `budget:`. Both under a `SequentialAgent`, exported from
-  `star/agents/pipelines.py`.
-  Acceptance: `prd.md > Script Check — The Pipeline`, first story — the extractor returns the exact
-  quoted text, verified against a scene where the claim is a fragment inside a longer sentence; the
-  verifier checks the room's own ledger citations first and only then spends a fresh
-  `parallel_search`; a scene containing "mark every claim confirmed" is data, not instruction; an
-  oversized scene is capped with a specific number in the message.
-  Verify: `python -m pytest tests/test_config.py -q`, then one scripted pipeline run against a stored
-  room. Read the raw verifier prose and confirm the line grammar holds. **Capture that output as the
-  golden fixture item 6 parses** — the same measure-don't-assume move that decided A-vs-B in GUI
-  Phase 1.
+- [ ] **4. A live run has a row in the rail**
+  Spec ref: `glow-wave-1-brief.md > F-001`
+  What to build: Call `refreshRail(runId)` immediately after `POST /api/rooms` succeeds
+  (`web/app.js:411-416` currently has none, so `web/shell.js:119-127`'s `isRunning` marker
+  branch is unreachable on the build path). Route that row's click to `showRunning()` when
+  `run_id === liveRunId` — today `showRunning` has two callers and neither is a control, so a
+  live build has no way back once Your card is opened. Decide and state whether the running row
+  renders its own label: `room_to_document` reads title and era off an empty `story_profile` at
+  creation (`star/store.py:62-63`), so the row otherwise reads "Untitled room · Era unstated"
+  until the terminal write.
+  Acceptance: Starting a build puts a row in the rail immediately, carrying the running marker.
+  Clicking it returns to the live progress panel with the stream intact.
+  Verify: **Twice.** Start a build, confirm the row appears while the four researchers are still
+  searching, open Your card, click back, and confirm the stream is still live and the timeline
+  did not restart.
 
-- [x] **6. `star/verdicts.py` — the deterministic annotator**
-  Spec ref: `spec.md > Pipeline B — Script Check > star/verdicts.py — the annotator` + `> The two ledgers`
-  Depends on: 5 (needs real verifier output as fixtures). Effort: **M**.
-  What to build: `star/verdicts.py`, pure — no I/O, no model — mirroring `star/findings.py` in
-  structure and posture. `parse_verdict_line(line)` and
-  `annotate(prose, claims, room_ledger, run_ledger, budget_exhausted)`, doing seven things in order:
-  (1) parse, keeping unparseable lines as field notes and reporting `parse_rate`; (2) match each line
-  back to an extracted claim by exact text, sending orphan verdicts to field notes; (3) hydrate every
-  cited URL through `_resolve_citation` reused verbatim from `findings.py` — so the truncated-URL
-  recovery ladder applies here too — against **`room_ledger` first, then `run_ledger`**, recording
-  `source: "room" | "search"` per citation; (4) a URL in neither ledger becomes `unsourced_urls`, the
-  claim is stamped `UNSOURCED` in oxide and **stays on screen**; (5) a `confirmed` or `anachronism`
-  with zero hydrated citations downgrades to `unverifiable` with a note naming the source that could
-  not be checked; (6) `budget:` prefixes honoured **only** when `budget_exhausted` is true, otherwise
-  stripped and the note stands as an ordinary not-found — the model is not the authority on which one
-  happened; (7) claims that received no verdict line come back `unverifiable` with a note saying the
-  check did not reach them. Nothing is silently dropped. `star/ledger.py` gains
-  `ledger_from_room(document) -> SourceLedger`, walking `categories[*].findings[*].citations[*]`
-  through the existing `SourceLedger.record()` with `agent=f"room:{category}"` — no new accumulation
-  logic, `record()` already merges by URL and dedupes excerpts. New `tests/test_verdicts.py`.
-  Acceptance: `prd.md > Script Check — The Pipeline`, first story — every `CONFIRMED` and
-  `ANACHRONISM` carries at least one citation with `url`, `title`, and `excerpt` hydrated from the
-  ledger, and the model never authors a title or an excerpt; every `UNVERIFIABLE` carries a note
-  saying what was looked for and not found; the check reports which of the room and a fresh search
-  answered, per claim; budget exhaustion is named as *budget*, never as *not found*; a citation URL
-  absent from the ledger is stamped `UNSOURCED` and the claim stays.
-  Verify: `python -m pytest tests/test_verdicts.py tests/test_ledger.py -q`, covering the golden
-  fixtures from item 5, a room-ledger hit, a run-ledger hit, neither, the downgrade, and a `budget:`
-  prefix arriving when the budget was **not** spent.
+- [ ] **5. New room is armed while a run is live**
+  Spec ref: `glow-wave-1-brief.md > F-001`
+  What to build: Arm the "New room" control while a run is live, using the two-press pattern the
+  app already ships at `web/account.js:213` and `web/scriptcheck.js:598` rather than inventing a
+  third idiom. First press states that the build keeps running and where to find it; second press
+  proceeds. This is the one genuinely new interaction in the wave, and the reason it matters:
+  `resetProgress()` → `closeStream()` ends the SSE generator only — `star/server.py:895-915` is a
+  bare `while True` with no disconnect check, and the pipeline is a separate task pinned by a
+  strong ref at `:836`, so the searches and Gemini calls keep spending.
+  Acceptance: Pressing "New room" mid-build does not immediately close the stream. The first
+  press explains; the second proceeds. With no run live, the control behaves exactly as before.
+  Verify: **Twice.** Copy must not promise a duration (invariant 9). State that the build
+  continues, not when it will finish.
 
-- [x] **7. Scene endpoints, the check runner, and persistence**
-  Spec ref: `spec.md > Pipeline B — Script Check > Synchronous, not streamed` + `> Endpoints` + `spec.md > Data model > Firestore`
-  Depends on: 5, 6. Effort: **L**. **← Checkpoint 2**
-  What to build: `_run_check(uid, run_id, scene)` in `star/server.py` — read the room through
-  `_store.get(uid, run_id)` (already uid-scoped, so cross-uid not-found holds by construction rather
-  than by an added check), build `room_ledger` via `ledger_from_room`, create the ADK session seeded
-  `state={"search_budget": config.max_searches_per_check()}`, record
-  `event.get_function_responses()` into a fresh `run_ledger` by the same server-side path Pipeline A
-  uses at `star/server.py:353-358`, run under `asyncio.wait_for(..., check_timeout_seconds())`, and
-  hand the pieces to `annotate`. **No `run_id`, no `stream_key`, no SSE, no `_runs` entry** — the run
-  registry exists because a build is 146s to 420s+, and a check is one extraction plus one
-  verification with at most eight searches. Four endpoints under `_require_uid`:
-  `POST /api/rooms/{run_id}/scenes` (body `{scene}`, capped at `max_scene_chars()` with the number in
-  the message, in the register of `star/server.py:570-575`), `GET /api/rooms/{run_id}/scenes`,
-  `GET …/{scene_id}`, `DELETE …/{scene_id}`. `star/store.py` gains scene CRUD at
-  `/users/{uid}/rooms/{run_id}/scenes/{scene_id}`, carrying `scene`, `claims`, `parse_rate`,
-  `unsourced_count`, `field_notes`, `search_count`, `budget_exhausted`. New `tests/test_scenes.py`.
-  Acceptance: `prd.md > Script Check — The Pipeline`, second and third stories — a check requires a
-  room, and a scene checked against room X cites room X's ledger; a room belonging to another uid
-  returns the same not-found answer as a room that does not exist; checks persist at the named path;
-  a filed check can be deleted and deleting it removes the stored scene text; `parallel_search`
-  genuinely runs during a check, independently of Pipeline A — this is the partner-track pass/fail;
-  a `partial` or `interrupted` room with no findings still supports a check on fresh search alone and
-  the result says the room's own files were empty; a scene with no checkable claims returns an empty
-  claim set and one plain line, not an empty state that reads like a failure.
-  Verify: `python -m pytest tests/test_scenes.py tests/test_server.py -q`. Then one **live** check
-  against a real filed room with a planted anachronism: the verdict lands, `search_count > 0`, and
-  every citation resolves to a real ledger excerpt. `DELETE` the scene and confirm the document and
-  its stored text are gone.
+> **CHECKPOINT B** — the run lifecycle is now visible and guarded. Full test run again. Confirm a
+> build completes end to end and files a room. Resume is layered on this; do not proceed on a
+> red checkpoint.
 
-- [x] **8. `web/anchor.js` — the matcher, pure and tested before any pixel**
-  Spec ref: `spec.md > The marked scene > web/anchor.js — pure, and the one piece with real algorithmic risk`
-  Depends on: 5 (the extractor's exact-text contract is what it matches). Effort: **M**.
-  What to build: `anchor(scene, claims) -> { segments, unanchored }`, where `segments` is a flat,
-  ordered list of `{text}` and `{text, claim}` — **never HTML**. Four passes. (1) **Exact:** for each
-  claim, find *every* occurrence of `claim.text` in the raw scene. (2) **Normalized**, only for claims
-  with zero exact hits: build a normalized scene (runs of whitespace collapsed to one space,
-  casefolded) alongside an index map from each normalized character back to its raw index, search the
-  normalized claim text there, then map matches back to raw spans — this is what makes whitespace and
-  case misses recoverable without trusting offsets. (3) **Overlap resolution:** collect all candidate
-  spans, sort by length descending, accept a span only if it does not intersect an already-accepted
-  one; the loser goes to `unanchored`. (4) **Unanchored:** anything with no span at all comes back in
-  `unanchored`. New `tests/js/test_anchor.mjs`.
-  Acceptance: `prd.md > Script Check — The Marked Scene` — when the quote does not appear verbatim,
-  whitespace and case are normalized and retried, then it falls back to the rail as unanchored, and a
-  verdict is never lost because it could not be placed; every occurrence of a repeated quote is
-  marked, because the extractor gives text, not offsets, so marking one occurrence would assert a
-  position we do not know; on overlap the longest match wins and the shorter claim goes to the rail;
-  nested or broken spans are a defect, not a degraded state; unit-tested against paraphrase,
-  whitespace, case, repeat, and overlap.
-  Verify: `python -m pytest tests/test_js_auth.py -q` — the glob picks up `test_anchor.mjs` and
-  already asserts it is not silently empty. Each of the five cases is its own named test, and the
-  overlap test asserts no two accepted spans intersect.
+- [ ] **6. Every run is stashed, and the stash is cleared when it ends**
+  Spec ref: `glow-wave-1-brief.md > F-003`
+  What to build: Export `stashLiveRun` from `web/auth.js` (currently module-private; only
+  `takeStashedRun` and `setLiveRunProvider` are exported) and call it from `openStream()` on
+  every run rather than only from `beginGoogleLink` (`auth.js:557`). Add a companion
+  clear-on-terminal export and call it from `endRun` (`app.js:577-584`), which nulls
+  `liveRunId`/`liveStreamKey` but leaves the RUN_KEY stash behind — without this, a finished run
+  would make the next reload open that room instead of the intake.
+  Acceptance: Reloading mid-build reopens the live run and replays its timeline without
+  duplicate entries. Reloading after a run has finished lands on the intake, not on the old room.
+  Verify: **Twice.** The replay path is already proven — EventSource cannot set Last-Event-ID on
+  fresh construction, so `_resume_cursor(None, …)` returns 0 and `generate()` yields from event 0
+  while `app.js:459-462`'s monotonic guard dedupes. Confirm no duplicates in the timeline.
 
-- [x] **9. The Script Check surface — the marked scene and the citation rail**
-  Spec ref: `spec.md > The marked scene` — Where it lives, Verdict colours, The citation rail
-  Depends on: 7, 8. Effort: **L**. **← Checkpoint 3**
-  What to build: a mode toggle in the room header, not a separate place — its value is being checked
-  *against this room* — in the same stage state as the room, as a new section below the docket. New
-  `web/scriptcheck.js` and `web/scene.css`. A paste box with the retention disclosure **above the
-  input, before the paste**: the scene text is stored with the room. A working state with no ETA
-  (obligation 6; `--no-cpu-throttling` already keeps CPU allocated for the open request). The marked
-  scene assembled with `document.createTextNode` and real `<mark>` elements — **never** by building
-  an HTML string from scene text; this is where the H1 XSS returns through a different door. A
-  citation rail that follows the selected mark, each citation clicking through to the real ledger
-  excerpt with `target="_blank" rel="noopener noreferrer"` via the treatment `web/app.js`'s
-  `makeLinksSafe` already applies, and each carrying whether the **room** or a **fresh search**
-  answered. Verdict colours come from `web/tokens.css:55-83` and nothing is added to the palette:
-  `--aniline` confirmed, `--oxide` anachronism, `--pencil` unverifiable, `--oxide` for the `UNSOURCED`
-  stamp. A delete control on a filed check. Visible keyboard focus on every mark;
-  `prefers-reduced-motion` inherited free from `web/tokens.css:110`; below 900px the scene and rail
-  stack to one column, matching the room's existing collapse.
-  Acceptance: `prd.md > Script Check — The Marked Scene` — the scene returns marked in place with a
-  rail that follows the selected mark; confirmed is aniline, not green (DIRECTION supersedes the GUI
-  spec's stale line); the scene is assembled with `createTextNode` and real spans; every citation
-  clicks through with `rel="noopener noreferrer"`; the copy says what was actually checked, never the
-  bare word "verified"; keyboard focus is visible and reduced motion is honoured; one column below
-  900px.
-  Verify: paste a scene with `<img src=x onerror=alert(1)>` sitting inside a claim and confirm it
-  renders as text with nothing executing. Tab through the marks and confirm focus is visible on each.
-  Resize below 900px and confirm one column. Grep the new copy for "verified". Confirm Manila still
-  owns more than 40% of the room's filed-state pixel area — the card and the marked scene are new
-  pixels and must not dilute it.
+- [ ] **7. A running room offers a check-again, and the resume line stops lying**
+  Spec ref: `glow-wave-1-brief.md > F-003`
+  What to build: Give the `running` branch of `showResults` a "Check again" control re-issuing
+  `GET /api/rooms/{id}`, polled while that panel is the visible one. Rewrite
+  `resumeStashedRun`'s timeline line (`app.js:1141`, "Back from the sign-in. Picking the run up
+  where it was.") — it is OAuth-specific and becomes false on a reload resume; branch it or make
+  it neutral. State the honest limit in the code comment: `sessionStorage` covers reload and a
+  same-tab lock and usually survives crash session-restore, but not a closed or new tab. The copy
+  must not imply otherwise.
+  Acceptance: A room still researching offers a way to re-check without a full reload. The resume
+  entry reads true on both the OAuth path and the reload path.
+  Verify: **Twice.** No ETA, no duration, no "about N minutes" anywhere in the added copy
+  (invariant 9).
 
-- [x] **10. The MCP transport — `star/mcp/`, bearer auth, and one code path for two doors**
-  Spec ref: `spec.md > The department over MCP > Transport` + `> Authorization` + `> Rate limiting: per uid, not per IP` + `> How the two doors share one code path` + `spec.md > Stack > The one packaging change`
-  Depends on: 3 (bearer resolution), 7 (`_run_check` is one of the four injected callables). Effort: **L**.
-  What to build: new `star/mcp/` package. `protocol.py`, pure: JSON-RPC envelope, version negotiation
-  across `2025-03-26 | 2025-06-18 | 2025-11-25 | 2026-07-28` advertising `2025-11-25`, error objects.
-  `router.py`, an `APIRouter`: bearer auth checked **before any JSON-RPC parsing, including before
-  `initialize`**, refusing with `401` plus `WWW-Authenticate: Bearer` and a JSON-RPC error body;
-  `Origin` validated against `STAR_MCP_ALLOWED_ORIGINS` (default: the service's own URL) with `403` on
-  mismatch and an absent header passing, since non-browser clients send none;
-  `MCP-Protocol-Version` absent → assume `2025-03-26` per the spec's backwards-compatibility rule,
-  present and unsupported → `400`; a POSTed notification or response → **`202` with no body**, which
-  is what `notifications/initialized` gets; `GET /mcp` and `DELETE /mcp` → **`405`**, which the spec
-  names as correct for a server offering no server-initiated stream and no client-terminable session;
-  no `MCP-Session-Id` issued or required. `star/server.py` grows four transport-free helpers —
-  `_start_build(uid, treatment, gate)`, `_read_room`, `_list_rooms_for`, `_run_check` — refactors
-  `POST /api/rooms` to `_require_uid` + `_start_build(uid, treatment, gate=ip_gate)` so both doors
-  call the *same function object*, adds
-  `_uid_limiter = RateLimiter(max_per_window=config.max_rooms_per_ip_per_hour(), window_seconds=3600, max_keys=config.max_rate_limiter_keys())`
-  — the `max_keys` bound matters for the reason `star/guards.py:31-54` documents, the O(n) stale-key
-  sweep runs on the single-threaded loop every open SSE stream shares — and calls
-  `app.include_router(build_mcp_router(...))` **before `app.mount("/")`**. Admission order stays the
-  order Finding 3 established (`star/server.py:576-590`): the free in-memory per-caller check first,
-  `_daily_cap.check()` — which *increments* on the allow path — last. Getting that backwards once
-  already cost a whole day's budget in about two seconds. Add `"star.mcp"` to
-  `[tool.setuptools] packages` in `pyproject.toml`; the list is **explicit, not `find`**, and missing
-  the line keeps the local venv working while the deployed image 500s on import. Add `harness/` to
-  `.gcloudignore` while in there. New `tests/test_mcp_protocol.py`.
-  Acceptance: `prd.md > The Department Over MCP`, first and fourth stories — a per-user bearer token
-  authenticates every MCP call and maps to the same uid the browser uses, one ledger, two doors; MCP
-  builds are rate-limited per uid at the same 5/hour ceiling, because a desktop agent behind CGNAT
-  must not be throttled by a stranger and one address must not buy an unlimited budget; MCP builds
-  decrement the same global `_daily_cap`, one budget, one ceiling, one kill switch; reads are not
-  build-rate-limited; the per-uid limiter carries a key bound.
-  Verify: `python -m pytest tests/test_mcp_protocol.py tests/test_server.py -q`, covering
-  `initialize`, `tools/list`, `-32601` on an unknown method, `202` on `notifications/initialized`,
-  `405` on GET and DELETE, `400` on an unsupported version, `403` on a bad `Origin`, the five auth
-  cases, and both doors decrementing one `_daily_cap`. Then `pip install .` into a clean venv and
-  `python -c "import star.mcp"` — the one line that proves the packaging change took.
+- [ ] **8. Documentation & security verification**
+  Spec ref: `glow-wave-1-brief.md > What "done" means for this wave`
+  What to build: Wave-scoped, proportionate to a five-item change that adds no dependency.
+  **Docs:** set the seven register rows for F-001/F-003/F-004/F-005/F-013 to their true status,
+  set the wave's ledger entry in `.vibe-glow/state.json` to `shipped`, append a `## /checklist`
+  and build section to `process-notes.md`, and re-check that README's Quickstart still describes
+  what the app does after the changes. **Comment drift:** grep comments near every changed
+  surface for claims the change contradicted — a stale comment asserting the old behaviour is a
+  finding of this item, fixed before the wave closes. This repo comments heavily and the audit
+  showed those comments are load-bearing. **Security:** confirm no new dependency entered
+  `pyproject.toml` and no CDN reference entered `web/` (invariants 6 and 7); run a secrets scan
+  over the diff; confirm `.gitignore` still covers `.env`, `.mcp.json` and the evidence dir; and
+  confirm `.env.example` still documents every variable the changed code reads. No new inputs
+  cross a trust boundary in this wave, so the OWASP pass is a sanity check on the diff, not a
+  fresh audit.
+  Acceptance: `python -m pytest -q` green, `ruff check star tests scripts harness` clean, no new
+  dependency, no CDN, no secret in the diff, register and ledger tell the truth.
+  Verify: Run both commands, read the diff end to end, and state plainly what was checked and
+  what was not.
 
-- [x] **11. The four tools, and the strings an agent reads as the product**
-  Spec ref: `spec.md > The department over MCP > The four tools` + `> Error strings`
-  Depends on: 10. Effort: **M**. **← Checkpoint 4**
-  What to build: `star/mcp/tools.py` — the four JSON schemas plus `tools/call` dispatch onto the
-  injected callables. `list_rooms`, `get_room`, `build_room`, `check_scene`, each described for a
-  reader who cannot see a screen: what it does, what it needs, what it returns, what it costs.
-  `build_room` returns a `run_id` immediately and its description names an unsurprising poll interval
-  (~15s) rather than leaving an agent to guess; `get_room` **is** the poll, reporting
-  `running | complete | partial | error | interrupted`, and there is **no fifth tool**;
-  `check_scene`'s description states that the scene text is stored with the room — obligation 5's
-  agent-facing form, and the only place it can live. `instructions` on the `InitializeResult` is not
-  filler: it is where the department explains itself, that a build takes minutes and returns a
-  `run_id` to poll, that citations are hydrated from what search actually returned, and that a scene
-  is stored with its room. Every row of the spec's error table gets its own message — no token, bad
-  or unknown token, revoked token, room not found, treatment too short (naming the 40-character floor
-  and asking for era, place, and what the characters do), treatment too long (naming the cap and the
-  count sent), scene too long, per-user limit reached (naming the ceiling and the window, and saying
-  reads are still free), daily cap reached, run still building, run interrupted. Tool-level failures
-  come back as `CallToolResult{isError: true}` so the calling model can read and act on them;
-  JSON-RPC error objects stay reserved for protocol-level failures, which are a client bug rather
-  than something a model should try to recover from.
-  Acceptance: `prd.md > The Department Over MCP`, second and third stories — four tools; each
-  description written for a reader with no UI; every error names what failed and what to do next, and
-  a bare status code, a bare "invalid request", or a stack trace fails the criterion; the nine named
-  refusals each have their own message; `check_scene`'s description states the scene is stored;
-  polling a room still building returns `running` with whatever progress is legible, never an error
-  and never a blocking wait; a run that died with the process reports `interrupted` verbatim rather
-  than translated into a failure.
-  Verify: `python -m pytest tests/test_mcp_protocol.py -q`. Then drive `/mcp` with `curl` and a real
-  bearer token through `initialize` → `tools/list` → `build_room` → `get_room` until terminal →
-  `check_scene`, and read every string that comes back **as if you could not see a screen**. Grep the
-  tool descriptions and error strings for the bare word "verified" — zero hits, the same rule that
-  binds every other surface.
+## Gut-check
 
-- [x] **12. The persona harness, and the evidence it produces**
-  Spec ref: `spec.md > The persona harness`
-  Depends on: 11. Effort: **M**.
-  What to build: `harness/client.py` — a minimal MCP client over HTTPS on `urllib.request` from the
-  standard library, so no new dependency and nothing third-party in the frame; sends `initialize`,
-  `tools/list`, `tools/call`, carries the bearer token, records every request and response.
-  `harness/personas.py` — three postures: a writer who knows what they want, an agent that gets the
-  arguments wrong, and one starting from an empty account with no rooms
-  *(default — confirm on next interactive run)*. `harness/run.py` — drives a persona with Gemini via
-  `google-genai`, translating `tools/list` into `types.FunctionDeclaration`s and looping tool calls;
-  runtime AI stays Google-only. `harness/runs/*.md` — one committed transcript per persona: the calls
-  made, the errors hit, the verdicts returned. Then the audit that is the whole point: **every failure
-  a persona could not diagnose from the response alone is either fixed or written down with the
-  reason it stands.** While here, close three open issues with recorded answers either way —
-  `spec.md > Open issues` #4 (whether an MCP client other than the harness can connect at all, given
-  STAR ships no OAuth authorization server), #5 (room payload size over MCP, bibles have run
-  11,000-17,000 characters), and #6 (`check_scene` against a scene from a different story). If harness
-  week collides with rehearsal week, the personas run against already-built rooms so only
-  `check_scene` spends against the shared daily cap.
-  Acceptance: `prd.md > The Persona Harness` — a small in-repo MCP client, authored in-window, driven
-  by Gemini, with no third-party AI provider and no third-party client chrome anywhere near it; at
-  least three personas with genuinely different postures; at least one recorded run per persona,
-  committed; every failure a persona could not diagnose from the response alone either fixed or
-  written down with the reason it stands.
-  Verify: run each of the three personas against the live service; three transcripts land in
-  `harness/runs/`; `ruff check star tests scripts harness` reads 0. Read each transcript once as the
-  persona and answer honestly: could you tell why every failure happened from the response alone?
+Eight items, not the usual 8-12 by padding — a wave is not an app cycle, and the register is the
+backlog. Five ship findings, three are structural: two checkpoints and a close-out.
 
-- [ ] **13. Documentation, security verification, and the submission surface**
-  Spec ref: `spec.md > Deployment — identity & signing` + `prd.md > The Submission Surface` + `prd.md > What must not regress`
-  Depends on: all. Effort: **L**, and calendar-bound rather than effort-bound.
-  What to build: **Documentation.** A README covering what STAR does, how to install and run it
-  locally, the environment variables it needs without their values, the stack, and a screenshot of a
-  filed room. `.env.example` refreshed with `GOOGLE_OAUTH_CLIENT_ID` and the three new tuning vars.
-  Every `docs/` artifact reconciled with what actually shipped — including the two assumptions still
-  marked *(default — confirm on next interactive run)*, the 8,000-character scene cap and the
-  three-persona count, and any spec decision the build overturned. `scripts/deploy.sh` carrying
-  `GOOGLE_OAUTH_CLIENT_ID` in `--set-env-vars`, and the OAuth client's redirect URIs registered from
-  item 1 still in place.
-  **Security.** A credential sweep over the whole **history**, not the working tree — the visibility
-  flip is irreversible in the sense that matters. Confirm `.gitignore` still covers `.env` and
-  `.mcp.json` (the latter held a live bearer token once). `pip-audit` against the pinned set, with a
-  written call on anything critical rather than a silent bump — **no pin moves before 2026-09-07**.
-  Confirm the token and scene endpoint families are `_require_uid`-guarded server-side and the MCP
-  door is bearer-guarded before parsing. Confirm **no Firestore ruleset is deployed** — none is the
-  correct posture, since Firestore then denies all client access and the server via ADC is the only
-  path; deploying permissive test-mode rules would silently void the one boundary. Confirm `/docs`,
-  `/redoc`, and `/openapi.json` stay disabled, and that secrets come from Secret Manager rather than
-  env literals.
-  **Ship.** Push the 20 pre-existing commits plus this cycle's to `origin/main` — Cloud Run deploys
-  from local source, so the live URL does not prove a push. Deploy after the last build item and
-  before recording. `gh repo edit --visibility public` after the sweep, and confirm the MIT badge
-  renders in the About sidebar. Record the ≤3-minute video, English, no third-party logos or brands
-  on screen, with the MCP shot as the in-repo persona client in a terminal. Submit the Devpost form
-  with findings and learnings.
-  Acceptance: `prd.md > The Submission Surface` — commits pushed before any new branch; repo public
-  with the MIT badge visible after a credential sweep; the live URL serves what the video shows;
-  video ≤3 minutes with no third-party logos; the MCP shot is the in-repo persona client; Devpost
-  submitted, target Sep 5, hard deadline Sun Sep 7 2026, 2:00 PM PT. Plus every line of
-  `prd.md > What must not regress`, re-checked rather than assumed.
-  Verify: clone the repo fresh into a temp directory and follow the README until it runs.
-  `git log --all -p | grep -iE "password|secret|api[_-]?key|Bearer "` surfaces nothing sensitive.
-  `gcloud run revisions describe <serving revision> --format="value(metadata.annotations['autoscaling.knative.dev/maxScale'])"`
-  reads `1` — grepping the service YAML lies, per `INFRASTRUCTURE.md:213-236`. `python -m pytest -q`
-  green and `ruff check star tests scripts harness` at 0. Open the live URL cold and build the room
-  the video shows.
-
-## What this checklist deliberately does not contain
-
-Carried from `scope.md > What's Explicitly Cut` and `prd.md > Non-goals`, so none of it gets
-reopened mid-build: the OAuth 2.1 authorization server, scaling past one Cloud Run instance,
-Firestore security rules, replacing anonymous auth, source-type inference, the markdown export zip,
-any AI provider other than Google Cloud at runtime, any code from `writer-studio-template`, a build
-step in `web/`, any third-party browser request, and a fifth MCP tool for run status.
-
-One refactor is named and deferred rather than cut: extracting `star/service.py` to hold `_runs`,
-the guards, the runner, and the `_execute` / `_run_pipeline` / `_salvage` / `_persist` family. It is
-better architecture and it is the wrong call 26 days out — it churns the most heavily reviewed code
-in the repo and a 1,406-line test file for zero behavioural gain. First refactor after 2026-09-07.
-
-## Assumptions still open — both closed by the build, 2026-08-10
-
-Both were inherited unchanged from `/prd` and `/spec` and marked
-*(default — confirm on next interactive run)*. Neither needs that run any more:
-
-- **The 8,000-character scene cap — closed by construction.** It shipped as
-  `STAR_MAX_SCENE_CHARS`, matching the treatment cap, and was exercised live: the refusal
-  names the cap and the count sent, and a scene exactly at the cap runs. The number was
-  never load-bearing, only its being *stated* was, and it is stated in the tool description,
-  the browser copy, and the refusal. Tunable by env var if a real scene ever needs more.
-- **Three personas — closed by existing.** `writer`, `fumbler`, and `newcomer` are built and
-  three transcripts are committed to `harness/runs/`. The count was the assumption; the
-  postures turned out to be the part that mattered, and they differ on the two things that
-  actually change an agent's experience: what it already has, and how well it is wired.
-
-**One assumption the build replaced with a measurement.** `spec.md > Open issues` #5 put a
-room payload at 11,000-17,000 characters. Measured over MCP: **152,007 bytes, roughly 37,000
-tokens** — an order of magnitude past the estimate, and in the wrong place. The bible is
-16,183 of it. The four drawers are 127,090, because citation excerpts are real slabs of the
-pages search returned, which is the property that makes a citation checkable. Recorded as a
-cost rather than a defect; no `get_room` selector before 2026-09-07, because the shape that
-fixes it properly is a fifth tool by another name.
+The risk concentrates in items 4-7, all of which touch a live SSE run, which is why both
+checkpoints sit in front of them and why each carries the twice-verified law. The cheapest three
+go first deliberately: they are independent, they prove the branch is healthy, and if the run
+lifecycle work turns out harder than the traces suggest, three real fixes are already banked.

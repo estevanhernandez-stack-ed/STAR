@@ -5,6 +5,13 @@
    turns a run_id into stage content via setRoomRenderer(); this file only
    ever calls it by name.
 
+   Since the glow campaign's wave 1 it owns a THIRD thing: which run is
+   streaming, set from both ends of a run's life in app.js via setLiveRun().
+   It is here rather than there because this file owns what a rail click does,
+   and a row for a run in flight has to go somewhere different from a row for a
+   filed room — showRunning() rather than loadRoom(), which would fetch a room
+   with no story_profile yet and paint a placeholder over a live stream.
+
    Since Task 4 the stage has four states, not three. The fourth is the card
    (web/account.js), reached from the entry at the FOOT of the rail and from
    nowhere else — that placement is the requirement, not a layout preference:
@@ -35,6 +42,15 @@ const PANELS = [intakePanel, progressPanel, resultsPanel, accountPanel];
 let _rooms = [];
 let _activeRunId = null;
 let _renderRoom = null; // (runId) => Promise<void> | void
+// The last stage that was not the card. Written by stage(), read by
+// showPreviousStage(); null until the first stage change, which is why that
+// function falls back to intake rather than trusting it.
+let _lastStageBeforeAccount = null;
+// The run currently streaming, or null. Set by web/app.js at both ends of a
+// run's life. The rail needs it because a row for a run in flight has to go
+// somewhere different from a row for a filed room, and this file is the one
+// that owns what a rail click does.
+let _liveRunId = null;
 // Did the last attempt to READ the list fail? Remembered rather than passed,
 // because showIntake() and loadRoom() redraw the rail from this cache without
 // going near the network — and an empty `_rooms` means two different things
@@ -42,7 +58,16 @@ let _renderRoom = null; // (runId) => Promise<void> | void
 // then be replaced by the false one on the reader's next click.
 let _unreadable = false;
 
-/** Register the function that paints a loaded room onto the stage. */
+/** Tell the rail which run is streaming, or that none is.
+ *
+ *  Called from both ends of a run's life in web/app.js — openStream sets it,
+ *  endRun clears it — because a stale value here would send a reader to a live
+ *  surface for a run that has already finished, which is the one failure this
+ *  is meant to prevent in the other direction. */
+export function setLiveRun(runId) {
+  _liveRunId = runId;
+}
+
 export function setRoomRenderer(fn) {
   _renderRoom = fn;
 }
@@ -127,13 +152,36 @@ export function renderRail(rooms, activeRunId, { unreadable = _unreadable } = {}
       (isFlagged ? " flagged" : "");
     btn.dataset.runId = room.run_id;
     btn.setAttribute("aria-current", room.run_id === _activeRunId ? "true" : "false");
+    // A run in flight has no title and no era yet, and star/store.py writes the
+    // document at creation off an empty story_profile — so the ordinary
+    // fallbacks say two false things about it. "Untitled room" claims the
+    // department read the treatment and found no title; "Era unstated" claims
+    // it looked for a period and found none. Neither has happened. The row says
+    // what is actually true instead, in the vocabulary web/app.js already uses
+    // for this state ("Still in the department").
+    const title = isRunning ? "In the department" : room.title || "Untitled room";
+    const meta = isRunning
+      ? "Researching now"
+      : `${escapeHtml(room.era || "Era unstated")} &middot; ${escapeHtml(formatDate(room.created_at) || "—")}`;
     btn.innerHTML = `
       <span class="rail-room-marker" aria-hidden="true"></span>
       <span class="rail-room-text">
-        <span class="rail-room-title">${escapeHtml(room.title || "Untitled room")}</span>
-        <span class="rail-room-meta">${escapeHtml(room.era || "Era unstated")} &middot; ${escapeHtml(formatDate(room.created_at) || "—")}</span>
+        <span class="rail-room-title">${escapeHtml(title)}</span>
+        <span class="rail-room-meta">${isRunning ? escapeHtml(meta) : meta}</span>
       </span>`;
-    btn.addEventListener("click", () => loadRoom(room.run_id));
+    // A run in flight is not a filed room, and loadRoom would treat it as one:
+    // it fetches the room, finds no story_profile yet, and paints the "still in
+    // the department" placeholder over a stream that is at that moment writing
+    // into the progress panel's hidden DOM. The live surface already exists —
+    // showRunning() had two callers and neither was a control, so once a reader
+    // opened Your card mid-build there was no way back to their own run.
+    btn.addEventListener("click", () => {
+      if (_liveRunId !== null && room.run_id === _liveRunId) {
+        showRunning();
+        return;
+      }
+      loadRoom(room.run_id);
+    });
     railList.appendChild(btn);
   }
 }
@@ -186,6 +234,11 @@ export async function refreshRail(activeRunId) {
  *  back exactly as far along as it has got. Nothing in this file closes a
  *  stream, and nothing in it re-fetches a room. */
 function stage(panel) {
+  // Where the reader was before the card, so they can be put back exactly
+  // there. Recorded here rather than at the call sites because this is the one
+  // function every stage change passes through, and a second bookkeeping spot
+  // is a second thing to forget.
+  if (panel !== accountPanel) _lastStageBeforeAccount = panel;
   for (const el of PANELS) el.classList.toggle("hidden", el !== panel);
   // The rail entry carries the selection the way a rail room does, so "which
   // surface am I on" has one answer in one place.
@@ -216,4 +269,15 @@ export function showRoom() {
  *  stream last left it. */
 export function showAccount() {
   stage(accountPanel);
+}
+
+/** Back out of the card to whatever the reader was looking at.
+ *
+ *  A panel swap and nothing else — deliberately not loadRoom(), which would
+ *  re-fetch the room and run resetRoomView over a surface the reader never
+ *  left. The card is the only stage with no way out of its own, and the rail
+ *  was carrying that job: clicking the open room to get back is what made an
+ *  unsubmitted scene disposable. */
+export function showPreviousStage() {
+  stage(_lastStageBeforeAccount || intakePanel);
 }

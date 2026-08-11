@@ -1295,3 +1295,77 @@ to that file.
 
 Visibility flip, README screenshot, the ≤3-minute video, Devpost. The credential sweep
 is done and clean; every gate in front of the flip is verified.
+
+## /checklist — cycle #20 (glow wave 1)
+
+Cart cycle #20 is a vibe-glow wave rather than an app cycle. Its input is
+`docs/glow-wave-1-brief.md`, not `spec.md`; its backlog is the findings register at
+`docs/superpowers/research/2026-08-10-star-ui-audit-findings.md`.
+
+The number collides with a note left at the end of cycle #19, which had penciled #20 for the
+judge critique's Part 3 — ask-the-room, `get_room` shape, a delete tool, premise notes. That
+work moves to #21. Recording it here so the two do not get confused later.
+
+**Sequencing decision.** Three independent fixes first (F-004, F-005, F-013), then the run
+lifecycle (F-001), then resume layered on it (F-003). Not riskiest-first, deliberately: the run
+lifecycle items all touch a live SSE stream, and banking three real fixes before going near it
+means a failed checkpoint reverts to a branch that already earned its keep.
+
+**What the audit changed about the work.** Three of the five items are smaller than the finding
+that produced them, because the adversarial pass traced the code rather than the claim:
+
+- The failed-build error line is **not** off-screen — `addEntry` already scrolls every entry
+  into view. Only the stale heading is broken. No layout move needed.
+- The issued token already survives the stage switch (`stage()` only adds `.hidden`) and already
+  lives in module scope. Nothing needs storing; a render path needs to read it.
+- The resume machinery ships end to end and is wired to one trigger. It needs an export and a
+  clear-on-terminal, not new plumbing.
+
+The brief carries these corrections inline so the build reads the corrected work.
+
+**Deepening rounds: 0.** Standing pattern, and the register already survived 67 adversarial
+reviews — a fourth pass over the same five items would be re-litigating an argument that was
+already had properly.
+
+## /build — cycle #20 (glow wave 1)
+
+Eight items, seven commits, on `glow/wave-1-runs-and-work`. Tests 606 -> 611,
+ruff clean throughout. Verified against two real builds plus a synthetic render
+for the one state that cannot be forced without paying for a failed run.
+
+**What the build found that the audit did not.**
+
+- **F-004 was deeper than the finding.** `setCheckRoom`'s same-room guard could
+  never fire, because `resetCheck` erased the `roomId` it compares one call
+  earlier. Passing a `keepScene` flag alone would have looked correct and fixed
+  nothing — the room paint that followed cleared the box a second time.
+- **The running rail row was lying twice.** With the row finally rendering it
+  read "Untitled room · Era unstated". `store.py` writes the document off an
+  empty `story_profile` at creation, so the first claims the treatment was read
+  and had no title and the second claims a period was looked for and not found.
+  Neither has happened. Now "In the department / Researching now".
+- **Two buttons set `.type` as a property** where every other button in
+  `account.js` uses `setAttribute`. The stub document cannot see a property,
+  which is how the test surfaced it.
+- **Two stale comments.** `resetProgress` named the rail's "New room" as *the*
+  recovery path, which is the sentence that made its treatment wipe look
+  harmless; `beginGoogleLink` described the run stash as the redirect's alone.
+  Both fixed in item 8's drift check rather than left for a future reader.
+
+**Deviation from the brief, declared.** F-003 asked for a 5s poll on a running
+room; this ships the control without the timer. A poll needs a handle cleared on
+every stage change, `shell.js` owns stage changes and `app.js` would own the
+interval, and a leaked interval hammering `/api/rooms` is a worse failure than
+one extra press.
+
+**Friction worth recording.** Static files ship an etag with no `Cache-Control`,
+so browsers apply heuristic caching and a changed module is served stale. This
+cost one confusing verification round: `app.js` failed to evaluate entirely
+because a cached `auth.js` had no `clearStashedRun`, and the symptom was "the
+build did not start". Worked around by serving a second instance on port 8001 —
+a fresh origin has a fresh cache. Worth a real fix if the dev loop keeps hitting
+it; not this wave's scope.
+
+**Not done, and not claimed.** The wave is `shipped`, not `clean`. Close-out —
+re-capturing the touched surfaces and re-reviewing them against the measuring
+stick — has not run. 16 findings remain open in the register.

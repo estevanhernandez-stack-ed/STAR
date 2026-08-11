@@ -70,7 +70,12 @@ globalThis.__starAuth = {
   signOut: () => {},
   signOutNotice: async () => "",
 };
-globalThis.__starShell = { refreshRail: async () => {} };
+globalThis.__starShell = {
+  refreshRail: async () => {},
+  showPreviousStage: () => {
+    throw new Error("no test below should change the stage");
+  },
+};
 
 const { renderAccountCard } = await import(loadAccountModule());
 

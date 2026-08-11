@@ -7,6 +7,12 @@ venv/
 .playwright-mcp/
 star-*.png
 
+# vibe-glow capture evidence. Every round re-shoots the same surface names, so
+# these are regenerated rather than edited, and a committed round would only
+# ever conflict with the next one. The campaign pointer (.vibe-glow/state.json)
+# and the measuring-stick doc under docs/design/ are the durable parts.
+docs/ui-evidence/
+
 # Agent tooling — .mcp.json carries a live bearer token in an
 # Authorization header. Never commit it; the repo is public.
 .mcp.json

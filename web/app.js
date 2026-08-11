@@ -29,9 +29,11 @@
 
 import {
   authedFetch,
+  clearStashedRun,
   completeGoogleLink,
   getIdToken,
   setLiveRunProvider,
+  stashLiveRun,
   takeStashedRun,
 } from "/auth.js";
 import {
@@ -40,6 +42,7 @@ import {
   showRunning,
   showRoom,
   refreshRail,
+  setLiveRun,
   setRoomRenderer,
 } from "/shell.js";
 import { initAccount, openAccount } from "/account.js";
@@ -110,10 +113,11 @@ let elapsedTimer = null;
 let runStartedAt = null;
 
 // The run this page is currently streaming, and how far into its event history
-// it has got. auth.js's beginGoogleLink reads all three through the provider
-// registered at the foot of this file, because a link redirect leaves the page
-// and these three values are the only thing about a live run that is not
-// recoverable from the server afterwards.
+// it has got. auth.js reads all three through the provider registered at the
+// foot of this file — beginGoogleLink on the way out to Google, and
+// stashLiveRun on every run since wave 1 — because these three values are the
+// only thing about a live run that is not recoverable from the server
+// afterwards, and a page that goes away for any reason loses them.
 let liveRunId = null;
 let liveStreamKey = null;
 let lastEventId = null;
@@ -127,7 +131,46 @@ let lastEventId = null;
 let activeSource = null;
 
 $("build-btn").addEventListener("click", buildRoom);
+
+/* The first press's sentence, when a run is live.
+   It says what continues and where to find it, and it does not say when the
+   run will finish: star/config.py records 146s to 420s+ for one fixed
+   treatment, so there is no number here that would not be a guess. */
+const NEW_ROOM_ARMED = "Start a new one anyway";
+const NEW_ROOM_NOTICE =
+  "The build already running keeps going, and keeps spending searches. It is " +
+  "in the rail under its own row, and it files there when it is done.";
+
+/** Put the control back to its resting state. Called on the second press and
+ *  whenever a run ends, so a build that finishes while the button is armed
+ *  does not leave a warning about a run that is already filed. */
+function disarmNewRoom() {
+  const btn = $("new-room-btn");
+  btn.setAttribute("data-armed", "false");
+  btn.replaceChildren(document.createTextNode("New room"));
+  $("new-room-notice").replaceChildren();
+}
+
+/* Armed only while a run is live, and the reason is money rather than tidiness.
+   resetProgress() calls closeStream(), and closing the SSE response ends the
+   GENERATOR only: star/server.py's stream_events is a bare `while True` with no
+   disconnect check, and the pipeline is a separate task held by a strong ref in
+   _runs[run_id]. The searches and the Gemini calls carry on, against a budget
+   the live demo shares, with nothing on screen still pointed at them.
+
+   Two presses, using the idiom web/account.js and web/scriptcheck.js already
+   ship for their irreversible controls rather than inventing a third. With no
+   run live the control behaves exactly as it did — one press, straight through
+   — because there is nothing to warn about. */
 $("new-room-btn").addEventListener("click", () => {
+  const btn = $("new-room-btn");
+  if (liveRunId !== null && btn.getAttribute("data-armed") !== "true") {
+    btn.setAttribute("data-armed", "true");
+    btn.replaceChildren(document.createTextNode(NEW_ROOM_ARMED));
+    $("new-room-notice").replaceChildren(document.createTextNode(NEW_ROOM_NOTICE));
+    return;
+  }
+  disarmNewRoom();
   showIntake();
   resetProgress();
   $("treatment").value = "";
@@ -302,14 +345,48 @@ function stopElapsedTimer() {
 }
 
 /** Rebuilds the live drawer grid and clears every piece of per-run state.
- *  Called at the top of every build, and again on "New room" — the error
- *  path below never navigates away on its own (the rail's own "New room"
- *  button is the recovery path, always visible), so a stray interval or a
- *  stale drawer reference must not survive into whatever the user does
- *  next. */
+ *  Called at the top of every build, and again on "New room" — the error path
+ *  below still never navigates away on its own, so a stray interval or a stale
+ *  drawer reference must not survive into whatever the user does next.
+ *
+ *  There are TWO recovery paths now, not one. The rail's "New room" is still
+ *  always visible, and it still clears the treatment because "start fresh" is
+ *  what it means. markRunFailed mounts a second one inside the failure block,
+ *  which does everything this one does except the wipe — a reader whose build
+ *  just failed should not have to go and find their treatment again. This
+ *  comment named the rail button as "the" recovery path until wave 1 of the
+ *  glow campaign, and that was the sentence that made the wipe look harmless. */
 function resetProgress() {
   stopElapsedTimer();
   closeStream();
+  // Let go of the run, not just of the panel.
+  //
+  // closeStream() ends this page's view of a run; these two end the rest of the
+  // app's memory of it. They were in endRun() alone, and the abandon path never
+  // reaches endRun — pressing "New room" twice during a build lands here and
+  // nowhere else. That left shell.js's _liveRunId pointing at the run the
+  // reader had just walked away from, so its rail row routed to showRunning()
+  // and opened the panel this function had emptied one line earlier: "The
+  // department is working", a fresh ellipsis, four idle drawers, no stream —
+  // for a run that was genuinely still spending. The armed control's own notice
+  // sends the reader there by name.
+  //
+  // Safe at the other two call sites: buildRoom clears here and openStream sets
+  // both again a few lines later, and resumeStashedRun runs after
+  // takeStashedRun has already deleted the stash on read.
+  setLiveRun(null);
+  clearStashedRun();
+  // The heading and the failure block are panel state, so they reset with the
+  // panel. Without this the next build would start under "The department
+  // stopped" with the previous run's reason still pinned above the drawers.
+  const heading = $("progress-heading");
+  heading.replaceChildren(document.createTextNode(WORKING_HEADING));
+  const dots = document.createElement("span");
+  dots.className = "ellipsis";
+  heading.appendChild(dots);
+  const failure = $("progress-failure");
+  failure.replaceChildren();
+  failure.classList.add("hidden");
   timeline.innerHTML = "";
   $("search-meter").textContent = "";
   searchCount = 0;
@@ -327,6 +404,65 @@ function resetProgress() {
   } else {
     progressPanel.insertBefore(grid, timeline);
   }
+}
+
+/* The progress panel's two headings, kept together so the pair can be read in
+   one place. The working one is duplicated in web/index.html because it is the
+   panel's resting state and has to be in the markup; this constant is what
+   restores it. */
+const WORKING_HEADING = "The department is working";
+const FAILED_HEADING = "The department stopped";
+const START_OVER = "Start a new room";
+
+/** The panel's terminal-failure state.
+ *
+ *  Two things, and the first was missing entirely: nothing in this app wrote
+ *  #progress-heading, so a run that failed went on claiming the department was
+ *  working, under a pulsing ellipsis, while sweepUnfiledDrawers filled all four
+ *  cards with "Did not file". The screen contradicted itself, and after a build
+ *  that spent real search budget the contradiction was the loudest thing on it.
+ *
+ *  The reason then goes ABOVE the drawer grid. It is in the timeline below as
+ *  well — that is the run's chronological record and it keeps it — but the
+ *  timeline sits under four cards at their 260px floor, and this is the surface
+ *  a reader is looking at when they find out they paid for nothing.
+ *
+ *  No ETA, no retry-time, no advice about treatment length. star/config.py
+ *  records 146s to 420s+ for ONE FIXED treatment, so length is not the measured
+ *  variable and guidance about it would be a guess printed as help. */
+function markRunFailed(message) {
+  const heading = $("progress-heading");
+  // replaceChildren, not textContent: it takes the .ellipsis span with it, and
+  // the pulse is the half of this that a reader sees from across the room.
+  heading.replaceChildren(document.createTextNode(FAILED_HEADING));
+
+  const box = $("progress-failure");
+  box.replaceChildren();
+
+  const line = document.createElement("p");
+  line.className = "progress-failure-line";
+  // textContent rather than the escapeHtml-into-innerHTML the timeline uses.
+  // Same result for these two server strings, stricter by construction.
+  line.textContent = message;
+  box.appendChild(line);
+
+  const again = document.createElement("button");
+  again.type = "button";
+  again.className = "progress-failure-btn";
+  again.textContent = START_OVER;
+  again.addEventListener("click", () => {
+    // What the rail's "New room" does, minus the one line that made it a poor
+    // recovery path from here: it clears #treatment, and that is the only write
+    // to the field in this app. A reader whose build just failed should not
+    // have to go and find their treatment again to try it.
+    showIntake();
+    resetProgress();
+    $("intake-error").textContent = "";
+    $("build-btn").disabled = false;
+  });
+  box.appendChild(again);
+
+  box.classList.remove("hidden");
 }
 
 /** Marks every drawer that never reached "filed" by the time the run ended
@@ -413,6 +549,15 @@ async function buildRoom() {
   startElapsedTimer();
   addEntry("done", "Treatment received. The department is assembling.");
   openStream(runId, streamKey);
+  // The run exists server-side the moment this POST returns — star/server.py
+  // persists it with status "running" at creation — but nothing asked the rail
+  // to redraw until the run ENDED. So web/shell.js's running-marker branch was
+  // unreachable on this path, and a live build showed "Nothing filed yet" in
+  // the rail beside four drawers actively searching.
+  //
+  // Deliberately after openStream, and not awaited: the stream is what the
+  // reader is waiting on, and it must not queue behind a list fetch.
+  refreshRail(runId);
 }
 
 /** Opens one run's event stream and drives the progress panel off it.
@@ -438,7 +583,17 @@ async function buildRoom() {
 function openStream(runId, streamKey, { resumed = false } = {}) {
   closeStream();
   liveRunId = runId;
+  // The rail's own copy, so a row for this run knows to go to the live surface
+  // rather than fetching a room that has no story_profile yet.
+  setLiveRun(runId);
   liveStreamKey = streamKey;
+  // Stash the run for a page that does not survive it. Here rather than only
+  // at the OAuth redirect, because the stream_key is lost the same way by a
+  // reload, a crash, and a phone locking — and it is the one value about a
+  // live run that no endpoint will reissue. Placed after both fields are set,
+  // since auth.js reads them back through the provider registered at the foot
+  // of this file.
+  stashLiveRun();
 
   // encodeURIComponent on both: runId and streamKey are server-minted hex
   // today, so neither can carry a character that needs escaping — which is
@@ -545,6 +700,7 @@ function openStream(runId, streamKey, { resumed = false } = {}) {
     } else if (ev.type === "error") {
       endRun(source);
       addEntry("error", `Something broke: ${escapeHtml(ev.message)}`);
+      markRunFailed(ev.message);
       $("build-btn").disabled = false;
     }
   };
@@ -581,6 +737,19 @@ function endRun(source) {
   if (activeSource === source) activeSource = null;
   liveRunId = null;
   liveStreamKey = null;
+  // Cleared here rather than in each terminal branch, for the same reason the
+  // pair above is: a stale live-run id would send a reader from the rail to a
+  // progress panel for a run that has already filed.
+  setLiveRun(null);
+  // And the armed control goes back to resting: a run that finishes while the
+  // button is armed would otherwise leave a warning about spending on a run
+  // that has already stopped spending.
+  disarmNewRoom();
+  // The stash outlives the run unless something drops it. takeStashedRun
+  // deletes on read, but only a load reads it, and a run that finishes while
+  // the page stays open never gets one — so the next load would resume a room
+  // that had already filed.
+  clearStashedRun();
 }
 
 /** Clears the room view back to its resting state before a repaint.
@@ -600,7 +769,7 @@ function endRun(source) {
  *  The title goes to a transitional string rather than being blanked or left
  *  alone: blank collapses the docket's heading row mid-navigation, and leaving
  *  the previous room's title is the leak itself. */
-function resetRoomView() {
+function resetRoomView(nextRunId) {
   setRoomMode("drawers");
   bibleBtn.classList.add("hidden");
   checkBtn.classList.add("hidden");
@@ -610,7 +779,11 @@ function resetRoomView() {
   // The same cross-room leak this function exists to close, on the surface
   // where it would cost the most: a scene pasted against room A left sitting
   // in the box under room B's title, over a marked scene citing A's ledger.
-  resetCheck();
+  //
+  // The room id goes through so a re-entry into the room already open keeps an
+  // unsubmitted scene. That is not a weakening of the leak fix: a leak needs
+  // two rooms, and this is the one case where there is only one.
+  resetCheck(nextRunId);
   $("result-title").textContent = "Opening the room";
   $("result-stats").textContent = "";
 }
@@ -624,7 +797,7 @@ function resetRoomView() {
 async function showResults(runId) {
   // First, before the request goes out. shell.js's loadRoom has already
   // revealed the stage by the time this runs — see resetRoomView.
-  resetRoomView();
+  resetRoomView(runId);
 
   const res = await authedFetch(`/api/rooms/${runId}`);
   if (!res.ok) {
@@ -656,9 +829,17 @@ async function showResults(runId) {
   // plainly rather than reading `null.story_profile` and crashing the panel.
   if (!hasProfile) {
     const copy = {
+      // Reworded in the glow campaign's wave 1. The old sentence — "Reconnecting
+      // to a live run isn't available yet" — described the product's roadmap
+      // rather than the reader's next step, and stopped being true in the same
+      // wave: every run is stashed now, so a reload in the same tab picks its
+      // own run back up. This branch is what is left after that, and it is a
+      // narrower thing: a run that IS live but that THIS page is not watching —
+      // another tab, or a stash already consumed. Says that, and offers the
+      // one action available.
       running: [
         "Still in the department",
-        "This room is still being researched. Reconnecting to a live run isn't available yet — check back once it's filed.",
+        "This room is still being researched, and this page is not watching that run. Check again, or open it once it has filed.",
       ],
       // States what the payload proves — nothing was filed — and not why.
       // "the server restarted" was one cause of a document stuck at
@@ -682,6 +863,24 @@ async function showResults(runId) {
     ];
     $("result-title").textContent = copy[0];
     docketBody.innerHTML = `<p class="docket-note">${escapeHtml(copy[1])}</p>`;
+    // The one action a reader has on a run they are not watching. Without it
+    // the only way to learn a build had finished was to reload the whole page
+    // on a hunch — the surface said "check back" and gave nothing to check
+    // with.
+    //
+    // A control rather than a timer, deliberately. A poll would need a handle
+    // cleared on every stage change, and shell.js owns stage changes while this
+    // file owns the interval; a leaked interval hammering /api/rooms is a worse
+    // failure than one extra press. Recorded as a deviation from the wave
+    // brief, which proposed a 5s poll.
+    if (status === "running") {
+      const again = document.createElement("button");
+      again.type = "button";
+      again.className = "docket-btn";
+      again.textContent = "Check again";
+      again.addEventListener("click", () => showResults(runId));
+      docketBody.appendChild(again);
+    }
     return;
   }
 
@@ -1138,7 +1337,10 @@ async function resumeStashedRun() {
   // `result: null`, so there is no created_at to read and this page genuinely
   // does not know when the build began. updateMeter drops the clause.
   startElapsedTimer({ startedAt: null });
-  addEntry("done", "Back from the sign-in. Picking the run up where it was.");
+  // Neutral, because this path is no longer only the sign-in's. Every run is
+  // stashed now, so a reload, a crash, or a locked phone arrives here too, and
+  // "Back from the sign-in" would be false for three of the four ways in.
+  addEntry("done", "Picking the run up where it was.");
   openStream(stashed.run_id, stashed.stream_key, { resumed: true });
   return stashed.run_id;
 }
@@ -1162,9 +1364,11 @@ initScriptCheck();
 // lives in the same document.
 initAccount();
 
-// auth.js asks for this on its way out to Google. Read at call time rather
-// than pushed on every event: the values are already tracked for the stream's
-// own sake, and a getter cannot go stale between updates.
+// auth.js asks for this on its way out to Google, and — since wave 1 —
+// on every openStream, because a reload loses the stream_key the same way a
+// redirect does. Read at call time rather than pushed on every event: the
+// values are already tracked for the stream's own sake, and a getter cannot go
+// stale between updates.
 setLiveRunProvider(() =>
   liveRunId && liveStreamKey
     ? { run_id: liveRunId, stream_key: liveStreamKey, last_event_id: lastEventId }

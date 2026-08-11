@@ -34,7 +34,11 @@
         </div>
       </div>
 
-      <button id="new-room-btn" class="rail-new" type="button">New room</button>
+      <button id="new-room-btn" class="rail-new" type="button" data-armed="false">New room</button>
+      <!-- Written by web/app.js only while a run is live, and only after the
+           first press. Empty in the document so nothing is announced or read
+           until there is something to say. -->
+      <p id="new-room-notice" class="rail-new-notice"></p>
 
       <nav class="rail-list" id="rail-list" aria-label="Saved rooms list">
         <!-- Rendered by shell.js's renderRail(). -->
@@ -96,10 +100,20 @@
       <section id="intake-panel" class="panel intake">
         <div class="intake-paste">
           <h2>Hand your treatment to the department</h2>
+          <!-- "Era, place, and what your characters actually do" is a compound
+               subject and took a singular verb here until the glow campaign's
+               copy audit: "…actually do IS what turns". Recast rather than
+               patched to "are what turn", which is correct and collides when
+               read aloud ("do are"). The colon makes the three items a list and
+               "that is" takes the singular cleanly.
+               "grounded" is load-bearing and stays: it is the only occurrence
+               in web/, three unrelated interviews in the practice research
+               reached for it unprompted, and the phase-3 plan binds it to this
+               string. -->
           <p class="hint">
             A logline works; a paragraph works better. Era, place, and what
-            your characters actually do is what turns a guess into a grounded
-            fact.
+            your characters actually do: that is what turns a guess into a
+            grounded fact.
           </p>
           <p class="retention">
             Your treatment itself is not stored — only the profile the
@@ -117,25 +131,44 @@
 
         <!-- The four plates, at index scale. Each remit is compressed from the
              instruction its researcher actually runs on
-             (star/agents/researchers.py's _CATEGORY_BRIEFS). -->
+             (star/agents/researchers.py's _CATEGORY_BRIEFS).
+
+             The remits are LISTS, not sentences, since the glow campaign's copy
+             audit. Design-language rule 11: a note earns its sentence or it
+             becomes a mark, and the test is to strike every verb — "Light,
+             sound, weather, dress, money, food" had none to strike, which is
+             the terminal case. The three verbs that were here ("hold, drive and
+             wear", "move", "stands in the way") each restated the plate label
+             directly above them, and "drive and wear" reached past what Objects
+             & Props names.
+
+             "how they actually operated" is kept verbatim: it is practice
+             versus statute, which is a real distinction and the one clause with
+             no shorter honest form.
+
+             This is the STRING change only. Setting the four in the label face
+             at --label-sm would make the form change visible as well as true,
+             and is deliberately not done here — .plate-remit keeps --ink at
+             0.85 on manila (6.28:1, recorded), so no colour pair moves and
+             invariant 5 is not engaged. -->
         <aside class="intake-index" aria-labelledby="intake-index-heading">
           <h3 id="intake-index-heading" class="intake-index-heading">Four drawers come back</h3>
           <ul class="plate-list">
             <li>
               <span class="plate-label">Setting &amp; Atmosphere</span>
-              <span class="plate-remit">Light, sound, weather, dress, money, food — the texture of a place in its period.</span>
+              <span class="plate-remit">Light &middot; sound &middot; weather &middot; dress &middot; money &middot; food &mdash; the texture of a place in its period</span>
             </li>
             <li>
               <span class="plate-label">Objects &amp; Props</span>
-              <span class="plate-remit">What characters hold, drive and wear: makes, models, materials, and the era's own words for them.</span>
+              <span class="plate-remit">Makes &middot; models &middot; materials &middot; the era&rsquo;s own words for them</span>
             </li>
             <li>
               <span class="plate-label">Logistics</span>
-              <span class="plate-remit">How people and things move: routes, distances, travel times, schedules, procedures.</span>
+              <span class="plate-remit">Routes &middot; distances &middot; travel times &middot; schedules &middot; procedures</span>
             </li>
             <li>
               <span class="plate-label">Forces &amp; Conflicts</span>
-              <span class="plate-remit">What stands in the way: institutions, authorities, rivals, laws, and how they actually operated.</span>
+              <span class="plate-remit">Institutions &middot; authorities &middot; rivals &middot; laws &middot; how they actually operated</span>
             </li>
           </ul>
           <p class="intake-rule">
@@ -148,7 +181,16 @@
       </section>
 
       <section id="progress-panel" class="panel hidden">
-        <h2>The department is working<span class="ellipsis"></span></h2>
+        <!-- The heading is rewritten on a terminal error (web/app.js's
+             markRunFailed). Until this wave nothing wrote it at all, so a
+             paid, failed build sat under "The department is working" with the
+             ellipsis still pulsing while four drawers read "Did not file". -->
+        <h2 id="progress-heading">The department is working<span class="ellipsis"></span></h2>
+        <!-- Empty and hidden until a run fails. It sits here, above the drawer
+             grid resetProgress inserts before #timeline, so the reason is the
+             first thing under the heading rather than the last thing under
+             four full-height cards. -->
+        <div id="progress-failure" class="progress-failure hidden"></div>
         <ul id="timeline"></ul>
         <p id="search-meter" class="meter"></p>
       </section>

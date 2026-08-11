@@ -56,7 +56,7 @@ import {
   signOut,
   signOutNotice,
 } from "/auth.js";
-import { refreshRail } from "/shell.js";
+import { refreshRail, showPreviousStage } from "/shell.js";
 
 /* ---------------------------------------------------------------------
    The copy. Kept together so the register can be read in one place rather
@@ -65,6 +65,12 @@ import { refreshRail } from "/shell.js";
 --------------------------------------------------------------------- */
 
 const HEADING = "Your card";
+/* The card is the only stage with no exit of its own. Until it had one, the
+   way back was clicking the open room in the rail — which ran a full room
+   re-render and took any unsubmitted scene with it. Naming the destination
+   rather than saying "Back" because the card can be opened from three
+   different surfaces and a bare arrow would not say which one it returns to. */
+const BACK = "Back to where you were";
 
 const IDENTITY_LEGEND = "Identity";
 const TOKENS_LEGEND = "Issued tokens";
@@ -152,6 +158,10 @@ const PLAINTEXT_LEGEND = "This is the only time this token is shown";
 const PLAINTEXT_USE =
   "Send it to the department as an Authorization header, in the form " +
   "“Bearer” followed by the token. Copy it now.";
+/* The reader ends this moment, and nothing else does. Phrased as the act
+   rather than as a claim on their behalf — "I have saved it" would be the card
+   asserting something only the reader knows. */
+const PLAINTEXT_DISMISS = "Put it away";
 
 const NO_TOKENS = "No tokens have been issued from this account.";
 
@@ -357,11 +367,21 @@ function buildToken(token, handlers) {
  *  rather than a layout choice: "the surface says so before issuing" means the
  *  sentence about the token being shown once is already on the page when the
  *  reader presses the control, and still above the token when it appears. */
-function buildPlaintext(issued) {
+function buildPlaintext(issued, handlers = {}) {
   const block = el("div", "token-plaintext");
   block.appendChild(el("p", "token-plaintext-legend", PLAINTEXT_LEGEND));
   block.appendChild(el("code", "token-plaintext-value", String(issued.token || "")));
   block.appendChild(el("p", "token-plaintext-use", PLAINTEXT_USE));
+  // The reader's own way to end the one render that carries the token. Without
+  // it, openAccount's early return would hold the card unread for as long as
+  // the session lasted; with it, the plaintext leaves when the reader says so
+  // and never because something else finished.
+  if (handlers.onDismissToken) {
+    const done = el("button", "token-plaintext-dismiss", PLAINTEXT_DISMISS);
+    done.setAttribute("type", "button");
+    done.addEventListener("click", handlers.onDismissToken);
+    block.appendChild(done);
+  }
   return block;
 }
 
@@ -373,7 +393,7 @@ function buildTokens(state, handlers) {
   // Immediately after the standing copy and before the list, so the one moment
   // the plaintext exists on a screen is directly under the sentence that
   // warned about it.
-  if (state.issued) block.appendChild(buildPlaintext(state.issued));
+  if (state.issued) block.appendChild(buildPlaintext(state.issued, handlers));
 
   const issue = el("div", "token-issue");
   const field = el("label", "token-issue-label", ISSUE_LABEL);
@@ -442,6 +462,15 @@ function buildTokens(state, handlers) {
  *  exercised against a stubbed document with no network at all. */
 export function renderAccountCard(state, handlers = {}) {
   const root = el("div", "account-card");
+  // Rendered only when a handler exists, so the stubbed-document tests that
+  // exercise this function without a shell keep working and this file keeps
+  // performing no I/O of its own.
+  if (handlers.onBack) {
+    const back = el("button", "account-back", BACK);
+    back.setAttribute("type", "button");
+    back.addEventListener("click", handlers.onBack);
+    root.appendChild(back);
+  }
   root.appendChild(el("h2", "account-heading", HEADING));
   root.appendChild(buildIdentity(state, handlers));
   root.appendChild(buildTokens(state, handlers));
@@ -467,9 +496,33 @@ export function initAccount() {
  *  Called on every entry from the rail rather than once, because everything on
  *  this surface can change from outside it: a link resolves on a page load, a
  *  token is used by an agent between two visits, and a sign-out mints a new
- *  session. There is no cache to go stale because there is no cache. */
+ *  session. There is no cache to go stale because there is no cache — with one
+ *  bounded exception the reader controls: while an issued plaintext is live the
+ *  re-read is skipped entirely (see the guard below), so the whole card, not
+ *  just the token, is held until they press "Put it away". */
 export async function openAccount() {
   if (!panel) return;
+  // A card still holding a live plaintext is not re-read, and that is not an
+  // exception to the paragraph above — it is what keeps it true.
+  //
+  // The plaintext exists in exactly one place: this module, on one render,
+  // because star/tokens.py stores only a sha256 and the surface says so in its
+  // own standing copy. Re-reading is therefore the ONLY way it can be lost,
+  // and the reader is not the one who triggers it: a build finishing anywhere
+  // in the app calls showResults, which calls stage(), which switches off this
+  // panel — and coming back through the rail ran this function and discarded
+  // a credential the reader had done nothing to give up. The remedy was revoke
+  // and re-issue.
+  //
+  // Returning early does not re-render the plaintext. It declines to destroy
+  // the render that is already there: stage() hides panels, it does not empty
+  // them, so the node is intact behind the class. Still exactly one render,
+  // still the one immediately after the issue.
+  //
+  // The reader leaves it deliberately, through the dismiss control on the
+  // slip, which clears `issued` and re-reads — so the card cannot sit stale
+  // for longer than the reader wants the token on screen.
+  if (card && card.issued) return;
   panel.replaceChildren(working());
   card = await readCard();
   draw();
@@ -570,6 +623,26 @@ async function failureDetail(res) {
 }
 
 const HANDLERS = {
+  /** Leave the card for the surface the reader came from.
+   *
+   *  Nothing is read, nothing is re-fetched and no room is loaded — the card
+   *  holds no unsaved state, and the surface being returned to may hold plenty
+   *  (a scene typed and not yet checked, a live build's timeline). A panel
+   *  swap is the whole of it, by design. */
+  onBack() {
+    showPreviousStage();
+  },
+
+  /** End the render that carries the plaintext, on the reader's word.
+   *
+   *  Clearing `issued` first is what lets openAccount stop returning early and
+   *  read the card again, so the surface goes back to being the live view of
+   *  the account it is the rest of the time. */
+  onDismissToken() {
+    card = { ...card, issued: null };
+    openAccount();
+  },
+
   async onLink() {
     // Comes back only if the page could not leave. A "redirecting" result
     // means the navigation is under way and anything drawn now would be drawn

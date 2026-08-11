@@ -71,6 +71,37 @@
   box-shadow: 0 1px 0 var(--manila-edge);
 }
 
+/* The way out of the card. Deliberately NOT one of the two registers below:
+   those are the four acts this surface performs on an account, and leaving
+   without doing anything is not one of them — giving it a bordered box would
+   rank it beside "Sign out". This takes the drawer toggle's register instead
+   (quiet label, hairline rule under it, no box), which is already what this
+   app uses for "go somewhere else in the same room".
+
+   Contrast: --ink on --manila is 8.63:1 (recorded, web/clip.css), and the
+   rule under it is the same --ink so it clears the 3:1 boundary floor by the
+   same margin. Nothing new is measured here. */
+.account-back {
+  display: inline-block;
+  margin: 0 0 1.1rem;
+  padding: 0.35rem 0 0.3rem;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--ink);
+  border-radius: 0;
+  color: var(--ink);
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.account-back:hover {
+  border-bottom-color: color-mix(in srgb, var(--ink) 55%, var(--manila));
+}
+
 .account-heading {
   margin: 0 0 1.5rem;
   font-family: var(--label);
@@ -323,6 +354,30 @@
   padding: 1rem 1.1rem;
   background: var(--onionskin);
   border-left: 3px solid color-mix(in srgb, var(--oxide) 70%, var(--ink));
+}
+
+/* The reader's way out of the one render that carries the token. Bordered ink
+   rather than the oxide the legend above uses: dismissing is not the flagged
+   act on this slip — the token being on screen is. --ink on --onionskin is
+   12.70:1 (recorded, web/bible.css), so the rule clears the 3:1 boundary floor
+   without a new pair being measured. */
+.token-plaintext-dismiss {
+  margin: 0.85rem 0 0;
+  padding: 0.45rem 1rem;
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--ink);
+  border-radius: 3px;
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.token-plaintext-dismiss:hover {
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
 }
 
 .token-plaintext-legend {

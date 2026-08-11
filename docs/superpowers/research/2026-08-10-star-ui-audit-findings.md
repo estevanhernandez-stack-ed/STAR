@@ -1,0 +1,224 @@
+# STAR UI audit — findings register
+
+**Date:** 2026-08-10
+**Campaign:** vibe-glow, app-wide
+**Measured against:** `docs/superpowers/specs/2026-08-10-star-design-language.md`
+**Evidence:** `docs/ui-evidence/`, round 1, 14 captures at 1440x900, one `default` theme round
+
+## How this register was produced
+
+Five review lenses ran on Opus in parallel — visual conformance, consistency,
+QOL/flow, copy/voice, accessibility — each handed the measuring stick, the nine
+invariants verbatim, all 14 captures, and the source. They produced **67 raw
+findings**.
+
+Every one then faced its own fresh Opus skeptic, prompted to refute rather than
+confirm and told to default to refuted when uncertain. **21 survived. 46 were
+refused.**
+
+The skeptics did not merely vote. They recomputed contrast ratios from hex,
+parsed the vendored font binaries for real line-height metrics, served the app
+and drove `renderRail` in a live Chromium at 20 rooms, built the drawer grid in
+a browser to test `grid-auto-flow: row dense` per position, and read the code
+comments that defend the current behaviour. Where a lens ignored a defence
+already written into the source, that was grounds for refusal.
+
+Severity and visibility below are the **skeptic's** numbers, not the lens's.
+Rank is severity x visibility. `status` starts `open`.
+
+## Wave ledger
+
+**Wave 1 — runs and work.** F-001, F-003, F-004, F-005, F-013: the five findings
+where a reader loses work, loses a credential, or keeps paying for a run they
+can no longer see. Built as Cart cycle #20 on `glow/wave-1-runs-and-work`, seven
+commits, verified against two real builds.
+
+**Close-out ran 2026-08-11, pre-merge. All five closed, in two passes.**
+The first pass closed `F-004`, `F-005` and `F-013` and sent `F-001` and `F-003`
+back to `open`. A third build then closed those two. Tally derived from the rows
+above: **5 clean, 16 open.**
+
+The close-out earned its place by finding **a defect the wave introduced**.
+`resetProgress` nulled app.js's own `liveRunId`, but only `endRun` called
+`setLiveRun(null)` — and the abandon path never reaches `endRun`. Pressing "New
+room" twice during a build landed in `resetProgress` and nowhere else, leaving
+`shell.js`'s `_liveRunId` pointing at the run the reader had just walked away
+from. Its rail row then routed to `showRunning()` and opened the panel
+`resetProgress` had emptied one line earlier: "The department is working", a
+fresh ellipsis, four idle drawers, no stream — for a run that was genuinely
+still spending. The armed control's own notice sent the reader there by name.
+The stash survived the same press, so a reload resumed the run they had pressed
+twice to leave.
+
+Both are fixed in `resetProgress`, and `tests/js/test_live_run_rail.mjs` now
+fails when either is removed. The test previously asserted the live-run id was
+"set and cleared at exactly one place each", which is the sentence that let the
+defect through: `endRun` is the terminal funnel, and walking away from a run is
+not terminal.
+
+`F-001` and `F-003` also missed the brief's own two-verification bar on the
+first pass. A third build closed both, and closed them together because one run
+exercises everything they owed:
+
+- the rail row appearing during a live build (F-001, second observation), and
+  `06-progress-running` **re-captured** — it now shows "In the department /
+  Researching now" beside four searching drawers, where the capture this finding
+  was filed against read "Nothing filed yet";
+- a reload at 49 seconds resuming with the timeline replayed, no duplicates, the
+  meter advancing 10 to 15 searches, and the run **re-stashed on the resume
+  path** — a live path never walked before (F-003, second observation);
+- the armed control taking its first press without closing the stream (F-001,
+  second observation);
+- **the abandon path, which is the defect this close-out found.** Pressing
+  through with all four drawers filed and synthesis still running: the stash
+  cleared, the control disarmed, and clicking the abandoned run's rail row
+  landed on the **results panel**. With the bug it would have opened the
+  progress panel `resetProgress` had just emptied. `_liveRunId` was null at
+  click time, cleared by `resetProgress` rather than by `endRun` — exactly the
+  path that was broken;
+- a reload after abandoning landing on the intake, not resuming;
+- and the abandoned run filing on its own as "Glasgow Shipyard Work-In", which
+  is what the armed notice promises: "it files there when it is done".
+
+Seven comment-drift items were found and fixed, six of them in files the wave's
+own close-out item claimed to have swept — chiefly four comments still calling
+the OAuth redirect the only reader of the live run, which wave 1 made false.
+
+Three fix directions below were changed by what the build found, and the rows
+still carry the original text. Where they differ, the code and the wave brief
+are right:
+
+- **F-001** predicted the running row would read "Untitled room · Era unstated".
+  It did, and that turned out to be two false claims rather than a cosmetic
+  wart — `store.py` writes the document off an empty `story_profile`, so
+  "Untitled" asserts the treatment was read and had no title. The row now says
+  "In the department / Researching now".
+- **F-003** asked for a 5s poll on the running room. Shipped as a control
+  without the timer: a poll needs a handle cleared on every stage change,
+  `shell.js` owns stage changes and `app.js` would own the interval, and a
+  leaked interval hammering `/api/rooms` is a worse failure than one extra
+  press.
+- **F-013** is smaller than written. The plaintext already survives the stage
+  switch and already lives in module scope; the whole fix is declining to
+  re-read, plus a dismiss control so the reader ends that render themselves.
+
+## The register
+
+| id | surface | lens | sev | vis | evidence | verdict | fix direction | status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| F-001 | rail, during a build | qol | 4 | 4 | `app.js:411-416`; `shell.js:119-127`; `server.py:895-915`, `:836`; `06-progress-running` | A run in flight has no rail row — the capture shows "Nothing filed yet" beside four live SEARCHING drawers — because no `refreshRail` follows the POST, so `shell.js`'s already-written running-marker branch is unreached on the build path. "New room" then calls `resetProgress` → `closeStream`, and `generate()` is a bare `while True` with no disconnect check while the pipeline is a separate task held by a strong ref, so the searches and Gemini calls keep running and keep spending. | Call `refreshRail(runId)` immediately after `POST /api/rooms` succeeds. Route that row's click to `showRunning()` when `run_id === liveRunId`. Arm "New room" while a run is live using the two-press pattern `account.js:213` already ships. Note: the room IS persisted at creation, so the work is not lost — what is lost is the live view and any signal that money is still being spent. The row will read "Untitled room · Era unstated" until the terminal write (`store.py:62-63`). | clean |
+| F-002 | citation rail card | copy | 4 | 4 | `scriptcheck.js:321-368`; `:147-152`; `:339-340`; `13-check-annotated` | Rule 10. The answer renders **fourth** — stamp, claim, `VERDICT_READING`, then the fact — and the fact and the explanation above it are both `el("p", "rail-line", …)`, byte-identical treatment, so nothing ranks the answer over the gloss on it. | Cut `VERDICT_READING` from a paragraph to a slug beside the stamp, keeping the source-relativizer: confirmed → "as read from the sources below"; anachronism → "out of period for the sources below"; unverifiable → "not settled". **Two holes to close first:** `REASON_LINE` (`:342-343`) renders between note and scope on a budget-exhausted claim and the proposed order has no slot for it; and `verdicts.py:91` requires a note only for `unverifiable`, so a `confirmed` or `anachronism` card can render with no fact line at all, where the slug becomes the entire answer. | open |
+| F-003 | progress, on reload mid-build | qol | 4 | 3 | `auth.js:874-890`, `:897-908`, `:557`; `app.js:1114-1144`, `:321`, `:459-462`; `server.py:271-293`, `:895-913`, `:593`; `scripts/deploy.sh:72-73` | Reload, crash or a locked phone during a 146-420s build drops the only stream key, and the app's own copy admits the wall. The resume machinery already exists and is wired to exactly one trigger (the OAuth return): `stashLiveRun` writes to sessionStorage, `takeStashedRun` deletes on read, `openStream({resumed:true})` replays from event 0 with a monotonic guard, `run["events"]` is append-only, `_evict_old_runs` never touches a running entry, and deploy pins `--max-instances=1 --min-instances=1` so the reconnect lands on the same warm process. | Export `stashLiveRun` and call it from `openStream()` on every run, not only from `beginGoogleLink`; `init()`'s existing `resumeStashedRun()` picks it up. Add a companion clear-on-terminal export — `endRun` nulls the ids but nothing removes the stash, and an unstashed finished run would reopen that room on the next load. Rewrite `app.js:1141`'s OAuth-specific timeline line. ~10-15 lines, not zero. Covers reload and same-tab lock; not a closed tab. | clean |
+| F-004 | check panel, via the rail | qol | 4 | 3 | `shell.js:136`, `:145-151`; `app.js:613`, `:627`; `scriptcheck.js:666-670`, `:681`, `:653` | Clicking the room you are **already in** — the natural way back from Your card, which has no back control — destroys unsubmitted scene text. Every rail row wires to `loadRoom` with no comparison to the active run; `showResults` runs `resetRoomView` first, which calls bare `resetCheck` → `clearCheck({keepScene:false})` → `els.input.value = ""`. Unrecoverable: no storage touches `#scene`, and an in-page `.value = ""` with no navigation is outside browser form restore. | `resetRoomView(runId)` → `resetCheck({ keepScene: runId === currentRoomId })`. Note the existing guard is not merely late, it is **disarmed**: `resetCheck` sets `roomId = null` before `setCheckRoom`'s `if (runId === roomId) return` can match. `clearCheck`'s `keepScene` flag exists but all three call sites pass `false`, so there is no live path to inherit. Also give the account panel a back control. | clean |
+| F-005 | progress, terminal error | qol | 4 | 3 | `app.js:545-549`, `:328`, `:577-584`; `index.html:151`; `shell.css:667-670`, `:685-689`; `drawer.js:375-382` | After a **paid, failed** build the heading still reads "The department is working" with a live animated ellipsis. Nothing anywhere writes `#progress-panel`'s h2 — the error branch is `endRun` + `addEntry` + re-enable, with no `stage()` call — and `.ellipsis::after`'s `pulse` animation is killed only by `prefers-reduced-motion`. `sweepUnfiledDrawers` renders the same "Did not file" message in every unfiled drawer. | Rewrite the panel heading on `ev.type === "error"`. That is the load-bearing half and the half no code does. Mount the failure message above the drawer grid rather than into the timeline below it, and add a "Start a new room" control that preserves the treatment. **Correction to the lens:** the error line is NOT off-screen — `addEntry` calls `scrollIntoView` on every appended entry including this one. The defect is a stale heading contradicting the message, not a hidden message. | clean |
+| F-006 | check panel, on submit | qol + a11y | 3 | 4 | `scriptcheck.js:715-757`, `:726`, `:749-754`; `index.html:192-217`; `app.js:217` | The answer to a request that just spent live searches mounts below the paste box, the retention slip and the filed-checks row with no scroll and no focus move — a grep for `scrollIntoView\|scrollTo\|scrollTop\|\.focus\(\)` across all of `web/` returns exactly one scroll call in the entire app, on the build timeline, and none in `scriptcheck.js`. The only visible feedback is the status line clearing and the button re-enabling. **Merged: L5-3 proposed focus on the same node in the same function; a native `.focus()` on `tabindex="-1"` also scrolls, so these are one edit, not two.** | In `mountResult`, move focus to a **named heading** inside the result (not the unnamed `role=generic` wrapper, which would announce nothing useful or dump the whole subtree) and let the focus call do the scrolling. Reuse `scrollBehavior()` at `app.js:217` — it reads `matchMedia` at call time and returns `"auto"` under reduce. Root cause of the focus drop is `els.run.disabled = true` at `:726`, not the mount. Lift `scrollBehavior` into a shared module: it is authored once today, and this is its second consumer. | open |
+| F-007 | room, on drawer expand | qol | 3 | 4 | `clip.css:84`; `drawer.css:59-68`; `app.js:892-969`; `07-room-filed` vs `08-drawer-expanded` | Expanding a right-column drawer sends it to the next row full-width, below a first row that already runs past the fold — so in `08` the clicked card is **nowhere in the viewport**, the top-left card is pixel-identical to `07` and still reads "OPEN THE DRAWER", and the click reads as dead. | `toggle.scrollIntoView({ behavior: scrollBehavior(), block: "start" })` after `setDrawerState` in `setOpen(true)`. **Scope correction:** this affects the two right-column drawers only — d1 and d3 keep their grid origin and never move under the cursor. No-op below 560px where the grid collapses to one column. The lens's "worst on the bottom-right" is backwards: expanding d1 re-packs three neighbours but does not move the clicked card; d2 and d4 displace equally. | open |
+| F-008 | room docket + progress meter | copy | 3 | 4 | `app.js:745`, `:284`, `:734-738`; `server.py:470`, `:485`, `:327`, `:1283`; `parallel_search.py:123-136`; `drawer.js:187` | "17 cited web searches" overclaims. `run["search_count"] += 1` sits inside `event.get_function_calls()` — the tool **call** — while the ledger is written separately from `get_function_responses()`, and the check path increments before the HTTP request is sent. It counts searches issued. The app ships a guard for exactly this gap (`search_count > 0 and len(ledger) == 0`), and the docstring immediately above the offending line argues the opposite discipline in its own words: "sources SEEN, not sources cited — worth saying plainly rather than letting '106 sources' imply 106 footnotes." | `"web search"` / `"searches so far"` → "17 web searches · 110 sources returned". `drawer.js:187` already says "issued" for the same loop, with a comment naming the same reason. | open |
+| F-009 | rail, flagged room marker | a11y | 3 | 3 | `shell.js:131`, `:134`; `shell.css:296-311`, `:154-158`, `:719`, `:722`, `:190`, `:292` | The 8px dot is the only signal a run errored or was interrupted, and it fails the 3:1 floor on both grounds it can sit on: oxide `#B3341F` is **2.79:1** on `--drawer-shadow` (recorded at `shell.css:154-158`) and **2.37:1** on `--cabinet` once `.rail-room.active` repaints the row (recorded at `:719`). It is `aria-hidden`, and `.rail-room-meta` renders only `era · date`, so no screen-reader user gets the status at all and it is carried by colour alone. WCAG 1.4.11 and 1.4.1. | Repaint `.rail-room.flagged .rail-room-marker` with `color-mix(in srgb, var(--oxide) 70%, var(--manila))` — the shade `#timeline li.error::before` already uses, argued on the record. Resolves to `#BC5C40`: **3.28:1 on `#232B27`** (recorded, `shell.css:722`) and **3.87:1 on `#171D1A`** (computed here, unrecorded anywhere). Both clear 3:1. **Scope to `.flagged` only** — `--manila-edge` (6.73:1) and `--pencil` (4.80:1) already pass. Append the status word to `.rail-room-meta` so the fact is not colour-only; leave the dot `aria-hidden`. | open |
+| F-010 | every error line | a11y | 3 | 3 | `index.html:21-23`, `:114`, `:210`, `:209`; `app.js:364`, `:406`, `:642`, `:1218`; `scriptcheck.js:720`, `:745`; `consent.js:451` | Every failure message in the app — including the one saying the department cannot be reached at all — appears with no role, no live region and no focus move. `#intake-error` and `#check-error` are bare spans written via `textContent`. The only `aria-live` in `web/` is `scriptcheck.js:476`; the only `role="status"` is `index.html:209`, a sibling of the error span. WCAG 4.1.3. | `role="alert"` on `#intake-error` and `#check-error` (both ship empty and get text written in, which is what alert fires on). `#auth-error` ships **with** its sentence and is revealed by removing `.hidden`, which fires nothing — ship it empty with the role and write the sentence in at the two reveal sites. **Do not apply the role to `.consent-refusal` as a class:** six of its seven construction sites ship with their text at build time as static first-paint prose, so a class-wide role would make six paragraphs assertive live regions at page load — the same bug this finding diagnoses, six times over. Scope to `consent.js:451` imperatively. Uncited sibling gap: `.consent-status` takes WORKING and ATTACHING with no role. | open |
+| F-011 | drawer tab | visual | 3 | 3 | `drawer.css:173-181`, `:60`, `:96-108`, `:119-129`; `07-room-filed`, `06b-progress-filed` | The cut tab does not tuck behind the card face. Reproduced by independent pixel scan: at x=450 the tab paints y323-350 and the face's manila begins at y351 — **0px overlap** — and it holds at x=380/420/500/520 and on both grid rows of `06b`. The hanging-folder construction the stick calls load-bearing identity renders as a label butted against a box, which is the exact failure `drawer.css:98` says the layering exists to prevent. The z-index stack is correct; the numbers give it nothing to occlude. | `padding: 0.4rem 1.15rem 1.05rem` on `.drawer-tab` puts ~8px of base under the face. `--tab-rise` is untouched, so the grid's derived row-gap and margin cannot drift, and the tab is absolutely positioned so nothing reflows. **Adjust `clip-path` in the same edit:** it is percentage-based on the element box, so growing the tab re-slopes the cut sides. A cast shadow does bleed onto the tab (~7% at the junction), so a depth cue exists — this is missing occlusion, not missing depth. | open |
+| F-012 | progress panel, live build | a11y | 4 | 2 | `index.html:150-154`, `:209`; `app.js:223-229`, `:283-291`, `:313`, `:414`, `:533-536`; `scriptcheck.js:476` | An exhaustive grep of all 22 files in `web/` for `aria-live`, `role="status"`, `role="alert"`, `role="log"`, `aria-busy`, `aria-atomic` and every `setAttribute` call returns exactly two live regions, both inside the check surface, neither in `#progress-panel`. Across a 146-420s build a screen-reader user receives nothing: focus sits on body, the panel swap is a class toggle, and the literal status messages go into an inert `<ul>`. WCAG 4.1.3, and undetectable by axe or Lighthouse — live-region absence is not machine-checkable. | `aria-live="polite" aria-relevant="additions"` on `#timeline` **only**. Each entry lands as one atomic addition, entries are never rewritten, and the sole removal runs before the panel is revealed. Do not live-region `#search-meter` or the drawer bodies — `updateMeter` rewrites them every 1000ms and they would babble. Only the `complete` branch needs a closing entry; `partial` and `error` already call `addEntry`. The first entry fires in the same task that un-hides the panel, so some AT may drop it. | open |
+| F-013 | your card, during a build | qol | 3 | 2 | `account.js:611-639`, `:376`, `:471-476`, `:521`, `:559-562`, `:393`, `:130-135`; `app.js:533-535`, `:651`; `shell.js:189`; `tokens.py:159-169` | The 146-420s wait offers one non-destructive thing to do, and it is the surface holding a secret shown once. Issue a token, the build completes, `showResults` switches the stage away, and returning via the rail runs `openAccount()` → `replaceChildren` → `readCard()` which hardcodes `issued: null`. Only a sha256 is stored, so revoke-and-reissue is the only recovery. | **Cheaper than the lens claimed, in two ways.** `stage()` only adds `.hidden`, so the plaintext node survives the stage switch intact — the sole destroyer is `openAccount()`'s unconditional `replaceChildren` on re-entry. And the plaintext already lives in module scope (`card.issued`), so nothing needs storing; what is missing is a render path that reads it. Skip the re-read when a live plaintext exists. Requires an attached Google account, so an anonymous session cannot reach this at all. | clean |
+| F-014 | the bible | visual | 2 | 3 | `bible.css:58-66`, `:61`, `:101-113`, `:116`, `:29`; `10-bible` | `.bible-heading` and `.bible-body h1` both resolve to `--text-lg` and both take `var(--label)`, uppercase, `--track-label` and bold — so "THE RESEARCH BIBLE" at y≈382 and "GDANSK 1978: WRITER'S RESEARCH BIBLE" at y≈434 ship as two identical 22px tracked uppercase lines ~52px apart, repeating the words "RESEARCH BIBLE", separated only by a rule. The ramp's top step is spent twice in 50px. | Drop `.bible-heading` to `--label-md` so the document's own h1 is the only 22px line on the surface. Size only, same `--ink` on `--onionskin` pair (12.70:1, recorded). **Reject the other half of the lens's fix:** do not add `--text-xl` to `tokens.css`. `bible.css:68-87` argues explicitly that this surface "picks its own size and states the optical size to match it, rather than inheriting whatever axis value a future change to `--text-md` would imply" — a shared token invites a second caller without the `opsz 19` pin, which is the coupling that comment exists to prevent. | open |
+| F-015 | error feed prefix | copy | 2 | 2 | `app.js:547`; `server.py:308-314`, `:632-640`, `:673-680`, `:646-651`; `shell.css:730-740` | `addEntry("error", \`Something broke: ${...}\`)` renders as "Something broke: The department hit an unexpected problem and stopped" — the failure stated twice, the second time in a register the rest of the app never uses. Exhaustive check found no counterexample: exactly two call sites emit `type="error"`, both complete department-voice sentences, both always carrying `message`. The bare-exception case the prefix would have framed was **deliberately deleted** from the server (commits `b676afe`/`1798a9e`) because it leaked library names and a stray credential. The prefix is a vestige of a message shape the server no longer emits, and uniquely among this codebase's copy calls it carries no defending comment. | Render the server's message alone. **Caveat for the fix:** `#timeline li.error` recolours only the 9px dot, not the text, unlike `.warn` which recolours both — so the prefix is currently the only textual marker distinguishing a failure line from an ordinary feed entry. Removal is safe because both server messages declare the failure in their first clause, but do not assume a colour cue is carrying it. | open |
+| F-016 | every manila card | consistency | 2 | 2 | `shell.css:456`, `:784`; `scene.css:69`; `account.css:70`; `consent.css:168`; `bible.css:54`, `:50`; plus six mobile rules; `10-bible` | The same card is declared in five files with three desktop paddings, and **no comment anywhere in `web/` argues a card padding value** — the comments that exist argue width, position and `--tab-rise` clearance instead. One pairing is visible: in `10-bible` the docket's title sits at x≈361 and the bible's heading at x≈369, an 8px left-edge break between two stacked full-width cards. Elsewhere the docket matches the drawers' 1.75rem exactly, and intake/account/consent never co-render with anything. | The bible's 2.25rem is the single unanchored value and the only one producing a visible break; align it first. A shared `.card` list with `--card-pad-y`/`--card-pad-x` is the durable form. **Two blockers:** `.bible` carries no `box-shadow` and sits on onionskin, so a shared rule "holding radius, shadow and padding" would add a shadow it does not have and put `--manila-edge` under onionskin — a new pair needing a restated ratio under invariant 5. And `consent.html` deliberately does not load `shell.css`, so a shared rule cannot reach `.consent` (see F-020). The three mobile paddings differ in top as well as bottom: one rule plus two overrides, not one rule. | open |
+| F-017 | UNSOURCED block | consistency | 3 | 1 | `clip.css:474-521` vs `scene.css:566-603`; `shell.css:154-158` | Diffed declaration by declaration with whitespace stripped: `.clip-stamp`/`.rail-unsourced-stamp` match on every declaration, `.unsourced-url`/`.rail-unsourced-url` on all six, and the two remaining pairs differ only in 0.05rem margins. Invariant 5 holds — both sit on onionskin and no colour pair moves; `clip.css` records oxide-on-onionskin at 4.8:1 and `scene.css` at 4.75:1, one measurement at two precisions. | Merge the four pairs into shared selector lists in `shell.css`, whose `.banner` comment already records "Oxide on --onionskin is 4.75:1 — the same pair the UNSOURCED stamp already uses." **Corrections:** the stamp pair is 11 declarations, not 13; they are value-identical, not byte-identical (scene.css carries two extra ratio comments); and `.clip-stamp-note` has no scene.css twin, so it is four pairs and one orphan, not a wholesale double-build. The rail side appears in no capture — this stands on source, not pixels. | open |
+| F-018 | filed room / progress stamps | visual | 2 | 1 | `drawer.css:450`, `:453`; `drawer.js:13-38`; `DIRECTION.md:105-119`; `07-room-filed`, `06b-progress-filed` | **This finding amends the measuring stick, not the code.** FILED appears four times on the two first screens with no aniline pad — measured, **zero** pixels within ±24 of `#5C3D91` in either capture. But `drawer.js:13-38` argues the reason on the record: a drawer has no citation to check, so an aniline drawer stamp would claim a verification the component cannot see, which copy rule 3 forbids. DIRECTION.md:111 reads "**Filed and verified**" and :117 says aniline is "used only for a verified state" — the stick's palette row transcribed that as "Filed." and dropped the load-bearing half. | Restore DIRECTION.md's own wording in the stick: "`--aniline`: **Filed and verified**, at the citation level," and add that container-level stamps take `--ink`. Do not invent new vocabulary. **Strike the lens's fallback** (putting aniline on the stamp's rule) — it contradicts the finding's own argument and asserts by colour what rule 3 forbids in words. Zero pixels change; this is a documentation edit. | open |
+| F-019 | drawer clips + check rail | consistency | 2 | 1 | `clip.css:189-193` vs `scene.css:345-349`; `clip.css:588` vs `scene.css:821`; `index.html:11`, `:13`, `:15` | `.clip` and `.rail-card` are literally byte-identical four-declaration rules, and their 560px overrides are identical too. Cascade is safe: `.clip[data-unsourced]` and `.rail-card[data-verdict]` are attribute selectors at higher specificity than a shared class rule. | One `.clip, .rail-card` rule in `shell.css`; state recolour stays per-file as `border-left-color`. **Corrections:** `.scene-page` is not a third copy — it shares three declarations and carries eight more (`--slug` face, `pre-wrap`, `max-height`, `overflow-y`, all argued at `scene.css:238-248`), so it joins as a consumer with an override, and its mobile padding is a third value. The two 560px blocks are **not** identical — only the two padding declarations collapse, not the blocks. Byte-identical rules render byte-identical pixels, so nothing on screen changes. | open |
+| F-020 | consent page | consistency | 2 | 1 | `consent.html:70-71`, `:8-43`; `consent.css:15-34`, `:31-34`, `:136-140`; `shell.css:219-223`; `server.py:1911` | `consent.html` links only `/tokens.css` and `/consent.css`. `.star-mark` is byte-identical in two files, carrying a `1.7rem` literal, and both files pre-authorize the collapse in comments addressed to "the orchestrator." The standalone-ness is deliberate but the stated reason is applicability, not isolation, and the CSP is `style-src 'self'` with everything same-origin. | **Ship the token, not the link.** `--mark-lg: 1.7rem` in `tokens.css` — already loaded by both documents — kills the duplication with zero new dependency. Linking `/shell.css` imports 36.5KB and three unmeasured globals onto the one screen where a reader hands something away: `a { color: var(--aniline) }` at 4.37:1 on manila, `:focus-visible` at 1.88:1 on manila, and a `body` flex layout `consent.css` does not override. Treat that as a separate, measured call. **Correction:** the focus-ring is not a true duplicate — shell.css sets only `outline-color` over a global shorthand that the consent page has no equivalent of. | open |
+| F-021 | marked scene page | a11y | 2 | 1 | `scene.css:250-266`; `scriptcheck.js:206-207`, `:546-553`; `server.py:1071-1094` | A scene up to 8000 chars sits in a `max-height: 32rem` scroller, and the zero-marks state is **designed for** — the server writes a dedicated cover note for "a scene of pure interior dialogue [that] asserts nothing about the world," and the rail ships bespoke copy for it. In that state the scroller holds no focusable child, and Safari still has no native scroller focus, so a keyboard-only Safari user cannot reach their own pasted pages. | `tabindex="0"` plus a role and accessible name on `.scene-page` — these must land **together** or the tab stop is unnamed. Prefer `role="region"` over `role="group"`: MDN's guidance is that `group` should not carry major perceivable sections, and region earns a landmark stop. `aria-label` on the current bare div is an ARIA authoring-conformance error (`generic` is name-prohibited) though all three engines do expose it. **Browser facts corrected:** Firefox has made scrollers tab stops since Firefox 4 (2011), so this is Safari-only, not two engines; Chrome's stable landing was 132, not 127. Accept the permanent tab stop deliberately — a short scene that never overflows still gets one. | open |
+
+## Refused, with reasons — 46 findings
+
+Recorded so they are not resurrected. Grouped by why they died.
+
+**Refuted by measurement the lens did not do (9).** The bible is not an onionskin
+page ground — `.bible` is geometrically identical to `.docket`, same panel, same
+1120px, same cabinet gutters, and `bible.css:12-18` argues the exact point on the
+record; if 53% of the stage makes the bible a ground, the docket is one too.
+`grid-auto-flow: row dense` is a **no-op when drawer 4 is expanded** (nothing
+later exists to backfill) and inverts visual order against DOM order, verified by
+building the grid in a browser. The rail does not lose its scroll position —
+driven live in Chromium at 20 rooms, `scrollTop` held at 320 through rebuilds
+and panel switches, because `renderRail` performs no layout read between clear
+and rebuild; and the rail does not scroll at all until the 12th room. The drawer
+toggle is 17.4px, not 16.6px, derived from the vendored font's own metrics.
+
+**Refuted because a code comment already argued the case (11).** `account.css:149`
+is a section header for the account card's controls, not an app-wide "two
+registers" claim. The slip's three measures each match their own surface's prose
+column, four for four. `.token-issue-input` is an `<input>`, not a textarea, and
+"same treatment" self-defines in its own dash clause as ground, border and the
+9.01:1 pair. `consent.css:409-414` argues `.decide-btn`'s register explicitly.
+`scene.css:435-436` argues `.rail-claim` is set larger because it is "what the
+verdict is ABOUT." Two of three 3px left-rule sites name `.docket-note` as the
+component they reproduce, and the invented "3px blocks, 2px lines" rule is
+backwards on four of five call sites.
+
+**Refuted on the rule cited (10).** Copy rule 8 governs flattery and ingratiating
+register. It was cited against letter case, vendor credits, internal agent names,
+parser vocabulary and a roadmap sentence — none of which it reaches. No decided
+rule covers control capitalisation, and "Build the Room" is Pipeline A's shipped
+proper name carried from the README. The footer credit is pinned by exact string
+in `tests/js/test_intake_silence.mjs` with a header calling it "the credit line
+the submission rests on." "Unverified" is not the mirror of the banned
+"verified" — copy rule 4 **requires** showing `unverified_count` by name.
+
+**Refuted because the fix would have shipped a bug (5).** An unconditional
+`.focus()` in `stage()` would yank focus off a reader typing in the check
+textarea whenever a background build finishes. `role="alert"` on the
+`.consent-refusal` class would make six static paragraphs assertive at page
+load. A `localStorage` treatment draft is never cleared on the failed-build path
+it exists to serve, contradicts `auth.js:912-914`'s own store-selection argument,
+and downgrades the categorical "Your treatment itself is not stored." A second
+delete entry point on 11px chips 6px apart is a mis-click generator. A hash
+router reads an already-erased fragment, because `readAndStripFragment` runs
+first by documented design.
+
+**Refuted as double-counting (6).** L3-10 names no root cause L3-5 and L3-6 do
+not already own. L3-4 and L3-7 reduce to sentences inside L3-2's fix. L5-7's fix
+field is literally "covered by L5-2." L5-3 and L3-12 are one edit (merged into
+F-006). L5-5 delivers nothing on its own and is absorbed into F-021.
+
+**Refuted on scale or normativity (5).** No SC requires an h1, forbids level
+skips, or requires an outline to start at 1 — axe files both under
+`best-practice`. Section headings are SC 2.4.10, **AAA**, while the rest of the
+lens measures at AA. `aria-pressed` is correctly reset to `"false"` on every
+non-selected mark, so the "cannot be un-toggled" claim is simply false. A 0.1rem
+indent difference on two elements that share no alignment axis is the app's
+baseline condition, not an anomaly.
+
+## What the audit verified as sound
+
+Recorded so no later round re-finds it:
+
+- **Manila is 73.04%** of the filed room's stage against a 40% floor. Cabinet
+  14.82%, onionskin 1.21%. `08b` is 79.51%, `06b` 65.55%.
+- **Zero hardcoded colour** across all seven stylesheets. A sweep for hex, `rgb()`,
+  `rgba()` and `hsl()` returns only comment text. Every shade is a token or a
+  `color-mix()` from one.
+- **No gradients, no violet wash.** The only aniline on a light ground is a 2px
+  stamp rule and a mark tint. Invariant 2 intact.
+- **Body text is never tracked.** The only `letter-spacing` on a `--body` rule is
+  a reset to `0`.
+- **No sycophancy anywhere in `web/`.** No string flatters the reader,
+  congratulates them, or dresses a failure as a win — including the two surfaces
+  where it would be cheapest.
+- **No `outline: none` anywhere**, and the focus-ring override to `--ink` on all
+  seven paper surfaces is measured and documented in three files.
+- **`prefers-reduced-motion` is covered on all four paths** and the token source
+  order is correct as shipped. Do not reorder it.
+- **Declaration order matches visual order** in both places flagged as suspect.
+
+## Not design findings
+
+- **The research bible truncates silently.** `10-bible` shows section 1 of four
+  ending mid-sentence — the defect `docs/judge-critique-2026-08-11.md` reported,
+  reproduced live on 2026-08-10. Backend. `10-bible` is evidence of a truncated
+  document, not of the bible's reading layout.
+- **Claim extraction misses procedural assertions.** "The guards wave them past
+  without a search" produced no mark while "fresh oranges without queueing" did.
+  Backend recall.
+- **`09-drawer-flagged` was captured at 768x405**, not 1440x900, because an
+  element screenshot does not inherit the viewport. Colour is legible in it;
+  composition claims from it are not comparable. Re-shoot before round 2.
