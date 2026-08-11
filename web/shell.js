@@ -160,9 +160,21 @@ export function renderRail(rooms, activeRunId, { unreadable = _unreadable } = {}
     // what is actually true instead, in the vocabulary web/app.js already uses
     // for this state ("Still in the department").
     const title = isRunning ? "In the department" : room.title || "Untitled room";
+    // The dot is the only thing that ever said a run had failed, and it says it
+    // in colour to a reader who can see it. It stays aria-hidden — a decoration
+    // that repeats the line below it is noise — and the fact moves into the
+    // text where it can be read and where it survives being the only cue.
+    //
+    // The two states are not synonyms and the row does not merge them. "error"
+    // is a run that raised and stopped, in the vocabulary app.js already uses
+    // for it. "interrupted" is store.py:241: the document still said running
+    // and the process that was running it is gone, so nothing reported a
+    // failure and nothing finished either.
+    const flag = room.status === "interrupted" ? "Interrupted" : "Stopped";
     const meta = isRunning
       ? "Researching now"
-      : `${escapeHtml(room.era || "Era unstated")} &middot; ${escapeHtml(formatDate(room.created_at) || "—")}`;
+      : `${escapeHtml(room.era || "Era unstated")} &middot; ${escapeHtml(formatDate(room.created_at) || "—")}` +
+        (isFlagged ? ` &middot; ${escapeHtml(flag)}` : "");
     btn.innerHTML = `
       <span class="rail-room-marker" aria-hidden="true"></span>
       <span class="rail-room-text">
