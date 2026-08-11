@@ -14,8 +14,32 @@ synthesis_agent = Agent(
     # ~115 tokens/sec while the UI spun with no error. The <sources> block
     # below is the accelerant — every title fed in is a title synthesis may
     # enumerate back out. See config.max_synthesis_output_tokens.
+    #
+    # THE THINKING BUDGET IS WHY BIBLES WERE ARRIVING CUT IN HALF, and it is
+    # the second half of that same lesson. `max_output_tokens` on a thinking
+    # model bounds THINKING PLUS OUTPUT, not output. So a long deliberation
+    # eats the writing budget and the response stops mid-word, with a normal
+    # finish and nothing raised.
+    #
+    # Measured 2026-08-11 across three stored rooms, and the correlation runs
+    # the wrong way for any other explanation — MORE input produced LESS bible:
+    #
+    #     125 sources in ->    654 tokens out, cut mid-word ("\n\nStreet")
+    #      99 sources in ->  1,503 tokens out, cut mid-word ("river tracks to")
+    #      95 sources in ->  3,528 tokens out, complete, ending on a citation
+    #
+    # All three finished `complete`, all three under a 16,000 ceiling nothing
+    # came near. A richer room thinks longer, and the room that researched best
+    # shipped the worst document.
+    #
+    # So the budget is split explicitly rather than shared implicitly. Thinking
+    # gets a bounded allowance and the writing gets the rest, which is what the
+    # original ceiling was always meant to bound.
     generate_content_config=types.GenerateContentConfig(
         max_output_tokens=config.max_synthesis_output_tokens(),
+        thinking_config=types.ThinkingConfig(
+            thinking_budget=config.max_synthesis_thinking_tokens(),
+        ),
     ),
     instruction=(
         "You are the editor of a film-studio research department. Assemble the "

@@ -60,6 +60,46 @@ except metadata.PackageNotFoundError:  # a source checkout with nothing installe
     # honest answer instead.
     SERVER_VERSION = "unknown"
 
+# What the department looks like in a client's own chrome.
+#
+# `Implementation` extends `BaseMetadata` and `Icons` in the 2025-11-25 schema,
+# so `serverInfo` carries `title`, `description`, `websiteUrl` and `icons` — and
+# STAR was sending two of the seven fields, a bare name and a version.
+#
+# The cost of that silence was visible rather than theoretical. A connector card
+# for `star.626labs.dev` showed 626 Labs' own mark, because a client with no
+# icon to use falls back to guessing from the registrable domain: it resolves
+# `626labs.dev`, reads that site's `<link rel="icon">`, and renders
+# `favicon-626.png`. Serving `/favicon.ico` on this origin does not reach that
+# path at all, since the client never asks this origin. The protocol has a field
+# for exactly this, and filling it is the only standards-shaped answer available.
+#
+# Both formats are offered, widest support first. `sizes: ["any"]` on the SVG is
+# how a scalable icon declares itself under the same rules a web app manifest
+# uses; the ICO enumerates what it actually contains rather than claiming more.
+_ICON_BASE = "https://star.626labs.dev"
+SERVER_ICONS = (
+    {
+        "src": f"{_ICON_BASE}/favicon.svg",
+        "mimeType": "image/svg+xml",
+        "sizes": ["any"],
+    },
+    {
+        "src": f"{_ICON_BASE}/favicon.ico",
+        "mimeType": "image/vnd.microsoft.icon",
+        "sizes": ["16x16", "32x32", "48x48", "64x64", "128x128", "256x256"],
+    },
+)
+
+# `title` is the display name, distinct from `name`, which is the identifier a
+# client keys on. The description is one sentence because a card has one line.
+SERVER_TITLE = "STAR"
+SERVER_DESCRIPTION = (
+    "A research department for screenwriters. Builds cited research rooms from "
+    "a treatment, and checks a scene's real-world claims against one."
+)
+SERVER_WEBSITE = _ICON_BASE
+
 # The methods a tools-only server owes an answer to. `notifications/initialized`
 # is absent because it is a notification: it carries no id, so it never reaches
 # dispatch at all — it is answered with 202 several steps earlier.
@@ -120,7 +160,14 @@ def build_mcp_router(
                     # `resources/list` and getting -32601 for a method its
                     # handshake was told to expect.
                     "capabilities": {"tools": {}},
-                    "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
+                    "serverInfo": {
+                        "name": SERVER_NAME,
+                        "title": SERVER_TITLE,
+                        "version": SERVER_VERSION,
+                        "description": SERVER_DESCRIPTION,
+                        "websiteUrl": SERVER_WEBSITE,
+                        "icons": list(SERVER_ICONS),
+                    },
                     "instructions": tools.INSTRUCTIONS,
                 },
             )

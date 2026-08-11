@@ -42,6 +42,10 @@ from star.store import TokenStore
 from tests.test_server import _FakeRequest
 from tests.test_store import _FakeClient
 
+# Every icon this server names must be served BY this server. A declared icon
+# pointing anywhere else is the guess it exists to replace.
+SERVICE_ORIGIN = "https://star.626labs.dev"
+
 UID = "uid-one"
 OTHER = "uid-two"
 BROWSER_AUTH = {"Authorization": "Bearer good.token.here"}
@@ -1709,3 +1713,41 @@ async def test_nothing_an_agent_reads_is_a_bare_code_or_our_own_vocabulary():
         assert len(text.split()) >= 8, label
         for word in banned:
             assert word not in lowered, f"{label} carries {word!r}"
+
+
+@pytest.mark.asyncio
+async def test_initialize_tells_a_client_what_to_draw_on_its_own_card():
+    """serverInfo is `Implementation`, which extends BaseMetadata and Icons.
+
+    STAR sent two of its seven fields for a while, and the cost was visible in
+    a client's chrome rather than theoretical: with no icon to use, a connector
+    card fell back to guessing from the registrable domain and rendered a
+    different product's mark. Serving /favicon.ico on this origin cannot fix
+    that, because a client taking that fallback never asks this origin.
+
+    So the assertion is not that the fields exist, it is that every icon URL
+    points at THIS service and is actually served by it. A declared icon that
+    404s is the same failure with an extra step.
+    """
+    store, _ = a_token_store()
+    token = await issue(store)
+
+    with door(store):
+        response = rpc(TestClient(server.app), call("initialize"), token=token)
+
+    info = response.json()["result"]["serverInfo"]
+    assert info["name"] == "star", "the identifier a client keys on"
+    assert info["title"], "the display name, distinct from the identifier"
+    assert info["description"], "one sentence, because a card has one line"
+    assert info["icons"], "without this a client guesses from the domain"
+
+    client = TestClient(server.app)
+    for icon in info["icons"]:
+        assert icon["src"].startswith(SERVICE_ORIGIN), (
+            f"{icon['src']} is not served by this department"
+        )
+        served = client.get(urlsplit(icon["src"]).path)
+        assert served.status_code == 200, f"{icon['src']} is declared but not served"
+        assert served.headers["content-type"].startswith(
+            icon["mimeType"].split(";")[0]
+        ), f"{icon['src']} is served as something other than what it claims"

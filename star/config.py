@@ -161,6 +161,27 @@ def max_synthesis_output_tokens() -> int:
     return int(os.environ.get("STAR_MAX_SYNTHESIS_TOKENS", "16000"))
 
 
+def max_synthesis_thinking_tokens() -> int:
+    """How much of the synthesis ceiling deliberation may spend.
+
+    `max_output_tokens` on a thinking model bounds thinking PLUS output, so
+    without this the two compete and thinking wins: it runs first. A room with
+    more research to weigh thinks longer, leaves less budget for the writing,
+    and the response stops mid-word with a normal finish and nothing raised.
+
+    Measured 2026-08-11 on three stored rooms, and the correlation is backwards
+    for any other cause -- more sources in produced a SHORTER bible out:
+    125 sources gave 654 tokens cut mid-word, 99 gave 1,503 cut mid-word, 95
+    gave a complete 3,528. The room that researched hardest shipped the worst
+    document, and all three reported `complete`.
+
+    4,000 is generous for weighing four drawers and leaves 12,000 for prose
+    against bibles that have run 3,500 tokens at their longest. Set to 0 to
+    switch thinking off entirely if a future model makes that the better trade.
+    """
+    return int(os.environ.get("STAR_MAX_SYNTHESIS_THINKING_TOKENS", "4000"))
+
+
 def max_sources_per_category() -> int:
     """Cap the source list handed to synthesis.
 

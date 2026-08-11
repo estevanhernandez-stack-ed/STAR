@@ -12,6 +12,7 @@ import functools
 import html
 import json
 import logging
+import mimetypes
 import os
 import secrets
 import time
@@ -1890,6 +1891,21 @@ async def oauth_token(request: Request) -> Response:
         )
     return JSONResponse(issued.body(), headers={"Cache-Control": "no-store"})
 
+
+# Pin the icon's content type before the static mount reads it.
+#
+# StaticFiles asks `mimetypes` what a suffix is, and `mimetypes` asks the host.
+# On this Windows machine `.ico` came back `image/x-icon`; in the Linux
+# container it came back `image/vnd.microsoft.icon`. Both are real registrations
+# for the same format, which is exactly what makes it a trap: the MCP handshake
+# DECLARES a mimeType for each icon, so the same service would tell a client one
+# thing locally and another in production, and a client that keys on the value
+# would be right to distrust whichever it saw second.
+#
+# Caught by a test that fetched every icon the handshake names and compared what
+# came back against what was claimed, which is the only version of that check
+# worth having.
+mimetypes.add_type("image/vnd.microsoft.icon", ".ico")
 
 _WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 app.mount("/", StaticFiles(directory=str(_WEB_DIR), html=True), name="web")
