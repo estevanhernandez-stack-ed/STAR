@@ -132,6 +132,26 @@ let activeSource = null;
 
 $("build-btn").addEventListener("click", buildRoom);
 
+/** The banner's own sentence, moved out of index.html so that revealing it is a
+ *  content change rather than a class change. Unchanged wording. */
+const AUTH_UNREACHABLE =
+  "Could not start a session with the department. Check your connection and reload.";
+
+/** Show or hide #auth-error, writing and clearing its text rather than only
+ *  toggling .hidden.
+ *
+ *  Clearing on hide is the load-bearing half: leave the sentence in place and
+ *  the next reveal writes the same words over themselves, which is a mutation
+ *  a screen reader may treat as nothing new. Empty-to-text is unambiguous. */
+function showAuthError(show) {
+  const banner = $("auth-error");
+  // No-argument replaceChildren, not replaceChildren(""), which would append an
+  // empty text node and leave the element non-empty to CSS and to the tree.
+  if (show) banner.replaceChildren(document.createTextNode(AUTH_UNREACHABLE));
+  else banner.replaceChildren();
+  banner.classList.toggle("hidden", !show);
+}
+
 /* The first press's sentence, when a run is live.
    It says what continues and where to find it, and it does not say when the
    run will finish: star/config.py records 146s to 420s+ for one fixed
@@ -263,6 +283,17 @@ function scrollBehavior() {
     : "smooth";
 }
 
+/** Append one line to the run's log.
+ *
+ *  #timeline carries aria-live="polite", so every call here is also an
+ *  announcement. One honest limit, recorded at the point it applies rather
+ *  than in a doc nobody opens: the FIRST entry of a build is appended in the
+ *  same synchronous task that showRunning() un-hides the panel, and some
+ *  assistive tech drops an insertion into a region that was not in the
+ *  accessibility tree when the task began. Every later entry is unaffected.
+ *  Not worked around with a timeout — a deferred first line would be a
+ *  guess about AT behaviour dressed as a fix, and the run's own second
+ *  event follows within seconds. */
 function addEntry(cls, html) {
   const li = document.createElement("li");
   li.className = cls;
@@ -497,11 +528,11 @@ async function buildRoom() {
     token = null;
   }
   if (!token) {
-    $("auth-error").classList.remove("hidden");
+    showAuthError(true);
     $("build-btn").disabled = false;
     return;
   }
-  $("auth-error").classList.add("hidden");
+  showAuthError(false);
 
   let runId;
   let streamKey;
@@ -687,6 +718,13 @@ function openStream(runId, streamKey, { resumed = false } = {}) {
       addEntry("warn", escapeHtml(ev.message));
     } else if (ev.type === "complete") {
       endRun(source);
+      // The one terminal branch that announced nothing. `partial` and `error`
+      // both already call addEntry, so #timeline's live region speaks them;
+      // this one went straight to showResults, and a screen-reader user who
+      // had been told the department was assembling was never told it had
+      // finished. Appended before the stage switches, so the region is still
+      // the visible panel's when it speaks.
+      addEntry("done", "The room is filed.");
       showResults(runId);
       refreshRail(runId);
     } else if (ev.type === "partial") {
@@ -1419,7 +1457,7 @@ setLiveRunProvider(() =>
     token = null;
   }
   if (!token) {
-    $("auth-error").classList.remove("hidden");
+    showAuthError(true);
     return;
   }
   // The rail is drawn either way. A resumed run marks itself active in it

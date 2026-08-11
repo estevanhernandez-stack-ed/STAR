@@ -394,8 +394,24 @@ a {
   background: var(--pencil);
 }
 
+/* Raw --oxide is the worst pair in the app and this dot was the only place it
+   carried meaning on its own: 2.79:1 on --drawer-shadow, and 2.37:1 once
+   .rail-room.active repaints the row to --cabinet. Both under the 3:1 a
+   non-text indicator has to meet, and the active case is the worse one, which
+   is the row the reader is most likely to be looking at.
+
+   Mixed toward manila it is the shade #timeline li.error::before already uses
+   and the armed control already argues for, recorded at :319 as 3.86:1 on
+   --drawer-shadow. That figure is not restated here — one measurement at two
+   precisions is how a palette drifts. The pair that was NOT recorded anywhere
+   is this dot on --cabinet: #BC5C40 on #232B27 is 3.28:1, which clears the
+   floor on the active row too.
+
+   Scoped to .flagged deliberately. The base marker's --manila-edge (6.73:1)
+   and .running's --pencil (4.80:1) already pass on this ground; generalising
+   the rule would repaint two states that were never the problem. */
 .rail-room.flagged .rail-room-marker {
-  background: var(--oxide);
+  background: color-mix(in srgb, var(--oxide) 70%, var(--manila));
 }
 
 .rail-room-text {

@@ -18,9 +18,15 @@
   <script src="/vendor/purify.min.js"></script>
 </head>
 <body>
-  <div id="auth-error" class="banner hidden">
-    Could not start a session with the department. Check your connection and reload.
-  </div>
+  <!-- Empty on purpose. This banner used to ship its sentence here and appear
+       by having .hidden removed, and a class change is not a trigger any
+       assistive technology is required to announce — role="alert" is specified
+       to fire on content change, which is the half every implementation
+       supports. app.js owns the sentence (AUTH_UNREACHABLE) and writes it at
+       both reveal sites, and clears it on hide so the next reveal is an
+       unambiguous empty-to-text mutation rather than a rewrite of the same
+       words. -->
+  <div id="auth-error" class="banner hidden" role="alert"></div>
 
   <div class="cabinet">
     <!-- The rail: every saved room, cheap by construction (room_summary
@@ -125,7 +131,11 @@
             placeholder="A period drama set in 1962 Memphis. A 19-year-old session guitarist talks her way into a recording studio's house band while moonlighting as a getaway driver for her brother's crew..."></textarea>
           <div class="actions">
             <button id="build-btn">Build the Room</button>
-            <span id="intake-error" class="error"></span>
+            <!-- Ships empty and gets text written in, which is the mutation
+                 role="alert" fires on. An alert that ships WITH prose announces
+                 at first paint or not at all, depending on the reader's
+                 software: see #auth-error above, which had that shape. -->
+            <span id="intake-error" class="error" role="alert"></span>
           </div>
         </div>
 
@@ -191,7 +201,20 @@
              first thing under the heading rather than the last thing under
              four full-height cards. -->
         <div id="progress-failure" class="progress-failure hidden"></div>
-        <ul id="timeline"></ul>
+        <!-- The app's only announcement of a run in progress, and until the
+             glow campaign's wave 3 there was none: a grep of all 22 files in
+             web/ for aria-live, role=status, role=alert, role=log, aria-busy
+             and aria-atomic returned exactly two live regions, both on the
+             check surface. Between pressing Build and the room appearing —
+             146 to 420+ seconds — a screen-reader user was told nothing.
+
+             `additions` only, and this element only. Each <li> is a discrete
+             event appended once and never rewritten, and the sole removal
+             (resetProgress) runs before the panel is revealed, so a polite
+             region here speaks exactly the run's own log. #search-meter and
+             the drawer bodies are deliberately NOT live: updateMeter rewrites
+             them on a 1000ms interval and they would babble over it. -->
+        <ul id="timeline" aria-live="polite" aria-relevant="additions"></ul>
         <p id="search-meter" class="meter"></p>
       </section>
 
@@ -249,7 +272,11 @@
           <div class="actions">
             <button id="check-run-btn" type="button">Check this scene</button>
             <span id="check-status" class="check-status" role="status"></span>
-            <span id="check-error" class="error"></span>
+            <!-- alert, not status, and deliberately beside one: the status
+                 region carries "the department is working" and must stay
+                 polite, while a failure has to interrupt it. Both regions are
+                 in the same row and only one is ever non-empty. -->
+            <span id="check-error" class="error" role="alert"></span>
           </div>
           <div id="check-filed-row" class="check-filed-row hidden">
             <span class="check-filed-label">Checks filed on this room</span>

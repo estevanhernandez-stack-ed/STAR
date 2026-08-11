@@ -160,9 +160,34 @@ export function renderRail(rooms, activeRunId, { unreadable = _unreadable } = {}
     // what is actually true instead, in the vocabulary web/app.js already uses
     // for this state ("Still in the department").
     const title = isRunning ? "In the department" : room.title || "Untitled room";
+    // The dot is the only thing that ever said a run had failed, and it says it
+    // in colour to a reader who can see it. It stays aria-hidden — a decoration
+    // that repeats the line below it is noise — and the fact moves into the
+    // text where it can be read and where it survives being the only cue.
+    //
+    // The two states are not synonyms and the row does not merge them. "error"
+    // is a run that raised and stopped, in the vocabulary app.js already uses
+    // for it. "interrupted" is store.py:241: the document still said running
+    // and the process that was running it is gone, so nothing reported a
+    // failure and nothing finished either.
+    //
+    // A flagged row REPLACES the era rather than appending to it, which is what
+    // the running row above already does and for the same two reasons. Measured
+    // first: "Autumn 1978 · Aug 10, 2026 · Stopped" wraps to a second line in a
+    // 300px rail, so a third segment makes some flagged rows taller than their
+    // neighbours depending on how long the era happens to be. And the era is
+    // the weakest of the three facts here — a run that raised may never have
+    // written a story_profile at all, so its era is as unfounded as the
+    // "Era unstated" the running row refuses to print. Status first, because on
+    // a row that failed it is the news; the date stays, because it is which
+    // attempt this was.
+    const flag = room.status === "interrupted" ? "Interrupted" : "Stopped";
+    const filed = escapeHtml(formatDate(room.created_at) || "—");
     const meta = isRunning
       ? "Researching now"
-      : `${escapeHtml(room.era || "Era unstated")} &middot; ${escapeHtml(formatDate(room.created_at) || "—")}`;
+      : isFlagged
+        ? `${escapeHtml(flag)} &middot; ${filed}`
+        : `${escapeHtml(room.era || "Era unstated")} &middot; ${filed}`;
     btn.innerHTML = `
       <span class="rail-room-marker" aria-hidden="true"></span>
       <span class="rail-room-text">
