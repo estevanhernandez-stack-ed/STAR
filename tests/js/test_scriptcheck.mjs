@@ -40,7 +40,13 @@ import {
 } from "./_scriptcheck_module.mjs";
 
 const REPO_ROOT = new URL("../../", import.meta.url);
-const read = (path) => readFileSync(new URL(path, REPO_ROOT), "utf8");
+// Line endings normalised at the door. This repo's working copies are CRLF on
+// Windows, so any pattern anchored to \n passes or fails on the checkout rather
+// than on the source — which is exactly what happened when wave 7 moved a rule
+// across a newline in a shared selector list, and the assertion below went red
+// on main while green on a branch whose working copy happened to be LF.
+const read = (path) =>
+  readFileSync(new URL(path, REPO_ROOT), "utf8").replace(/\r\n/g, "\n");
 
 /** Source with its comments removed.
  *
