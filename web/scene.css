@@ -342,12 +342,11 @@
   opacity: 0.75; /* 4.93:1 on manila — .drawer-legend's own value. */
 }
 
-.rail-card {
-  background: var(--onionskin);
-  border-radius: 3px;
-  border-left: 3px solid var(--manila-edge);
-  padding: 0.95rem 1.1rem 1rem;
-}
+/* .rail-card's stock — background, radius, edge and padding — now lives in
+   web/shell.css beside its twin. It was byte-identical to .clip in
+   web/clip.css, four declarations and four values. The state recolours
+   below stay here: they are this component's business, and they are attribute
+   selectors that outrank the shared rule regardless of load order. */
 
 .rail-card[data-verdict="confirmed"] {
   border-left-color: var(--aniline);
@@ -580,44 +579,13 @@
    here when NEITHER ledger holds it, which means nothing about that link was
    ever checked — a stronger and more specific statement than uncertainty,
    and web/clip.js's unsourcedCopy makes the same one. */
-.rail-unsourced {
-  margin-top: 0.9rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid color-mix(in srgb, var(--oxide) 45%, var(--onionskin));
-}
 
-.rail-unsourced-stamp {
-  display: inline-block;
-  border: 2px solid var(--oxide);
-  border-radius: 2px;
-  padding: 0.2rem 0.7rem;
-  transform: rotate(-2deg);
-  font-family: var(--label);
-  font-size: var(--label-md);
-  font-weight: 700;
-  letter-spacing: var(--track-label);
-  text-transform: uppercase;
-  color: var(--oxide); /* 4.75:1 on onionskin */
-}
 
-.rail-unsourced-urls {
-  list-style: none;
-  margin: 0.45rem 0 0;
-  padding: 0;
-}
 
 /* Deliberately not a link, and deliberately still shown — star/models.py's
    own words about the same field on Pipeline A: "Rendered as a warning,
    never as a source." An anchor here would send a reader to a page nothing
    in this system ever saw. */
-.rail-unsourced-url {
-  font-family: var(--slug);
-  font-size: var(--label-sm);
-  line-height: 1.55;
-  color: var(--ink);
-  opacity: 0.75; /* 6.24:1 */
-  overflow-wrap: anywhere;
-}
 
 /* ---------------------------------------------------------------------
    Claims that could not be placed in the scene.
@@ -835,9 +803,6 @@
     padding: 0.85rem 0.9rem 0.95rem;
   }
 
-  .rail-card {
-    padding: 0.8rem 0.75rem 0.85rem;
-  }
 }
 
 /* ---------------------------------------------------------------------

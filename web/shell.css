@@ -150,6 +150,98 @@ a {
   outline-color: var(--ink);
 }
 
+/* THE ONIONSKIN FRAGMENT. One fact with its receipts inside a drawer, and one
+   claim's sources in the check's citation rail: two components, the same
+   object, and until 2026-08-11 the same four declarations written out twice
+   with the same four values in web/clip.css and web/scene.css.
+
+   Merged here rather than left as a known duplicate because the app already
+   has one of these that drifted: the bible's card padding diverged from the
+   docket's by 8px and shipped a visible step between two stacked cards
+   (F-016). Byte-identical rules render byte-identical pixels, so nothing on
+   screen changes — that is the acceptance test for this merge, not a caveat
+   about it.
+
+   Cascade is safe in both directions. This file loads before clip.css and
+   scene.css, so a future scoped override in either still wins; and the state
+   recolours that already exist — `.clip[data-unsourced]`, `.rail-card[data-verdict]`
+   — are attribute selectors at (0,2,0) against this rule's (0,1,0), so they
+   were never relying on source order. They stay in their own files, because a
+   state is the component's business and this is only the stock it is cut from.
+
+   `.scene-page` is deliberately NOT a third member. It shares three of these
+   declarations and carries eight more of its own — the --slug face, pre-wrap,
+   the 32rem cap and its scroller — all argued at scene.css:238-248. It is a
+   consumer with an override, not a copy. */
+.clip,
+.rail-card {
+  background: var(--onionskin);
+  border-radius: 3px;
+  border-left: 3px solid var(--manila-edge);
+  padding: 0.95rem 1.1rem 1rem;
+}
+
+/* THE UNSOURCED BLOCK, which both evidence surfaces build and which was built
+   twice. A cited link that never came back from a search is stamped rather than
+   dropped — star/models.py's "rendered as a warning, never as a source" — and a
+   drawer clip and a citation-rail card each said that in their own file.
+
+   Four pairs, and they were not in the same condition. The stamp and the url
+   were VALUE-identical, eleven declarations and six, differing only in which
+   copy carried the measured ratio in a comment; both ratios are kept below. The
+   other two had ALREADY DRIFTED by 0.05rem — 0.85 against 0.9, 0.4 against 0.45
+   — with nothing anywhere arguing for either number. That is this wave's whole
+   thesis showing up inside its own evidence: a duplicate does not stay a
+   duplicate.
+
+   The clip's values win, and it is not a coin toss: the drawer surface predates
+   the check surface, so the rail's numbers are the copy and therefore the
+   drift. That moves the rail's two margins by 0.8px, which is the one place in
+   this merge where a pixel changes, and it is recorded here rather than
+   presented as a no-op.
+
+   `.clip-stamp-note` has no twin in scene.css and stays where it is — the check
+   surface never built one. Four pairs and one orphan, not a wholesale
+   double-build. */
+.clip-unsourced,
+.rail-unsourced {
+  margin-top: 0.85rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid color-mix(in srgb, var(--oxide) 45%, var(--onionskin));
+}
+
+.clip-stamp,
+.rail-unsourced-stamp {
+  display: inline-block;
+  border: 2px solid var(--oxide);
+  border-radius: 2px;
+  padding: 0.2rem 0.7rem;
+  transform: rotate(-2deg);
+  font-family: var(--label);
+  font-size: var(--label-md);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--oxide); /* 4.75:1 on --onionskin, the pair .banner also records */
+}
+
+.unsourced-urls,
+.rail-unsourced-urls {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+}
+
+.unsourced-url,
+.rail-unsourced-url {
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+  line-height: 1.55;
+  color: var(--ink);
+  opacity: 0.75; /* 6.24:1 on --onionskin */
+  overflow-wrap: anywhere;
+}
+
 /* The link colour on paper. Raw --aniline is 4.37:1 on --manila, under AA for
    the small text every link in this app is; mixed toward --ink it is 5.50:1 on
    manila and 8.10:1 on onionskin. Still one pad, still a flat solid, still
@@ -275,7 +367,7 @@ a {
 }
 
 .star-mark {
-  font-size: 1.7rem;
+  font-size: var(--mark-lg);
   line-height: 1;
   color: var(--manila);
 }
@@ -1151,6 +1243,15 @@ footer a {
    sized for a 1440px stage eating a 390px one. web/clip.css and web/bible.css
    already carry their own rules at this same 560px boundary. */
 @media (max-width: 560px) {
+  /* Both fragments narrow together, and did so with the same three values in
+     two files. Only the padding collapses here — the register's row is right
+     that the two 560px BLOCKS are not otherwise identical, and everything else
+     in them stayed where it was. */
+  .clip,
+  .rail-card {
+    padding: 0.8rem 0.75rem 0.85rem;
+  }
+
   .banner {
     padding: 0.55rem 0.9rem;
   }

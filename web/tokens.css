@@ -104,6 +104,19 @@
      and silently defeated the accessibility feature. This order was
      inverted for that reason. */
   --stamp-duration: 220ms;
+
+  /* The wordmark's star, sized once. It is the same 1.7rem literal in
+     web/shell.css and web/consent.css — byte-identical rules in two files,
+     and the consent page's own comment invited the collapse.
+
+     A token rather than a stylesheet link, deliberately. consent.html loads
+     THIS file and /consent.css and nothing else, and linking /shell.css to
+     reach one declaration would import 36.5KB and three unmeasured globals
+     onto the one screen where a reader hands something away: `a` at 4.37:1 on
+     manila, :focus-visible at 1.88:1 on manila, and a body flex layout
+     consent.css does not override. Both documents already load tokens.css, so
+     this costs nothing and carries no cascade. */
+  --mark-lg: 1.7rem;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -186,12 +186,11 @@
   gap: 0.85rem;
 }
 
-.clip {
-  background: var(--onionskin);
-  border-radius: 3px;
-  border-left: 3px solid var(--manila-edge);
-  padding: 0.95rem 1.1rem 1rem;
-}
+/* .clip's stock — background, radius, edge and padding — now lives in
+   web/shell.css beside its twin. It was byte-identical to .rail-card in
+   web/scene.css, four declarations and four values. The state recolours
+   below stay here: they are this component's business, and they are attribute
+   selectors that outrank the shared rule regardless of load order. */
 
 /* Scannable at a glance without overstating: the rule says "something on this
    clip failed the ledger check", and the stamp inside says exactly which link
@@ -471,25 +470,7 @@
    manages on manila.
 --------------------------------------------------------------------- */
 
-.clip-unsourced {
-  margin-top: 0.85rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid color-mix(in srgb, var(--oxide) 45%, var(--onionskin));
-}
 
-.clip-stamp {
-  display: inline-block;
-  border: 2px solid var(--oxide);
-  border-radius: 2px;
-  padding: 0.2rem 0.7rem;
-  transform: rotate(-2deg);
-  font-family: var(--label);
-  font-size: var(--label-md);
-  font-weight: 700;
-  letter-spacing: var(--track-label);
-  text-transform: uppercase;
-  color: var(--oxide);
-}
 
 .clip-stamp-note {
   margin: 0.6rem 0 0;
@@ -505,20 +486,7 @@
    words: "Rendered as a warning, never as a source." Turning it into an
    anchor beside the real receipts would make it look like one of them, and
    send a reader to a page nothing in this system ever saw. */
-.unsourced-urls {
-  list-style: none;
-  margin: 0.4rem 0 0;
-  padding: 0;
-}
 
-.unsourced-url {
-  font-family: var(--slug);
-  font-size: var(--label-sm);
-  line-height: 1.55;
-  color: var(--ink);
-  opacity: 0.75;
-  overflow-wrap: anywhere;
-}
 
 /* ---------------------------------------------------------------------
    field_notes — what the parser could not file, kept word for word.
@@ -583,10 +551,6 @@
 @media (max-width: 560px) {
   .receipt + .receipt {
     margin-left: 0;
-  }
-
-  .clip {
-    padding: 0.8rem 0.75rem 0.85rem;
   }
 
   .receipt-face {
