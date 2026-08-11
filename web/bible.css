@@ -50,15 +50,37 @@
   /* Full-width on the panel, which #results-panel widened to 1120px for the
      drawer grid (web/drawer.css). The SURFACE takes all of it — a reading
      surface that stops short of the cards it replaced would read as a
-     narrower thing than the room. The measure does not: see .bible-body. */
-  padding: 2rem 2.25rem 2.5rem;
+     narrower thing than the room. The measure does not: see .bible-body.
+
+     The INSET is .docket's, and that is the fix rather than an inheritance.
+     This was 2rem 2.25rem 2.5rem — the only card padding in the app that no
+     comment anywhere argues for, and the only one producing a visible break.
+     The bible stacks directly under the docket and the two cards share a left
+     edge, so a 36px inset against the docket's 28px put their first characters
+     at x=384 and x=376: measured, an 8px step between two full-width cards in
+     the same column. Matching the whole triple rather than only the horizontal
+     also takes the app from three distinct card paddings to two. */
+  padding: 1.5rem 1.75rem 1.6rem;
   margin-top: 1.75rem;
 }
 
+/* The surface's own legend, one step BELOW the document it introduces.
+   It was --text-lg, and so is .bible-body h1 — both --label, uppercase, bold,
+   --track-label — so "THE RESEARCH BIBLE" and "GDANSK 1978: WRITER'S RESEARCH
+   BIBLE" shipped as two identical 22px tracked lines ~52px apart, repeating the
+   words RESEARCH BIBLE, separated only by a rule. The ramp's top step spent
+   twice in 50px, and neither line ranked the other.
+
+   Size only. Same --ink on --onionskin pair (12.70:1, recorded below), so
+   invariant 5 has nothing to restate. And deliberately NOT a new --text-xl on
+   the h1 instead: :68-87 argues that this surface picks its own size and states
+   the optical size to match it, rather than inheriting whatever a future change
+   to --text-md would imply, and a shared token invites a second caller with no
+   opsz pin — the exact coupling that comment exists to prevent. */
 .bible-heading {
   margin: 0 0 1.25rem;
   font-family: var(--label);
-  font-size: var(--text-lg);
+  font-size: var(--label-md);
   font-weight: 700;
   letter-spacing: var(--track-label);
   text-transform: uppercase;
