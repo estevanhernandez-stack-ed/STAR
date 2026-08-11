@@ -105,6 +105,8 @@ Carried forward as roadmap, not blockers:
    stored rooms: **31,047 and 29,536 tokens** per call (124,186 and 118,142
    characters). The tool's `inputSchema` accepts `run_id` and nothing else, so
    an agent asking what is in a room has no way to ask for less.
+   `docs/judge-critique-round2-2026-08-11.md` independently puts it at "~30–37k
+   tokens on a complete room", which brackets both measurements.
 
    The breakdown says what to build. On the larger room, **72.3% of the payload
    is raw source `excerpt` text** and **4.4% is the research facts themselves**;
@@ -128,11 +130,23 @@ Carried forward as roadmap, not blockers:
    spends against the cap, and what comes back does not tell the caller what it
    spent or why it stopped. Builder's observation, not measured here.
 
-4. **Two old damaged bibles still report `complete`.** Rooms that predate the
-   bible fixes carry truncated bibles while their status says the build
-   finished. Status is describing the run, not the artefact, and for these two
-   those diverged. Builder's observation, not measured here — worth checking
-   whether it is those two rooms only or a class.
+4. **Two old damaged bibles still report `complete`, and they are both of the
+   stored rooms.** Measured 2026-08-11, and this upgrades the item from an
+   observation to an identification. Both rooms on this account report
+   `status: "complete"` and carry bibles of **2,608 characters** (The 28 Tram
+   Heist) and **2,877** (Gdansk 1978). `docs/judge-critique-round2-2026-08-11.md`
+   records a healthy bible from the same pipeline after the fix at **16,453
+   characters**, and names the mechanism: `max_output_tokens` on a thinking
+   model bounds thinking *plus* output, so the rooms that researched hardest
+   thought longest and shipped the shortest documents. Its damaged example —
+   "125 sources → 654 tokens of bible" — is The 28 Tram Heist, whose bible
+   measures 652 tokens here.
+
+   So the correlation runs backwards, which is what proves the cause, and the
+   fix is already in. What is left is the two rooms that were built before it:
+   status is describing the run rather than the artefact, and for these two
+   those diverged. Resynthesize or mark them honestly; do not leave a room
+   claiming `complete` over a bible that is a sixth of the length it should be.
 
 5. **Adoption — `ask_room` first.** The door has no question-shaped tool. An
    agent can read a room or build one, but cannot ask it anything, so the
