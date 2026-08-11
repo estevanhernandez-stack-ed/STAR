@@ -558,13 +558,41 @@ test("the page makes no third-party request and carries nothing inline", () => {
   const css = readFileSync(CONSENT_CSS, "utf8");
   const js = stripJsComments(readFileSync(CONSENT_JS, "utf8"));
 
+  // The rule is not "no external origin", it is the app-wide one: zero
+  // third-party requests EXCEPT Google's identity endpoints, which is the
+  // exception `docs/scope.md` has always carried and the only one it carries.
+  // This page reaches them because a decision has to be signed as somebody and
+  // finding out who is a call to Firebase.
+  //
+  // Asserted as an exact allow-list rather than as an absence, so adding a
+  // third host fails here. An assertion that no external origin appears at all
+  // would have been the stricter-sounding rule and the weaker one: it was true
+  // of this page only while the page could not establish an identity, and
+  // deleting it to make the flow work would have removed the guard entirely.
+  const ALLOWED_ORIGINS = new Set([
+    "https://identitytoolkit.googleapis.com",
+    "https://securetoken.googleapis.com",
+  ]);
   for (const [name, source] of [
     ["web/consent.html", html],
     ["web/consent.css", css],
     ["web/consent.js", js],
   ]) {
-    assert.ok(!/https?:\/\//i.test(source), `${name} must reference no external origin`);
+    for (const [, origin] of source.matchAll(/(https?:\/\/[^\s"';)]+)/gi)) {
+      const root = new URL(origin).origin;
+      assert.ok(
+        ALLOWED_ORIGINS.has(root),
+        `${name} references ${root}, which is not one of Google's identity endpoints`
+      );
+    }
   }
+
+  // And the two that are allowed appear where they can only be reached by
+  // fetch, never as a subresource this document loads.
+  assert.ok(
+    /connect-src[^;]*identitytoolkit\.googleapis\.com/.test(html),
+    "the identity hosts belong in connect-src and nowhere else"
+  );
 
   // Every subresource is an absolute same-origin path.
   const hrefs = [...html.matchAll(/href="([^"]*)"/g)].map((m) => m[1]);

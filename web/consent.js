@@ -576,15 +576,62 @@ async function submit(stateKey, decision, controls) {
   location.assign(target);
 }
 
-function start() {
+/** Who the reader is signed in as, read off their own ID token.
+ *
+ *  The server cannot put this in the query string and should not try. It
+ *  redirects here before anyone has answered anything, and it binds a uid only
+ *  when the answer comes back — which is what stops a link somebody was tricked
+ *  into opening from pre-binding a grant to whoever happened to be signed in.
+ *  So the account is this page's to discover, and the only honest source is the
+ *  credential the browser is about to sign the decision with.
+ *
+ *  Claims are read, never verified. Verification is the server's, on the token
+ *  this page then sends it. What is printed here is a label telling a reader
+ *  whose rooms they are handing over, and a forged label would be a lie told to
+ *  the forger about their own screen. */
+async function signedInAs() {
+  try {
+    const { getIdToken } = await import("/auth.js");
+    const token = await getIdToken();
+    if (!token) return "";
+    const claims = JSON.parse(
+      atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))
+    );
+    const identities = (claims.firebase || {}).identities || {};
+    // The email of a linked account if there is one. A session with no
+    // federated identity gets named as what it is rather than left blank: a
+    // reader approving from a browser the department has never seen before is
+    // about to hand over an account with nothing in it, and that is worth
+    // saying out loud on the screen where they press the control.
+    const federated = Object.keys(identities).some((k) => k.includes("."));
+    if (claims.email) return claims.email;
+    return federated ? "" : "this browser's anonymous session";
+  } catch {
+    return "";
+  }
+}
+
+async function start() {
   const mount = document.getElementById("consent");
   if (!mount) return;
   const params = readParams(location.search);
-  mount.replaceChildren(
-    renderConsent(params, {
-      onDecide: (decision, controls) => submit(params.stateKey, decision, controls),
-    })
-  );
+  const draw = () =>
+    mount.replaceChildren(
+      renderConsent(params, {
+        onDecide: (decision, controls) => submit(params.stateKey, decision, controls),
+      })
+    );
+
+  // Drawn twice on purpose. The first pass is synchronous, so the request and
+  // the two controls are on screen before any network call resolves; the
+  // second fills in the account once Firebase has answered. A page that waited
+  // for the network to paint anything would show a reader a blank card while a
+  // client sat waiting for a redirect.
+  draw();
+  if (!params.account) {
+    params.account = await signedInAs();
+    if (params.account) draw();
+  }
 }
 
 /* The page starts itself. There is no app.js on this document to call an

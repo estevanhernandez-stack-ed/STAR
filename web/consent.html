@@ -41,8 +41,20 @@
        whole attack — so the server has to send `X-Frame-Options: DENY` (or
        `Content-Security-Policy: frame-ancestors 'none'`) as a real header on
        this path. That is star/server.py's to add, not this file's. -->
+  <!-- `connect-src` names the two Identity Toolkit hosts because this page has
+       to know WHO is approving, and finding that out is a call to Firebase.
+       Not a widening: the same pair web/auth.js has always called, and the only
+       external requests this whole application permits.
+
+       Written down because the first version of this policy omitted them and
+       was right to at the time, when the page made no external request at all.
+       What changed is that a decision now has to be signed as somebody, and a
+       policy exactly correct for a page with no identity silently stopped the
+       page from ever having one. It failed the honest way at least: loudly in
+       the console and visibly on screen, rather than by approving a grant on
+       behalf of nobody. -->
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'none'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+    content="default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'none'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="referrer" content="no-referrer" />
   <meta name="robots" content="noindex, nofollow" />
 
