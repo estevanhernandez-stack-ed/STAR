@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "app": "STAR",
+  "stage": "identity",
+  "adapter": "web-playwright",
+  "evidenceDir": "docs/ui-evidence",
+  "designLanguagePath": "",
+  "findingsRegisterPath": "",
+  "themes": ["default"],
+  "invariants": [
+    "Manila (#D2B98C) owns more than 40% of the room's pixel area in the filed state — a finding that shrinks cards to accent-sized chips is rejected however much cleaner it looks. The cards are the page, the cabinet is the frame.",
+    "Aniline (#5C3D91) is a flat stamp-ink solid, never a gradient, never a brand wash — the gradient is the AI tell of 2026, not the hue. Any proposal introducing a violet gradient or accent wash is rejected on sight.",
+    "Onionskin (#E9E2D2) stays a component inside an opened drawer, never a page ground — promoting it to a page background lands the direction in the cream-and-serif default by the side door.",
+    "The stamp stays typographic: no distress textures, no rotation past 2.5 degrees — texture reads as a Photoshop filter, and decoration is what a skeptic dismisses.",
+    "Contrast is measured, not eyeballed — every CSS file carries a recorded table against a 4.5:1 floor for text and 3:1 for controls and visual boundaries. A finding that moves a colour pair must restate the measured ratio or it is not shippable.",
+    "Zero third-party requests at runtime — fonts and JS libraries are vendored under web/vendor/. No finding may introduce a CDN link or any hosted asset.",
+    "No build step — web/ is hand-written CSS and ES modules served straight off a StaticFiles mount. No framework, no Tailwind, no bundler proposals.",
+    "The prefers-reduced-motion override must stay AFTER the default in web/tokens.css — both rules target :root at equal specificity, so source order decides. Reordering silently defeats the accessibility feature; it already shipped broken once.",
+    "Copy never says \"verified\", never promises a duration, never flatters the user — institutional register, evidence-first. DIRECTION.md's \"What the UI is now obliged to do\" outranks any copy finding."
+  ],
+  "waves": []
+}
