@@ -106,14 +106,20 @@
     {
       "id": 6,
       "name": "the-room-after-it-files",
-      "status": "open",
+      "status": "clean",
       "findings": [
         "F-007",
         "F-008",
         "F-011"
       ],
       "rationale": "The three highest-ranked rows left (12, 12, 9) and all three live on one surface: the room a writer opens after a build files. The drawer they click sends itself off screen, the number on the docket says the ledger vouched for searches it only counted as issued, and the drawer's own hanging-folder construction has 1.6px of tuck where it needs about 9. Every figure in the brief was re-measured 2026-08-11 rather than carried from the audit.",
-      "branch": "glow/wave-6-the-room-after-it-files"
+      "branch": "glow/wave-6-the-room-after-it-files",
+      "closedClean": [
+        "F-007",
+        "F-008",
+        "F-011"
+      ],
+      "closeOut": "ran 2026-08-11. Three items, three commits. F-007's fix direction changed twice under measurement (scroll the card not the toggle; click handler not setOpen) and needed a scroll-margin-top no row anticipated. The brief's open question — should closing scroll — was answered by measuring: no, the browser's scroll anchoring already compensates. F-011's clip-path re-slope was necessary and is quantified. The grid's 'cannot drift' claim was verified rather than trusted: card tops identical before and after. Two of the wave's own tests were wrong first and caught by mutation rather than review."
     },
     {
       "id": 7,
