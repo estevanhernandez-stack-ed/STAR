@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
   "app": "STAR",
-  "stage": "identity",
+  "stage": "audit",
   "adapter": "web-playwright",
   "evidenceDir": "docs/ui-evidence",
-  "designLanguagePath": "",
+  "designLanguagePath": "docs/superpowers/specs/2026-08-10-star-design-language.md",
   "findingsRegisterPath": "",
   "themes": ["default"],
   "invariants": [
