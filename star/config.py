@@ -70,15 +70,15 @@ def check_timeout_seconds() -> int:
     return int(os.environ.get("STAR_CHECK_TIMEOUT_SECONDS", "180"))
 
 
-# The two origins this service is actually served from. There is no env var on
-# Cloud Run carrying a service's own URL, so the deployed one is a literal
-# here; if the service ever moves, this line moves with it or the browser is
-# refused at a door it never uses. The dev origin is listed because omitting it
-# is the failure that looks like a broken client on a laptop and works fine in
-# production — the same trap `spec.md > Deployment` names for the OAuth
-# client's redirect URIs.
 # EVERY origin this service answers on, and there are four. That is not
 # defensive breadth, it is the count.
+#
+# This paragraph replaced one that opened "The two origins this service is
+# actually served from" and sat, for a while, directly above a four-entry tuple.
+# Worth leaving the scar visible: that is the same defect class this project
+# keeps catching in its own copy, a comment asserting a count the code beside it
+# disproves, and it survived a commit because the edit that made it wrong added
+# a paragraph instead of replacing one.
 #
 # `star.626labs.dev` is the canonical one: a Cloud Run domain mapping, serving
 # the same revision under a valid certificate. It is what a reader should see and
@@ -205,6 +205,67 @@ def run_timeout_seconds() -> int:
     pipeline's duration variance is a separate problem and a real demo risk.
     """
     return int(os.environ.get("STAR_RUN_TIMEOUT_SECONDS", "600"))
+
+
+# --- The authorization server (docs/spec-oauth-as.md) -----------------------
+
+# The canonical URI this deployment is a protected resource under, and the one
+# string an OAuth access token's audience is compared against on every MCP
+# call. It is the first entry of _DEFAULT_MCP_ORIGINS repeated rather than read
+# from it, and the repetition is deliberate: that tuple is env-overridable and
+# order-sensitive, so deriving the audience from `mcp_allowed_origins()[0]`
+# would let a change to the Origin allow list quietly move what a token is
+# valid FOR. Two facts that happen to share a hostname today, kept apart.
+#
+# No path. RFC 9728 derives the metadata URL from the resource identifier, and
+# a resource of `https://star.626labs.dev` puts that document at
+# `/.well-known/oauth-protected-resource` — which is the path
+# `spec-oauth-as.md > Endpoints` names. A resource of
+# `.../mcp` would move the document to
+# `/.well-known/oauth-protected-resource/mcp` and contradict the spec's own
+# table. See star/oauth/metadata.py for the ambiguity that leaves.
+_DEFAULT_CANONICAL_RESOURCE = "https://star.626labs.dev"
+
+
+def canonical_resource() -> str:
+    """The resource identifier tokens are bound to and validated against."""
+    return os.environ.get("STAR_CANONICAL_RESOURCE", _DEFAULT_CANONICAL_RESOURCE)
+
+
+def oauth_access_token_seconds() -> int:
+    """How long an OAuth access token is good for.
+
+    One hour, and `spec-oauth-as.md > Open questions` #3 is explicit that this
+    is an assumption rather than a measurement: nothing has yet recorded how
+    often a long-running agent session trips a refresh. It is short because the
+    spec's requirement is short-lived access tokens with refresh rotation, and
+    an env var is here so the number can be moved once something measures it.
+    """
+    return int(os.environ.get("STAR_OAUTH_ACCESS_TOKEN_SECONDS", "3600"))
+
+
+def oauth_refresh_token_seconds() -> int:
+    """How long a refresh token is good for, absent rotation.
+
+    Thirty days. Rotation means a working client renews this every hour, so
+    the ceiling only decides how long a client can be OFF before its operator
+    has to approve the connection again. It is a bound rather than a feature:
+    a refresh token that never expires is a permanent credential issued
+    without anyone deciding it should be one.
+    """
+    return int(os.environ.get("STAR_OAUTH_REFRESH_TOKEN_SECONDS", "2592000"))
+
+
+def max_authorization_codes() -> int:
+    """Bound on live authorization codes held in memory at once.
+
+    The same bound `max_rate_limiter_keys` puts on RateLimiter and for the
+    reason star/guards.py:31-54 documents: the stale sweep is O(n) and runs on
+    the single-threaded loop every open SSE stream shares, so the number of
+    tracked keys is a cost every caller pays. Codes live 60 seconds, so this
+    is a ceiling on concurrent in-flight consents, not on daily volume.
+    """
+    return int(os.environ.get("STAR_MAX_AUTHORIZATION_CODES", "5000"))
 
 
 def validate_env() -> None:

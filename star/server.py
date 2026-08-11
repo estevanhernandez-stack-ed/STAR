@@ -17,6 +17,7 @@ import uuid
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from dotenv import load_dotenv
 
@@ -24,7 +25,7 @@ load_dotenv()
 
 from fastapi import FastAPI, Header, HTTPException, Request  # noqa: E402
 from fastapi.encoders import jsonable_encoder  # noqa: E402
-from fastapi.responses import Response, StreamingResponse  # noqa: E402
+from fastapi.responses import JSONResponse, Response, StreamingResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from google.adk.runners import InMemoryRunner  # noqa: E402
 from google.genai import types  # noqa: E402
@@ -43,7 +44,11 @@ from star.guards import DailyCap, RateLimiter  # noqa: E402
 from star.ledger import SourceLedger, ledger_from_room  # noqa: E402
 from star.mcp.router import build_mcp_router  # noqa: E402
 from star.models import Category, ClaimSet, ScriptCheckResult  # noqa: E402
+from star.oauth import clients, codes  # noqa: E402
+from star.oauth import metadata as oauth_metadata  # noqa: E402
+from star.oauth import tokens as oauth_tokens  # noqa: E402
 from star.store import (  # noqa: E402
+    ClientStore,
     RoomStore,
     TokenStore,
     document_to_room,
@@ -63,6 +68,34 @@ app = FastAPI(
     redoc_url=None,
     openapi_url=None,
 )
+
+
+@app.middleware("http")
+async def _deny_framing(request: Request, call_next):
+    """Nothing this app serves may be rendered inside someone else's frame.
+
+    Global rather than scoped to one path, because the rule is true of every
+    surface here and a header that has to be remembered per-route is a header
+    that will be forgotten on the next one.
+
+    THE PATH THAT MADE IT NECESSARY is the OAuth consent screen. That page is
+    the one place in the department where a human presses a control that hands
+    something away, which makes an invisible frame positioned over `Approve`
+    the classic attack on exactly this shape of page: the reader believes they
+    are clicking something on the attacker's site and they are granting an
+    agent access to their rooms.
+
+    `web/consent.html` carries a meta CSP of its own as defence in depth, and
+    it cannot carry this one: `frame-ancestors` is **ignored** when it arrives
+    in a `<meta>` tag rather than a real response header (CSP Level 3 forbids
+    it there). So the page genuinely cannot supply this control and the server
+    has to. Both headers are sent because `X-Frame-Options` is what older
+    engines honour and `frame-ancestors` is what supersedes it.
+    """
+    response = await call_next(request)
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
+    return response
 
 _runner = InMemoryRunner(agent=build_room, app_name="star")
 _runs: dict[str, dict] = {}
@@ -1509,6 +1542,144 @@ app.include_router(
         resolve_token=_resolve_mcp_token,
     )
 )
+
+# --- the authorization server ------------------------------------------------
+#
+# Everything below is the OAuth 2.1 surface an MCP client discovers, and every
+# route in it MUST be declared above `app.mount("/")` for the reason the MCP
+# router already is: the StaticFiles mount answers `/` and therefore swallows
+# every path declared after it. A `/.well-known/` route registered below the
+# mount is a 404 that looks like a missing feature.
+#
+# The department is both roles here. It is the resource server, which it has
+# been since the MCP door opened, and now also the authorization server, which
+# `spec-oauth-as.md` explains it has to be: the spec requires a token to be
+# validated as issued FOR this resource, and Google will not mint one carrying
+# this resource's URI as its audience. So Google stays what identifies the
+# human, and the issuing is ours.
+
+_code_store = codes.CodeStore(max_keys=config.max_authorization_codes())
+_client_store = ClientStore()
+
+
+@app.get("/.well-known/oauth-protected-resource", include_in_schema=False)
+async def oauth_protected_resource() -> dict:
+    """RFC 9728. The document a client reads to find out who issues tokens.
+
+    A MUST for an MCP server, and the reason the 401 challenge stopped being a
+    bare `Bearer`: without this, a client that begins by asking where the
+    authorization server is has nothing to follow and stops there.
+    """
+    return oauth_metadata.protected_resource()
+
+
+@app.get("/.well-known/oauth-authorization-server", include_in_schema=False)
+async def oauth_authorization_server() -> dict:
+    """RFC 8414. What this authorization server can actually do.
+
+    `code_challenge_methods_supported` carries the weight here: the OAuth 2.1
+    and PKCE specs define no way for a client to probe for PKCE support, so a
+    conformant client MUST refuse to proceed when that field is absent. An
+    otherwise perfect document without it is a document nobody can use.
+    """
+    return oauth_metadata.authorization_server()
+
+
+class DecideRequest(BaseModel):
+    state_key: str
+    decision: str
+
+
+def _oauth_redirect(target: str, **params: str) -> str:
+    """Append parameters to a redirect URI without disturbing what it carries.
+
+    A registered redirect URI may already have a query string of its own, so
+    parameters are merged rather than concatenated, and `state` is echoed back
+    exactly as it arrived — it is the client's own value and the client is the
+    only thing that can read it.
+    """
+    parts = urlsplit(target)
+    merged = dict(parse_qsl(parts.query, keep_blank_values=True))
+    merged.update({k: v for k, v in params.items() if v is not None})
+    return urlunsplit(parts._replace(query=urlencode(merged)))
+
+
+@app.post("/oauth/register", include_in_schema=False)
+async def oauth_register(request: Request) -> Response:
+    """RFC 7591 dynamic client registration.
+
+    One of three registration paths the spec allows, and the one a client falls
+    back to when it cannot host a Client ID Metadata Document. Both are
+    supported because which one a given client reaches for is not worth
+    guessing at, and building both cost less than measuring and being wrong.
+    """
+    try:
+        document = json.loads(await request.body())
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JSONResponse(
+            {"error": "invalid_client_metadata",
+             "error_description": "The registration body was not JSON."},
+            status_code=400,
+        )
+
+    now = datetime.now(timezone.utc)  # noqa: UP017
+    client = clients.register(document, now)
+    if isinstance(client, clients.Rejected):
+        return JSONResponse(
+            {"error": client.error, "error_description": client.description},
+            status_code=400,
+        )
+
+    await asyncio.to_thread(_client_store.save, client.client_id, clients.to_document(client))
+    return JSONResponse(
+        clients.registration_response(client, int(now.timestamp())), status_code=201
+    )
+
+
+@app.post("/oauth/token", include_in_schema=False)
+async def oauth_token(request: Request) -> Response:
+    """The token endpoint. Form-encoded, per OAuth 2.1.
+
+    `Cache-Control: no-store` is required rather than polite: the body carries
+    a bearer credential, and a proxy or a browser that caches it hands the next
+    reader an access token.
+    """
+    form = await request.form()
+    grant_type = form.get("grant_type")
+
+    if grant_type == "authorization_code":
+        issued = await oauth_tokens.exchange_code(
+            code=form.get("code"),
+            client_id=form.get("client_id"),
+            redirect_uri=form.get("redirect_uri"),
+            verifier=form.get("code_verifier"),
+            resource=form.get("resource"),
+            code_store=_code_store,
+            store=_token_store,
+        )
+    elif grant_type == "refresh_token":
+        issued = await oauth_tokens.refresh(
+            refresh_token=form.get("refresh_token"),
+            client_id=form.get("client_id"),
+            store=_token_store,
+        )
+    else:
+        return JSONResponse(
+            {"error": "unsupported_grant_type",
+             "error_description": "This server issues tokens for "
+                                  "`authorization_code` and `refresh_token`."},
+            status_code=400,
+            headers={"Cache-Control": "no-store"},
+        )
+
+    if isinstance(issued, oauth_tokens.Denied):
+        return JSONResponse(
+            {"error": issued.error, "error_description": issued.description},
+            status_code=400,
+            headers={"Cache-Control": "no-store"},
+        )
+    return JSONResponse(issued.body(), headers={"Cache-Control": "no-store"})
+
 
 _WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 app.mount("/", StaticFiles(directory=str(_WEB_DIR), html=True), name="web")

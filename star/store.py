@@ -279,6 +279,49 @@ class RoomStore:
         return True
 
 
+class ClientStore:
+    """Reads and writes OAuth clients at the top-level /oauth_clients/{client_id}.
+
+    Top level and unscoped, for the reason TokenStore below is: a client
+    registers before anybody has signed in, so there is no uid to root the path
+    at. A registered client belongs to no account — it is a program, and the
+    accounts that approve it are recorded on the tokens it holds.
+
+    Persisted rather than held in memory, which is where this departs from
+    `spec-oauth-as.md`'s Decision 2 about authorization codes, and the
+    difference is the lifetime. A code is dead in sixty seconds, so losing one
+    to a restart costs a reader one retry. A client id is handed to a desktop
+    program that stores it in a config file and presents it for months; losing
+    the row means every one of them starts failing at `/authorize` after a
+    deploy, with a refusal that says the client is not registered when the
+    client's own file says it is.
+
+    Client ID Metadata Document clients are never written here. Their identity
+    is a URL somebody else serves and it is re-read on every authorization —
+    see star/oauth/clients.py's `lookup` for why a cache would be this server
+    enforcing a version of an identity that has already changed.
+    """
+
+    def __init__(self, client=None) -> None:
+        self._client = client
+
+    @property
+    def client(self):
+        if self._client is None:
+            self._client = _default_client()
+        return self._client
+
+    def _clients(self):
+        return self.client.collection("oauth_clients")
+
+    def save(self, client_id: str, document: dict) -> None:
+        self._clients().document(client_id).set(document)
+
+    def get(self, client_id: str) -> dict | None:
+        snapshot = self._clients().document(client_id).get()
+        return snapshot.to_dict() if snapshot.exists else None
+
+
 class TokenStore:
     """Reads and writes MCP tokens at the top-level /mcp_tokens/{token_id}.
 
@@ -336,6 +379,56 @@ class TokenStore:
         documents = [s.to_dict() for s in query.stream() if s.exists]
         documents.sort(key=lambda d: (d or {}).get("created_at") or "", reverse=True)
         return documents
+
+    def list_for_family(self, family_id: str) -> list[dict]:
+        """Every token in one rotation chain, in whatever order they come back.
+
+        Keyed on `family_id` rather than on uid, which is the one query in this
+        class that is not the account's. It is deliberate and it is bounded:
+        a family id is minted per authorization-code exchange, it is a random
+        32-hex value nobody outside this server ever sees, and the only caller
+        already resolved a credential carrying it. Nobody can ask this question
+        about a family they were not handed.
+
+        `where()` on a single field is served by Firestore's automatic index —
+        no composite, no deploy artifact, which is the same argument
+        `list_for_uid` makes for sorting in Python.
+        """
+        if not family_id:
+            # A `where(field == "")` would match every document written before
+            # the field existed. An empty family id is a defect upstream and it
+            # must not become "revoke everything".
+            return []
+        query = self._tokens().where(filter=FieldFilter("family_id", "==", family_id))
+        return [s.to_dict() for s in query.stream() if s.exists]
+
+    def revoke_family(self, family_id: str, when: str) -> int:
+        """Kill a whole rotation chain. Returns how many were newly revoked.
+
+        This is OAuth 2.1's answer to a refresh token presented twice. Rotation
+        alone already denies the second presenter; what it cannot do on its own
+        is decide WHICH of the two was the thief, because both hold a credential
+        the server issued. Revoking the family resolves that by refusing to
+        guess: the legitimate client is sent back through consent, and the
+        attacker's freshly rotated pair dies with it.
+
+        Not scoped by uid, unlike `revoke` above, and that is safe for the
+        reason `list_for_family` gives: the caller reached this by resolving a
+        credential that already carried the family id. Adding a uid parameter
+        would read as an ownership check while checking nothing a family id did
+        not already prove.
+
+        Already-revoked members keep their first timestamp and are not counted,
+        matching `revoke`: the first revocation is the fact worth keeping.
+        """
+        revoked = 0
+        for stored in self.list_for_family(family_id):
+            token_id = (stored or {}).get("token_id")
+            if not token_id or stored.get("revoked_at"):
+                continue
+            self._tokens().document(token_id).update({"revoked_at": when})
+            revoked += 1
+        return revoked
 
     def touch(self, token_id: str, when: str) -> None:
         """Stamp when this token was last used. Throttled by the caller.

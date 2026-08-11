@@ -25,9 +25,11 @@ shortfall next to one.
 
 import contextlib
 import json
+import re
 import tomllib
 from pathlib import Path
 from unittest import mock
+from urllib.parse import urlsplit
 
 import pytest
 from fastapi.testclient import TestClient
@@ -553,9 +555,28 @@ async def test_a_call_with_no_authorization_header_is_refused_with_a_challenge()
 
     body = response.json()
     assert response.status_code == 401
-    assert response.headers["www-authenticate"] == "Bearer"
     assert body["error"]["code"] == protocol.AUTHORIZATION_REQUIRED
     assert body["error"]["message"] == tokens.MISSING.message
+
+    # This used to assert the challenge was the bare string "Bearer", and that
+    # was right while it was true: with no authorization server, a
+    # `resource_metadata` pointer would have named a 404 and sent a client
+    # somewhere worse than nowhere.
+    #
+    # Now the pointer is the whole value of the header, because it is what
+    # turns a refusal into the first step of a flow rather than a dead end. So
+    # the assertion is not that some parameter is present, it is that the URL
+    # the challenge names IS SERVED — which is the property the old comment
+    # said could not be had, checked rather than asserted.
+    challenge = response.headers["www-authenticate"]
+    assert challenge.startswith("Bearer ")
+
+    named = re.search(r'resource_metadata="([^"]+)"', challenge)
+    assert named, f"no resource_metadata in {challenge!r}"
+
+    served = TestClient(server.app).get(urlsplit(named.group(1)).path)
+    assert served.status_code == 200
+    assert served.json()["resource"]
 
 
 @pytest.mark.asyncio

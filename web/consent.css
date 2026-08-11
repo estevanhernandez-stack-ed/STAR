@@ -1,0 +1,480 @@
+/* THE MORGUE — the counter: the consent screen.
+   Tokens only, from web/tokens.css. No raw hex, no rgba() literals — every
+   shade is derived with color-mix() from a token, the precedent web/shell.css
+   set for .rail-room:hover and web/clip.css for the stamp's letterforms.
+
+   NOTHING IS ADDED TO THE PALETTE, and no pad is given a new meaning. There
+   is no aniline anywhere on this page: aniline means FILED, against a source
+   the department checked, and nothing on this screen has been checked against
+   anything — that is the whole point of the sentence under the client's name.
+   --oxide reaches exactly the three places where this request is not what it
+   should be (no client name, no redirect address, no handle to answer with,
+   and a refusal from the endpoint), through the same 70%-toward-ink mix
+   web/shell.css's .error and web/account.css's .account-refusal already use.
+
+   WHY THIS FILE CARRIES A RESET AND TWO PAPER-SURFACE RULES, which no other
+   component stylesheet in this app does. web/consent.html is a whole
+   document, and it deliberately does not load web/shell.css: that file is the
+   cabinet — the rail, the stage, the intake grid — and none of it applies to
+   a page that has one card on it. What this page does need from shell.css is
+   the pair its paper-surface block exists to hand out, and re-deriving them
+   would be the exact drift that block was written to stop, so they are copied
+   with their measurements rather than re-invented:
+
+     :focus-visible on paper takes --ink, not --pencil. --pencil is 1.88:1 on
+     manila against a 3:1 floor, which is the same bug found one control at a
+     time on .receipt-face, .docket-btn and #build-btn. --ink is 8.63:1.
+
+     A link on paper takes aniline mixed 70% toward ink. Raw --aniline is
+     4.37:1 on manila, under AA for small text; mixed it is 5.50:1.
+
+   IF THE ORCHESTRATOR WOULD RATHER HAVE ONE SOURCE: add `.consent` to
+   web/shell.css's three paper-surface selector lists, link /shell.css from
+   web/consent.html, and delete the two rules under THE PAPER SURFACE below.
+   Nothing else in this file depends on shell.css.
+
+   CONTRAST. Every pair below is one this codebase has already measured and
+   recorded (web/clip.css's table, web/account.css's, web/shell.css's); none
+   of them is new and none is eyeballed:
+
+     --ink on --manila                                    8.63:1
+     --ink on --onionskin                                12.70:1
+     --ink at 0.75 on --manila                            4.93:1   quiet meta
+     --ink at 0.75 on --onionskin                         6.24:1
+     mix(--aniline 70%, --ink) on --manila                5.50:1   the one link
+     mix(--oxide 70%, --ink) on --manila                  4.57:1   a refusal
+     --manila on --cabinet                                7.65:1   the wordmark
+     --pencil-text on --cabinet                           4.85:1   the tagline
+     --oxide on --manila (raw)                            3.23:1   NEVER used
+     --manila-edge on --manila                            1.34:1   hairline only
+
+   MANILA OWNS THE PAGE. One card, and the only onionskin on it is the slip
+   carrying the redirect hostname — the one thing a reader must not skip. If
+   the scopes were slips too, nothing would be a slip. Onionskin stays a
+   component inside a manila card and never a page ground, which is
+   docs/design/DIRECTION.md's third rule.
+
+   THE STAMP. There isn't one. The hostname sits in the stamp's letterforms
+   and its 2px ink rule because that is what this app sets an address in, but
+   it does not rotate and it does not press: DIRECTION.md is explicit that the
+   stamp is an EVENT, and nothing about a hostname just happened.
+   web/account.css's revoked stamp makes the same call for the same reason.
+
+   MOTION. None at all. Nothing on this page arrives, resolves or completes —
+   a reader lands on it, reads three things, and answers. There is no ellipsis
+   on the working line either, so this file needs no reduced-motion path
+   because it declares no animation to switch off.
+
+   DENY IS AS EASY TO REACH AS APPROVE, and that is enforced here rather than
+   promised: `.decide-btn` is the ONLY rule that paints either control, and
+   there is no `[data-decision]` selector anywhere in this file. Making one
+   louder than the other takes a new selector somebody has to write on
+   purpose. They also share `flex: 1 1 14rem`, so they are the same width on
+   the same row at every viewport.
+*/
+
+/* ---------------------------------------------------------------------
+   The document. web/shell.css is not loaded here, so the four lines every
+   page needs are declared once, at the top, and nowhere else.
+--------------------------------------------------------------------- */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+}
+
+body.consent-page {
+  min-height: 100vh;
+  background: var(--cabinet);
+  color: var(--ink);
+  font-family: var(--body);
+}
+
+/* ---------------------------------------------------------------------
+   THE PAPER SURFACE. Two rules, both lifted from web/shell.css with their
+   measurements — see this file's header for why they are here and how to
+   collapse them back if the orchestrator prefers one source.
+--------------------------------------------------------------------- */
+
+.consent :focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.consent a {
+  color: color-mix(in srgb, var(--aniline) 70%, var(--ink));
+}
+
+/* ---------------------------------------------------------------------
+   The stage. One column, one card, centred on the cabinet. Deliberately
+   narrower than the room's 1120px: this page is three statements and two
+   controls, and stretching it would leave a wide band of blank stock — the
+   same argument #intake-panel's align-self:start makes about a card being as
+   tall as what is written on it.
+--------------------------------------------------------------------- */
+
+.consent-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 2.5rem 2rem 3rem;
+}
+
+.consent-masthead {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: 100%;
+  max-width: 46rem;
+}
+
+.star-mark {
+  font-size: 1.7rem;
+  line-height: 1;
+  color: var(--manila);
+}
+
+.consent-wordmark {
+  margin: 0;
+  font-family: var(--label);
+  font-size: var(--text-md);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  color: var(--manila); /* 7.65:1 */
+}
+
+.consent-tagline {
+  margin: 0.15rem 0 0;
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+  color: var(--pencil-text); /* 4.85:1 on --cabinet */
+}
+
+/* ---------------------------------------------------------------------
+   The card.
+--------------------------------------------------------------------- */
+
+.consent {
+  width: 100%;
+  max-width: 46rem;
+  background: var(--manila);
+  color: var(--ink);
+  border-radius: 4px;
+  padding: 1.75rem 2rem 2rem;
+  box-shadow: 0 1px 0 var(--manila-edge);
+}
+
+.consent-heading {
+  margin: 0 0 0.9rem;
+  font-family: var(--label);
+  font-size: var(--text-lg);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+}
+
+.consent-lede {
+  margin: 0 0 0.85rem;
+  max-width: 62ch;
+  font-family: var(--body);
+  font-size: var(--text-md);
+  line-height: 1.5;
+}
+
+.consent-account {
+  margin: 0;
+  max-width: 62ch;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  /* The address can be long and can be hostile. It wraps rather than
+     overflowing the card, on every prose block on this page. */
+  overflow-wrap: anywhere;
+}
+
+/* The three statements, separated by the folder's own edge rather than by a
+   box each. Two cards inside one card is the "five cards on one card is a
+   background" mistake web/shell.css records about the results panel. */
+.consent-block {
+  margin-top: 1.6rem;
+  padding-top: 1.4rem;
+  border-top: 1px solid var(--manila-edge);
+}
+
+.consent-legend {
+  margin: 0 0 0.75rem;
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink);
+  opacity: 0.75; /* 4.93:1 — the one value this codebase uses for quiet text
+                    on manila. See web/shell.css's #results-panel .meter. */
+}
+
+.consent-line {
+  margin: 0 0 0.7rem;
+  max-width: 66ch;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.consent-line:last-child {
+  margin-bottom: 0;
+}
+
+/* The quieter register: what the department knows about what it just printed,
+   and what the two controls below will do. Still full ink at 8.63:1 — quiet
+   is a size and a face here, not a contrast reduction. */
+.consent-note {
+  margin: 0 0 0.7rem;
+  max-width: 66ch;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.consent-sublabel {
+  margin: 0.9rem 0 0.3rem;
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink);
+  opacity: 0.75; /* 4.93:1 */
+}
+
+/* Something about this request is not what it should be: no client name, no
+   redirect address, no handle to answer with, or a refusal from the endpoint.
+   Oxide is FLAGGED, and it reaches text through the same mix web/shell.css's
+   .error uses, because raw --oxide on manila is 3.23:1. */
+.consent-refusal {
+  margin: 0 0 0.7rem;
+  max-width: 66ch;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--oxide) 70%, var(--ink)); /* 4.57:1 */
+  overflow-wrap: anywhere;
+}
+
+.consent-noscript {
+  margin: 0;
+  max-width: 66ch;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+}
+
+/* ---------------------------------------------------------------------
+   1. Who is asking. The most dangerous string on the page, set as the
+   largest thing on it, and bounded.
+--------------------------------------------------------------------- */
+
+/* BOUNDED AND SCROLLABLE RATHER THAN TRUNCATED, and the choice is a security
+   one on both sides. Truncating hides the tail of a name, which is exactly
+   where "Claude Desktop                    (not really)" would put the part
+   that matters. Leaving it unbounded lets a name of arbitrary length push the
+   deny control off the screen, which is the same UI-redress attack from the
+   other direction. So: the whole name is reachable, and the box it lives in
+   cannot grow past roughly four lines. */
+.consent-client-name {
+  margin: 0 0 0.7rem;
+  max-width: 62ch;
+  max-height: 7.5rem;
+  overflow-y: auto;
+  font-family: var(--label);
+  font-size: var(--text-lg);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.25;
+  color: var(--ink); /* 8.63:1 */
+  overflow-wrap: anywhere;
+}
+
+.consent-client-uri {
+  display: block;
+  max-width: 62ch;
+  font-family: var(--slug);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+/* An address the department will not link. On screen, inert, and in the slug
+   face every other raw address in this app is set in — the same treatment
+   web/scriptcheck.js's unsourced URLs get, for the same reason: dropping it
+   would hide what the client supplied. */
+.consent-inert-uri {
+  margin: 0;
+  max-width: 62ch;
+  max-height: 7.5rem;
+  overflow-y: auto;
+  font-family: var(--slug);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  color: var(--ink);
+  opacity: 0.75; /* 4.93:1 */
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------------
+   2. What it is asking for. Manila with the folder's own edge as a rule —
+   the .docket-note component — because the reading surface on this page is
+   reserved for the hostname.
+--------------------------------------------------------------------- */
+
+.consent-scope {
+  max-width: 66ch;
+  padding-left: 0.85rem;
+  border-left: 3px solid var(--manila-edge);
+}
+
+.consent-scope + .consent-scope {
+  margin-top: 1.1rem;
+}
+
+.consent-scope-token {
+  display: block;
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+  letter-spacing: 0.03em;
+  color: var(--ink);
+  opacity: 0.75; /* 4.93:1 */
+  overflow-wrap: anywhere;
+}
+
+.consent-scope-title {
+  margin: 0.3rem 0 0.5rem;
+  font-family: var(--label);
+  font-size: var(--label-md);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+/* ---------------------------------------------------------------------
+   3. Where the department will send you back. The one onionskin slip.
+--------------------------------------------------------------------- */
+
+.consent-where {
+  max-width: 66ch;
+  padding: 1rem 1.1rem 1.1rem;
+  background: var(--onionskin);
+  border-left: 3px solid var(--pencil);
+}
+
+/* The plate. The stamp's letterforms and its 2px ink rule, with no rotation
+   and no press — see the header. It wraps rather than truncating, because a
+   hostname cut off by a box is the one thing on this page that must never be
+   half-read. */
+.consent-host {
+  display: inline-block;
+  margin-bottom: 0.7rem;
+  max-width: 100%;
+  padding: 0.35rem 0.9rem 0.4rem;
+  border: 2px solid var(--ink);
+  border-radius: 2px;
+  font-family: var(--slug);
+  font-size: var(--text-md);
+  letter-spacing: 0.03em;
+  line-height: 1.35;
+  color: var(--ink); /* 12.70:1 on --onionskin */
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------------
+   The answer. One rule for both controls, and no second rule anywhere in
+   this file that can tell them apart.
+--------------------------------------------------------------------- */
+
+.decide-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+/* Bordered rather than filled, both of them. web/account.css splits its
+   controls into a filled register for the acts that ADD and a bordered one
+   for the acts that TAKE AWAY; neither of those is what is happening here,
+   and painting approve as the filled one would be the dark pattern this page
+   is built against. `flex: 1 1 14rem` is what makes them literally the same
+   width, on one row above 34rem and stacked below it. */
+.decide-btn {
+  flex: 1 1 14rem;
+  min-width: 0;
+  max-width: 22rem;
+  background: transparent;
+  color: var(--ink); /* 8.63:1 */
+  border: 1px solid var(--ink);
+  border-radius: 3px;
+  padding: 0.75rem 1.25rem;
+  font-family: var(--label);
+  font-size: var(--label-md);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.decide-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+/* Both controls go down together while an answer is in flight, so a second
+   press cannot send a second decision. `wait` rather than `not-allowed`:
+   this is disabled because something is happening, not because something has
+   not — the distinction web/account.css draws between #build-btn and the
+   blocked issue control. */
+.decide-btn:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.consent-status {
+  margin: 0;
+  max-width: 66ch;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--ink);
+  opacity: 0.75; /* 4.93:1 */
+}
+
+.consent-status:empty,
+.consent-decide .consent-refusal:empty {
+  margin: 0;
+}
+
+/* ---------------------------------------------------------------------
+   NARROW VIEWPORTS. One boundary, at the same 560px every other surface in
+   this app already turns on (web/shell.css, web/drawer.css, web/scene.css).
+   There is nothing structural to do above it: the page is one column at every
+   width, and .decide-row's flex-basis stacks the two controls on its own.
+--------------------------------------------------------------------- */
+
+@media (max-width: 560px) {
+  .consent-stage {
+    padding: 1.5rem 0.9rem 2.5rem;
+  }
+
+  .consent {
+    padding: 1.25rem 1.1rem 1.5rem;
+  }
+
+  .consent-client-name {
+    font-size: var(--text-md);
+  }
+}

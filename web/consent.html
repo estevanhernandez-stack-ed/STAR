@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>STAR — A request to reach your rooms</title>
+
+  <!-- THE CONSENT SCREEN, and why it is a whole document rather than a fifth
+       stage state in index.html.
+
+       Every other surface in this app is a panel the shell swaps in, and that
+       is right for them: they are places a reader walks to from inside. This
+       one is where a reader ARRIVES, redirected from outside the app by a
+       client the department has never seen, and it is the endpoint of an OAuth
+       redirect (docs/spec-oauth-as.md > The consent screen). A stage state
+       would have to be reachable by URL anyway, and it would put the copy that
+       an attacker's client name lands next to inside the same document as the
+       intake — which is the document the whole of cycle #19's narrowing keeps
+       free of accounts.
+
+       IT LOADS TWO STYLESHEETS AND ONE MODULE, all same-origin, and it
+       deliberately does NOT load /shell.css. That file is the cabinet — the
+       rail, the stage, the intake grid — and none of it applies here. What
+       this page does need from it is the paper-surface pair (a focus ring and
+       a link colour that clear AA on manila), and web/consent.css carries a
+       scoped copy of exactly those two rules for exactly this document. See
+       the note at the top of that file: if the orchestrator would rather have
+       one source, `.consent` joins shell.css's three selector lists and the
+       two rules come out of consent.css.
+
+       THE CSP IS DEFENCE IN DEPTH, not the security property. The property is
+       that web/consent.js contains no HTML sink at all, which is what
+       tests/js/test_consent.mjs asserts. The meta below is the second lock on
+       the same door, and it also makes "zero third-party browser requests" an
+       enforced fact rather than a promise: nothing on this page may fetch,
+       style, script or embed from anywhere but this origin.
+
+       WHAT THIS META CANNOT DO, stated so nobody reads it as more than it is:
+       `frame-ancestors` is ignored in a meta CSP. A consent screen is the
+       classic clickjacking target — an invisible frame over "Approve" is the
+       whole attack — so the server has to send `X-Frame-Options: DENY` (or
+       `Content-Security-Policy: frame-ancestors 'none'`) as a real header on
+       this path. That is star/server.py's to add, not this file's. -->
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'none'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta name="referrer" content="no-referrer" />
+  <meta name="robots" content="noindex, nofollow" />
+
+  <link rel="stylesheet" href="/tokens.css" />
+  <link rel="stylesheet" href="/consent.css" />
+</head>
+<body class="consent-page">
+  <main class="consent-stage">
+    <div class="consent-masthead">
+      <span class="star-mark" aria-hidden="true">✶</span>
+      <div>
+        <p class="consent-wordmark">STAR</p>
+        <p class="consent-tagline">Story &amp; Treatment Agentic Research</p>
+      </div>
+    </div>
+
+    <!-- Ships EMPTY, and everything a reader sees here is built by
+         web/consent.js out of text nodes. Not an optimisation: every value on
+         this page arrives in the query string from a client the department did
+         not write, and the one way to be certain none of them becomes markup
+         is that this document contains no place to put markup and that module
+         contains no way to make any.
+
+         The <noscript> below is the exception, and it is static copy with no
+         parameter in it. It is replaced the moment the module runs. -->
+    <section id="consent" class="consent" aria-labelledby="consent-heading">
+      <noscript>
+        <p class="consent-noscript">
+          This page draws the request with JavaScript, which is switched off in
+          this browser, so it cannot show you who is asking or what they are
+          asking for. Nothing has been granted. Switch it on and reload, or
+          close this page and nothing happens.
+        </p>
+      </noscript>
+    </section>
+  </main>
+
+  <script type="module" src="/consent.js"></script>
+</body>
+</html>

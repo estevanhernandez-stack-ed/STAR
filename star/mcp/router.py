@@ -39,6 +39,12 @@ from fastapi.responses import JSONResponse, Response
 
 from star import config
 from star.mcp import protocol, tools
+
+# Aliased on purpose. `metadata` is already taken at the top of this file by
+# `importlib.metadata`, which is what reads the package version for serverInfo,
+# and a second unqualified `metadata` here would silently shadow it.
+from star.oauth import metadata as oauth_metadata
+from star.oauth import validate as oauth_validate
 from star.tokens import TokenIdentity
 
 logger = logging.getLogger(__name__)
@@ -193,17 +199,43 @@ def build_mcp_router(
             # draw: a token of the wrong shape, an unknown id, and a wrong
             # secret are one answer, because telling a stranger which of them
             # they sent is free reconnaissance into which token ids are real.
+            #
+            # The challenge now carries `resource_metadata`. It used to be a
+            # bare `Bearer`, and the comment here said pointing at metadata
+            # that did not exist would be worse than saying nothing. That was
+            # true and it is not any more: RFC 9728 metadata is served, so the
+            # parameter is the one thing that turns this refusal from a dead
+            # end into the first step of a flow a client can actually finish.
             return _error_response(
                 401,
                 None,
                 protocol.AUTHORIZATION_REQUIRED,
                 identity.message,
-                # No `resource_metadata` parameter on the challenge. MCP's
-                # authorization spec expects OAuth 2.1 with protected-resource
-                # discovery and STAR ships none — prd.md cuts the
-                # authorization server explicitly. Pointing at metadata that
-                # does not exist would be worse than a bare challenge.
-                headers={"WWW-Authenticate": "Bearer"},
+                headers={"WWW-Authenticate": oauth_metadata.www_authenticate()},
+            )
+
+        # A resolved credential is not yet an admitted one. `resolve_token`
+        # answers "is this real and unrevoked", which is all a card token has
+        # ever needed. An OAuth access token additionally has to be unexpired,
+        # issued for THIS resource, and not a refresh token wearing a bearer
+        # header. `validate.check` is where those three are asked, and it is
+        # deliberately a second call rather than folded into resolution: the
+        # card path must keep answering exactly as it did, and it does, because
+        # a token carrying no OAuth facts passes every one of these by
+        # construction.
+        #
+        # Scope is NOT checked here. The scope a call needs depends on which
+        # tool it names, and the door has not read the body yet — reading it to
+        # find out would put parsing ahead of authentication, which is the one
+        # ordering this router exists to hold. `tools/call` asks below.
+        admitted = oauth_validate.check(identity)
+        if isinstance(admitted, oauth_validate.Denied):
+            return _error_response(
+                admitted.status,
+                None,
+                protocol.AUTHORIZATION_REQUIRED,
+                admitted.description,
+                headers={"WWW-Authenticate": admitted.challenge()},
             )
 
         version = protocol.negotiate_header(mcp_protocol_version)
@@ -236,6 +268,32 @@ def build_mcp_router(
             return Response(status_code=202)
         if isinstance(message, protocol.Malformed):
             return _error_response(400, message.id, message.code, message.message)
+
+        # Scope, and only now, because only now is the tool name known. The
+        # door admitted this credential; this asks whether the grant behind it
+        # covers what is being asked for.
+        #
+        # It is an HTTP 403 with a challenge rather than a CallToolResult, and
+        # that is the whole point of putting it here. `isError: true` is the
+        # right shape for a failure the calling MODEL should read and act on;
+        # insufficient scope is a failure the CLIENT acts on, by running a
+        # step-up authorization for the scope named in the challenge. A model
+        # cannot do that, and a tool result carries no `WWW-Authenticate` to
+        # tell it what to ask for. Getting this shape wrong would leave a
+        # client re-reading an apology instead of upgrading its grant.
+        if message.method == "tools/call":
+            asked = message.params.get("name")
+            need = oauth_validate.scope_for(asked) if isinstance(asked, str) else None
+            if need is not None:
+                scoped = oauth_validate.check(identity, need=need)
+                if isinstance(scoped, oauth_validate.Denied):
+                    return _error_response(
+                        scoped.status,
+                        message.id,
+                        protocol.AUTHORIZATION_REQUIRED,
+                        scoped.description,
+                        headers={"WWW-Authenticate": scoped.challenge()},
+                    )
 
         return JSONResponse(await _dispatch(message, identity))
 
