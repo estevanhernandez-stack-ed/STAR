@@ -179,6 +179,26 @@ assert.doesNotMatch(
   /Stopped|Interrupted/,
   "a room that filed says nothing extra"
 );
+
+// The status REPLACES the era rather than joining it, which the close-out
+// measured as necessary: three segments wrap to a second line in a 300px rail
+// at some era lengths, making a flagged row taller than its neighbours. Two
+// segments on a flagged row, exactly as many as an ordinary one.
+assert.doesNotMatch(
+  rows.get("r-err").innerHTML,
+  /1974/,
+  "a flagged row drops the era: it is the weakest of the three facts, and a " +
+    "run that raised may never have written a story_profile to take it from"
+);
+assert.match(rows.get("r-err").innerHTML, /Stopped &middot; /, "status first, then the date");
+assert.equal(
+  (rows.get("r-err").innerHTML.match(/&middot;/g) || []).length,
+  (rows.get("r-ok").innerHTML.match(/&middot;/g) || []).length,
+  "a flagged row carries the same number of segments as a filed one, so it " +
+    "cannot wrap where the other does not"
+);
+// The era still shows on a room that filed normally.
+assert.match(rows.get("r-ok").innerHTML, /1929/, "an ordinary row keeps its era");
 assert.doesNotMatch(
   rows.get("r-run").innerHTML,
   /Stopped|Interrupted/,
@@ -211,4 +231,4 @@ assert.match(
 // the text here are describing the same rows.
 assert.match(readShellSource(), /isFlagged \? " flagged" : ""/, "the class still marks them");
 
-console.log("test_flagged_room.mjs: 26 assertions passed");
+console.log("test_flagged_room.mjs: 30 assertions passed");
