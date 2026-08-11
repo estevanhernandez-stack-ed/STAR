@@ -42,6 +42,8 @@
      - --oxide is the FLAGGED pad, on the unsourced URL and nowhere else.
 */
 
+import { excerptProse } from "/excerpt.js";
+
 export function escapeHtml(s) {
   return String(s)
     .replaceAll("&", "&amp;")
@@ -149,26 +151,38 @@ function domainOf(raw) {
   return url.hostname.replace(/^www\./i, "");
 }
 
-/** Ledger excerpts arrive with the search API's own `<strong>` match
- *  highlighting and HTML entities already in them (verified against the stored
- *  Detroit-1929 room: `&quot;whiskey sixes,&quot;` and `<strong>rum runners
- *  would actually drive across…</strong>`). Escaping the whole string would
- *  print `<strong>` and `&quot;` as literal characters — technically verbatim,
- *  visibly broken, and it would hide which terms actually matched, which is
- *  real evidence about why this source was returned.
+/** SOME ledger excerpts arrive with the search API's own `<strong>` match
+ *  highlighting. Escaping the whole string would print `<strong>` as literal
+ *  characters — technically verbatim, visibly broken, and it would hide which
+ *  terms actually matched, which is real evidence about why this source was
+ *  returned.
+ *
+ *  "Some" is the correction, made 2026-08-11. This said excerpts arrive with
+ *  that highlighting AND HTML entities, verified against the stored
+ *  Detroit-1929 room. Measured across all 104 excerpts in the two stored rooms
+ *  today: 5 carry `<strong>`, none carry an entity, and most are the page's
+ *  content as markdown. The allowlist below is therefore doing its job for a
+ *  small minority of excerpts and is kept for exactly that reason — but it was
+ *  never what stood between a reader and a wall of table rows. web/excerpt.js
+ *  is, and it runs first.
  *
  *  So it goes through DOMPurify with a deliberately tiny allowlist: emphasis
  *  only, no attributes, no links. This is untrusted third-party web content
  *  and it gets no more surface than it needs to render as a quotation. If
  *  DOMPurify failed to load, fall back to escaped text rather than raw HTML. */
 function renderExcerpt(text) {
+  // Reduce to the page's prose BEFORE sanitizing, not after: excerptProse
+  // deliberately leaves inline HTML alone so DOMPurify is still the only thing
+  // deciding what markup reaches the DOM, and running it second would mean
+  // pattern-matching a string that had already been rewritten.
+  const prose = excerptProse(text);
   if (window.DOMPurify) {
-    return window.DOMPurify.sanitize(String(text), {
+    return window.DOMPurify.sanitize(prose, {
       ALLOWED_TAGS: ["strong", "em", "b", "i"],
       ALLOWED_ATTR: [],
     });
   }
-  return escapeHtml(text);
+  return escapeHtml(prose);
 }
 
 /** One receipt: a manila fragment carrying the ledger's own record of a source.

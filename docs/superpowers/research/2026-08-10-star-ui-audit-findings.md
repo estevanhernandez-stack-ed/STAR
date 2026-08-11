@@ -344,3 +344,14 @@ Recorded so no later round re-finds it:
 - **`09-drawer-flagged` was captured at 768x405**, not 1440x900, because an
   element screenshot does not inherit the viewport. Colour is legible in it;
   composition claims from it are not comparable. Re-shoot before round 2.
+- **The static mount sends an ETag and no `Cache-Control`,** so a browser that
+  already has a module serves it from its own cache without revalidating. This
+  bit the campaign twice: once in wave 1, where a cached `auth.js` left
+  `clearStashedRun` unresolved and the whole app stopped evaluating — a failure
+  that read as "the build did not start" — and once in wave 4, where the drawer
+  clips appeared unchanged after the fix while the citation rail was correct,
+  because the page was running a stale `clip.js`. Both cost real diagnosis time
+  against code that was already right. Backend/serving, not design, and the
+  operational risk is the same one a deploy carries: a returning reader can run
+  a version mixed across two releases. Verify a change against a cache-busted
+  import before concluding it did not work.

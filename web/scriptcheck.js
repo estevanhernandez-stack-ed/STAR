@@ -18,17 +18,26 @@
    `<img src=x onerror=alert(1)>` is characters when it arrives, characters
    through the matcher, and characters in the DOM.
 
-   The one place that costs something is a ledger excerpt. Parallel Search
-   returns excerpts carrying its own <strong> match highlighting and HTML
-   entities (verified against the stored Detroit-1929 room:
-   `&quot;whiskey sixes,&quot;` and `<strong>rum runners would actually drive
-   across…</strong>`), and web/clip.js runs those through DOMPurify with a tiny
-   allowlist so the emphasis survives. This file does not. `plainExcerpt` below
-   strips the emphasis to text and decodes the five standard entities, and the
-   excerpt lands as one text node. The highlight is real evidence and losing it
-   is a real cost; it is paid because "no string in this module ever becomes
-   markup" is a property a reviewer can check with one grep, and on the one
-   surface built around a hostile paste that is worth more than four <strong>s.
+   The one place that costs something is a ledger excerpt. `plainExcerpt` below
+   strips emphasis to text and decodes the five standard entities, and the
+   excerpt lands as one text node. web/clip.js instead runs its copy through
+   DOMPurify with a tiny allowlist so the emphasis survives. The highlight is
+   real evidence and losing it here is a real cost; it is paid because "no
+   string in this module ever becomes markup" is a property a reviewer can
+   check with one grep, and on the one surface built around a hostile paste
+   that is worth more than four <strong>s.
+
+   WHAT AN EXCERPT ACTUALLY IS, corrected 2026-08-11. This comment used to say
+   Parallel Search returns <strong> highlighting and entities like
+   `&quot;whiskey sixes,&quot;`, verified against the stored Detroit-1929 room.
+   That is no longer what arrives. Measured across all 104 excerpts in the two
+   stored rooms: 2 carry <strong>, ZERO carry an HTML entity, and the large
+   majority are the page's content as MARKDOWN — headings, table rows, inline
+   links, wiki cite markers. Only 4 of 50 in one room even begin with prose.
+   Either the API changed its extraction or it varies by source. The decoding
+   below is kept rather than deleted because it costs nothing and the Detroit
+   evidence was real; what was added is web/excerpt.js, which finds the prose
+   before any of this runs.
 
    COPY DISCIPLINE, which is most of the rest of this file:
      - The word "verified" appears nowhere a reader can see it. The ledger
@@ -53,6 +62,7 @@
 
 import { anchor } from "/anchor.js";
 import { authedFetch } from "/auth.js";
+import { excerptProse } from "/excerpt.js";
 
 const VERDICTS = new Set(["confirmed", "anachronism", "unverifiable"]);
 
@@ -107,7 +117,10 @@ function domainOf(raw) {
  *  The result is one string that becomes one text node. Nothing here can
  *  produce an element, which is the whole point. */
 function plainExcerpt(raw) {
-  return String(raw)
+  // excerptProse first, because it is the step that decides WHAT is quoted;
+  // everything below only decides how the characters are spelled. It leaves
+  // inline HTML alone, so the tag strip on the next line still has its job.
+  return excerptProse(raw)
     .replace(/<\/?(?:strong|em|b|i)>/gi, "")
     .replaceAll("&quot;", '"')
     .replaceAll("&#39;", "'")
