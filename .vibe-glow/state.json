@@ -24,7 +24,7 @@
     {
       "id": 1,
       "name": "runs-and-work",
-      "status": "shipped",
+      "status": "clean",
       "findings": [
         "F-001",
         "F-003",
@@ -36,15 +36,13 @@
       "executor": "vibe-cartographer",
       "branch": "glow/wave-1-runs-and-work",
       "cartCycle": 20,
-      "closeOut": "ran 2026-08-11 on the branch, pre-merge. Three of five closed. F-001 and F-003 stay open: the close-out review found a defect the wave introduced (setLiveRun(null) and clearStashedRun() were missing from the abandon path, so walking away from a run left the rail pointing at an emptied progress panel for a run still spending) — now fixed and guarded by a test that fails when it is reintroduced — and both findings were verified live once where the brief required twice for timing-dependent work. Seven comment-drift items found and fixed.",
+      "closeOut": "ran 2026-08-11 pre-merge, in two passes. The first closed F-004, F-005 and F-013 and found a defect the wave introduced: setLiveRun(null) and clearStashedRun() were missing from the abandon path, so walking away from a run left the rail routing to an emptied progress panel for a run still spending. Fixed in resetProgress and guarded by a test that fails when either line is removed. A third build then closed F-001 and F-003, re-captured 06-progress-running, and verified the abandon path live. Seven comment-drift items fixed.",
       "closedClean": [
+        "F-001",
+        "F-003",
         "F-004",
         "F-005",
         "F-013"
-      ],
-      "stillOpen": [
-        "F-001",
-        "F-003"
       ]
     }
   ]
