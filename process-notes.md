@@ -1326,3 +1326,46 @@ The brief carries these corrections inline so the build reads the corrected work
 **Deepening rounds: 0.** Standing pattern, and the register already survived 67 adversarial
 reviews — a fourth pass over the same five items would be re-litigating an argument that was
 already had properly.
+
+## /build — cycle #20 (glow wave 1)
+
+Eight items, seven commits, on `glow/wave-1-runs-and-work`. Tests 606 -> 611,
+ruff clean throughout. Verified against two real builds plus a synthetic render
+for the one state that cannot be forced without paying for a failed run.
+
+**What the build found that the audit did not.**
+
+- **F-004 was deeper than the finding.** `setCheckRoom`'s same-room guard could
+  never fire, because `resetCheck` erased the `roomId` it compares one call
+  earlier. Passing a `keepScene` flag alone would have looked correct and fixed
+  nothing — the room paint that followed cleared the box a second time.
+- **The running rail row was lying twice.** With the row finally rendering it
+  read "Untitled room · Era unstated". `store.py` writes the document off an
+  empty `story_profile` at creation, so the first claims the treatment was read
+  and had no title and the second claims a period was looked for and not found.
+  Neither has happened. Now "In the department / Researching now".
+- **Two buttons set `.type` as a property** where every other button in
+  `account.js` uses `setAttribute`. The stub document cannot see a property,
+  which is how the test surfaced it.
+- **Two stale comments.** `resetProgress` named the rail's "New room" as *the*
+  recovery path, which is the sentence that made its treatment wipe look
+  harmless; `beginGoogleLink` described the run stash as the redirect's alone.
+  Both fixed in item 8's drift check rather than left for a future reader.
+
+**Deviation from the brief, declared.** F-003 asked for a 5s poll on a running
+room; this ships the control without the timer. A poll needs a handle cleared on
+every stage change, `shell.js` owns stage changes and `app.js` would own the
+interval, and a leaked interval hammering `/api/rooms` is a worse failure than
+one extra press.
+
+**Friction worth recording.** Static files ship an etag with no `Cache-Control`,
+so browsers apply heuristic caching and a changed module is served stale. This
+cost one confusing verification round: `app.js` failed to evaluate entirely
+because a cached `auth.js` had no `clearStashedRun`, and the symptom was "the
+build did not start". Worked around by serving a second instance on port 8001 —
+a fresh origin has a fresh cache. Worth a real fix if the dev loop keeps hitting
+it; not this wave's scope.
+
+**Not done, and not claimed.** The wave is `shipped`, not `clean`. Close-out —
+re-capturing the touched surfaces and re-reviewing them against the measuring
+stick — has not run. 16 findings remain open in the register.

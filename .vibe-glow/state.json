@@ -6,7 +6,9 @@
   "evidenceDir": "docs/ui-evidence",
   "designLanguagePath": "docs/superpowers/specs/2026-08-10-star-design-language.md",
   "findingsRegisterPath": "docs/superpowers/research/2026-08-10-star-ui-audit-findings.md",
-  "themes": ["default"],
+  "themes": [
+    "default"
+  ],
   "invariants": [
     "Manila (#D2B98C) owns more than 40% of the room's pixel area in the filed state — a finding that shrinks cards to accent-sized chips is rejected however much cleaner it looks. The cards are the page, the cabinet is the frame.",
     "Aniline (#5C3D91) is a flat stamp-ink solid, never a gradient, never a brand wash — the gradient is the AI tell of 2026, not the hue. Any proposal introducing a violet gradient or accent wash is rejected on sight.",
@@ -22,10 +24,19 @@
     {
       "id": 1,
       "name": "runs-and-work",
-      "status": "open",
-      "findings": ["F-001", "F-003", "F-004", "F-005", "F-013"],
+      "status": "shipped",
+      "findings": [
+        "F-001",
+        "F-003",
+        "F-004",
+        "F-005",
+        "F-013"
+      ],
       "rationale": "The five findings where a user loses work, loses a credential, or keeps paying for a run they can no longer see. One blast radius across app.js, shell.js, scriptcheck.js, account.js and auth.js, and four of the five are small edits against machinery the app already ships.",
-      "executor": "vibe-cartographer"
+      "executor": "vibe-cartographer",
+      "branch": "glow/wave-1-runs-and-work",
+      "cartCycle": 20,
+      "closeOut": "pending — re-capture the touched surfaces and re-review them against the measuring stick before this wave goes clean"
     }
   ]
 }

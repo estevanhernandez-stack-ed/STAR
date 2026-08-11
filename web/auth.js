@@ -526,7 +526,13 @@ const REFUSAL_CODES = {
  *  page, and {run_id, stream_key} live in app.js's page memory only, so a
  *  build in flight comes back unstreamable without this. The run itself
  *  survives — the asyncio task keeps going and _persist writes at terminal
- *  status — so what is being rescued is the stream, not the research. */
+ *  status — so what is being rescued is the stream, not the research.
+ *
+ *  That stash is no longer this function's alone. Wave 1 of the glow campaign
+ *  found the same value lost the same way by a reload, a crash and a locked
+ *  phone, so stashLiveRun is exported and called from app.js's openStream on
+ *  every run. This call site is now one of two, and the sentence above
+ *  describes why the mechanism exists rather than who uses it. */
 export async function beginGoogleLink({ returnTo, mode = "link" } = {}) {
   const clientId = googleClientId();
   if (!clientId) return outcome("unavailable");

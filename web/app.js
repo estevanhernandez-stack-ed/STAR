@@ -344,11 +344,17 @@ function stopElapsedTimer() {
 }
 
 /** Rebuilds the live drawer grid and clears every piece of per-run state.
- *  Called at the top of every build, and again on "New room" — the error
- *  path below never navigates away on its own (the rail's own "New room"
- *  button is the recovery path, always visible), so a stray interval or a
- *  stale drawer reference must not survive into whatever the user does
- *  next. */
+ *  Called at the top of every build, and again on "New room" — the error path
+ *  below still never navigates away on its own, so a stray interval or a stale
+ *  drawer reference must not survive into whatever the user does next.
+ *
+ *  There are TWO recovery paths now, not one. The rail's "New room" is still
+ *  always visible, and it still clears the treatment because "start fresh" is
+ *  what it means. markRunFailed mounts a second one inside the failure block,
+ *  which does everything this one does except the wipe — a reader whose build
+ *  just failed should not have to go and find their treatment again. This
+ *  comment named the rail button as "the" recovery path until wave 1 of the
+ *  glow campaign, and that was the sentence that made the wipe look harmless. */
 function resetProgress() {
   stopElapsedTimer();
   closeStream();
