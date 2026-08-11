@@ -215,10 +215,55 @@ were wrong: the position is fourth, and in `14` the whole card sits below the
 fold because the capture was taken with the stage scrolled, which is a capture
 artifact and separately a real scroll defect, not intra-card ordering.)
 
-Rules 9 and 10 extend DIRECTION.md rather than restating it. They exist because
-round-1 evidence showed a failure and the builder named it. Rule 10 held under
-adversarial review; rule 9 held as a rule but lost its evidence. A wave arguing
-against either argues against the findings register, not against taste.
+**Rule 11 — a note earns its sentence, or it becomes a mark.**
+
+THE MORGUE's native vocabulary is not prose. It is the plate, the tab, the slug
+and the stamp: terse, structural, verbless, and the thing a hostile reader
+trusts most on the page. `teatrnn.pl / RET 10 AUG 2026 / FILED BY OBJ` carries
+more than any paragraph about provenance could, and DIRECTION.md says why — the
+stamp is "the whole trust argument delivered as motion rather than as a claim."
+
+The app writes prose in places where it already owns a better vocabulary. The
+four drawer remits are the clearest case: "Light, sound, weather, dress, money,
+food — the texture of a place in its period" is a sentence doing a plate's job.
+
+**A note may be a sentence when it does something a mark cannot:**
+
+- states a consequence the reader must weigh before acting — retention,
+  revocation, spend, irreversibility;
+- carries an obligation DIRECTION.md requires *in words* (rules 3, 5, 6);
+- corrects something the reader would otherwise get wrong.
+
+**A note must not be a sentence when it is:**
+
+- an enumeration of what a thing contains — that is a plate;
+- a restatement of what the adjacent control already says;
+- a label wearing a verb.
+
+**The test, so this is checkable rather than felt:** strike every verb. If the
+note still says the same thing, it was a mark all along.
+
+### Why rules 9 and 11 are two rules
+
+Rule 9 catches a thing said too often. Rule 11 catches a thing said in the wrong
+form. Stage 1 proved they are not the same failure: rule 9 survived 67
+adversarial reviews with **no confirmed violation** — every finding citing it
+was correctly refuted, because the app really does state each obligation once
+per surface — while the builder could see at a glance that the copy read as
+forced. The register had no rule for that, so nothing could be filed against it.
+
+The measured shape of the problem, for anyone arguing with this rule: 1,143
+words of standing prose across 38 strings, median sentence 14 words and mean
+13.9 — a band so tight that nothing on any surface carries emphasis. 531 of
+those words are on the consent page, which a reader reaches once by redirect
+from a client the department never checked, and which is right to argue. The
+other 612 are in surfaces a writer lives in.
+
+Rules 9, 10 and 11 extend DIRECTION.md rather than restating it. Rule 10 held
+under adversarial review. Rule 9 held as a rule but lost its evidence. Rule 11
+exists because the first two, enforced exactly as written, let a real defect
+through. A wave arguing against any of them argues against the findings
+register, not against taste.
 
 ## Invariants — verbatim
 
