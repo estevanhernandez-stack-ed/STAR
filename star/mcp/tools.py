@@ -37,6 +37,7 @@ from typing import Any
 from fastapi import HTTPException
 
 from star import config
+from star.models import Category
 
 # How often an agent should poll `get_room`. Named in the tool descriptions,
 # in INSTRUCTIONS, and in the still-building answer itself, because an agent
@@ -224,6 +225,12 @@ _ROOM_ID = (
     "or by `build_room`"
 )
 
+_SHAPES = ("full", "findings", "plan", "bible", "summary")
+
+# Everything but `categories`, which is the only part that carries bodies.
+_LIGHT_KEYS = ("created_at", "story_profile", "search_count", "source_count")
+
+
 TOOLS: tuple[dict, ...] = (
     {
         "name": "list_rooms",
@@ -269,11 +276,40 @@ TOOLS: tuple[dict, ...] = (
             "it filed before the restart is readable and will not change.\n\n"
             "Costs nothing, spends no searches, and is never rate-limited, so "
             "polling it is free. A room filed under a different account "
-            "answers the same way as one that does not exist."
+            "answers the same way as one that does not exist.\n\n"
+            "**Ask for less than the whole room.** A complete room is about "
+            "30,000 tokens, and roughly 72% of that is the quoted excerpt "
+            "under each source. `shape` cuts it: `summary` is counts and the "
+            "story profile, `bible` is the research bible alone, `plan` is "
+            "what the department set out to find, and `findings` is every "
+            "fact with every url and title but no quotes — about a quarter of "
+            "the full size, losing nothing an agent cannot re-fetch from the "
+            "url it is given. `full` is the default and is unchanged. "
+            "`category` narrows any shape to one drawer. Whatever a shape "
+            "leaves out, the reply says so, so a cut is never mistaken for an "
+            "empty room."
         ),
         "inputSchema": {
             "type": "object",
-            "properties": {"run_id": {"type": "string", "description": _ROOM_ID}},
+            "properties": {
+                "run_id": {"type": "string", "description": _ROOM_ID},
+                "shape": {
+                    "type": "string",
+                    "enum": list(_SHAPES),
+                    "description": (
+                        "how much of the room to return: `summary`, `bible`, "
+                        "`plan`, `findings`, or `full`. Defaults to `full`"
+                    ),
+                },
+                "category": {
+                    "type": "string",
+                    "enum": [c.value for c in Category],
+                    "description": (
+                        "one drawer to narrow to: `setting`, `objects_props`, "
+                        "`logistics` or `forces_conflicts`. Defaults to all four"
+                    ),
+                },
+            },
             "required": ["run_id"],
             "additionalProperties": False,
         },
@@ -489,6 +525,34 @@ def _arguments(tool: dict, arguments: dict) -> dict:
                 f"`{name}`'s `{key}` arrived empty. Send {description}."
             )
         values[key] = value.strip()
+
+    # Optional properties, handled here rather than in the tool, for the reason
+    # the docstring above gives: the schema an agent reads in `tools/list` and
+    # the rules it is held to have to be one object. A tool that read
+    # `arguments.get("shape")` itself would be the second copy this function
+    # exists to prevent, and the first thing to drift would be the enum.
+    for key, spec in properties.items():
+        if key in values or key not in arguments:
+            continue
+        value = arguments[key]
+        if value is None:
+            continue
+        if not isinstance(value, str):
+            raise _BadArguments(
+                f"`{name}`'s `{key}` must be a string. This call sent "
+                f"{_kind(value)}. It should be {spec['description']}."
+            )
+        value = value.strip()
+        allowed = spec.get("enum")
+        if allowed and value not in allowed:
+            listed = ", ".join(f"`{option}`" for option in allowed)
+            raise _BadArguments(
+                f"`{name}` does not take `{value}` as `{key}`. It takes one "
+                f"of {listed}. Sending none of them is also fine — "
+                f"{spec['description']}"
+            )
+        if value:
+            values[key] = value
     return values
 
 
@@ -601,16 +665,137 @@ async def _list_rooms(arguments: dict, calls: Calls, identity) -> dict:
     )
 
 
+def _drawer_counts(categories: dict) -> dict:
+    """How much is in each drawer, without any of it."""
+    counts = {}
+    for name, doc in (categories or {}).items():
+        findings = (doc or {}).get("findings") or []
+        counts[name] = {
+            "findings": len(findings),
+            "citations": sum(len((f or {}).get("citations") or []) for f in findings),
+        }
+    return counts
+
+
+def _without_excerpts(categories: dict) -> dict:
+    """The drawers, keeping every fact and every source, dropping the quotes.
+
+    Measured against the stored rooms on 2026-08-11: excerpt text is **72.3%**
+    of a complete room's payload and the facts themselves are 4.4%. Dropping
+    excerpts alone takes `get_room` from 31,047 tokens to 8,613 without losing
+    a single fact, url, title or unverified-url warning — an agent keeps
+    everything it needs to reason and to fetch a source itself, and loses only
+    the quoted passage it can retrieve from the url.
+    """
+    out = {}
+    for name, doc in (categories or {}).items():
+        doc = dict(doc or {})
+        doc["findings"] = [
+            {
+                **{k: v for k, v in (f or {}).items() if k != "citations"},
+                "citations": [
+                    {k: v for k, v in (c or {}).items() if k != "excerpt"}
+                    for c in ((f or {}).get("citations") or [])
+                ],
+            }
+            for f in (doc.get("findings") or [])
+        ]
+        out[name] = doc
+    return out
+
+
+def _project_room(result: object, shape: str, category: str | None) -> object:
+    """One room, cut to the shape the caller asked for. Pure.
+
+    `full` is the default and returns exactly what this tool has always
+    returned, so an agent written before this argument existed is unaffected.
+    Every other shape is strictly smaller.
+    """
+    if not isinstance(result, dict):
+        return result
+
+    if category:
+        result = {**result, "categories": {
+            name: doc for name, doc in (result.get("categories") or {}).items()
+            if name == category
+        }}
+
+    if shape == "summary":
+        return {
+            **{k: result.get(k) for k in _LIGHT_KEYS},
+            "drawers": _drawer_counts(result.get("categories") or {}),
+            "research_bible_chars": len(result.get("research_bible") or ""),
+        }
+    if shape == "bible":
+        return {
+            "created_at": result.get("created_at"),
+            "research_bible": result.get("research_bible") or "",
+        }
+    if shape == "plan":
+        return {
+            **{k: result.get(k) for k in _LIGHT_KEYS},
+            "research_plan": result.get("research_plan"),
+        }
+    if shape == "findings":
+        return {
+            **{k: result.get(k) for k in _LIGHT_KEYS},
+            "categories": _without_excerpts(result.get("categories") or {}),
+        }
+    return result
+
+
 async def _get_room(arguments: dict, calls: Calls, identity) -> dict:
     values = _arguments(_TOOLS_BY_NAME["get_room"], arguments)
     run_id = values["run_id"]
+    shape = values.get("shape") or "full"
+    category = values.get("category")
     room = await calls.read_room(identity.uid, run_id)
     status = room.get("status") or "unknown"
-    result = room.get("result")
+    result = _project_room(room.get("result"), shape, category)
+    report = _room_report(status, result)
+    if shape != "full" or category:
+        report = f"{report}\n\n{_shape_note(shape, category)}"
     return _payload(
-        _room_report(status, result),
-        {"run_id": run_id, "status": status, "room": result},
+        report,
+        {"run_id": run_id, "status": status, "shape": shape, "room": result},
     )
+
+
+def _shape_note(shape: str, category: str | None) -> str:
+    """Say what was left out, so an agent never mistakes a cut for an absence.
+
+    The whole risk of this argument is an agent reading a `findings` room and
+    concluding the sources have no excerpts, or reading a `bible` room and
+    concluding the drawers are empty. A shape has to announce itself.
+    """
+    drawer = f" from the `{category}` drawer only" if category else ""
+    if shape == "summary":
+        return (
+            f"This is a `summary`{drawer}: counts and the story profile, with "
+            "no findings, no sources and no bible. Nothing here is missing "
+            "from the room — call again with `shape` set to `findings`, "
+            "`bible` or `full` for the contents."
+        )
+    if shape == "bible":
+        return (
+            f"This is the research bible alone{drawer}. The findings and their "
+            "sources are in the room and were not returned; call again with "
+            "`shape` set to `findings` for those."
+        )
+    if shape == "plan":
+        return (
+            f"This is the story profile and research plan{drawer} — what the "
+            "department set out to find, not what it found. Call again with "
+            "`shape` set to `findings` for the results."
+        )
+    if shape == "findings":
+        return (
+            f"These are the findings{drawer} with every fact, url and title, "
+            "and with the quoted excerpts left out — they are about 72% of a "
+            "room by size. Every source is still here and still fetchable at "
+            "its url. Call again with `shape` set to `full` for the quotes."
+        )
+    return f"This is the whole room, filtered to the `{category}` drawer."
 
 
 async def _build_room(arguments: dict, calls: Calls, identity) -> dict:

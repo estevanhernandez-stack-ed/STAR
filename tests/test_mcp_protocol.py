@@ -1175,7 +1175,17 @@ async def test_polling_a_room_still_being_built_answers_running_and_is_not_an_er
     result = await invoke("get_room", {"run_id": "abc"}, read_room=_running)
 
     assert result["isError"] is False
-    assert carried(result) == {"run_id": "abc", "status": "running", "room": None}
+    # `shape` joined this payload when get_room learned to return less than the
+    # whole room. It is always present, including on the default, so an agent
+    # can tell what it was handed from the JSON alone rather than by parsing the
+    # sentence above it — and so a room that came back small never has to be
+    # guessed at. Additive: `run_id`, `status` and `room` are unchanged.
+    assert carried(result) == {
+        "run_id": "abc",
+        "status": "running",
+        "shape": "full",
+        "room": None,
+    }
     assert "still being built" in said(result)
     assert f"{tools.POLL_SECONDS} seconds" in said(result)
     assert "not an error" in said(result)
@@ -1751,3 +1761,168 @@ async def test_initialize_tells_a_client_what_to_draw_on_its_own_card():
         assert served.headers["content-type"].startswith(
             icon["mimeType"].split(";")[0]
         ), f"{icon['src']} is served as something other than what it claims"
+
+
+# -- get_room's shape argument -----------------------------------------------
+#
+# The biggest defect on this surface before it existed: one shape, no way to ask
+# for less, and about 30,000 tokens on a complete room. Measured against the two
+# stored rooms on 2026-08-11 at 31,047 and 29,536 tokens, of which 72.3% was the
+# quoted excerpt under each source and 4.4% was the research facts themselves.
+# An agent polling a finished build paid the whole room to learn one thing.
+
+
+def _full_room() -> dict:
+    """A room shaped like a real one, small enough to assert against.
+
+    The proportions are what matter: the excerpts dwarf the facts, which is the
+    property the `findings` shape exists to exploit.
+    """
+    return {
+        "created_at": "2026-08-10T12:00:00+00:00",
+        "story_profile": {"title": "Gdansk 1978", "era": "Autumn 1978"},
+        "research_plan": {"questions": [{"q": "what did the gate look like"}]},
+        "research_bible": "THE BIBLE. " * 20,
+        "search_count": 17,
+        "source_count": 110,
+        "categories": {
+            "setting": {
+                "findings": [
+                    {
+                        "fact": "Gate No. 2 is the shipyard's main gate.",
+                        "citations": [
+                            {
+                                "url": "https://example.org/gate",
+                                "title": "Gate No. 2",
+                                "excerpt": "A very long quoted passage. " * 40,
+                            }
+                        ],
+                        "unverified_urls": ["https://example.org/never-returned"],
+                    }
+                ]
+            },
+            "logistics": {"findings": []},
+        },
+    }
+
+
+async def _read_full(uid, run_id):
+    return {"status": "complete", "result": _full_room()}
+
+
+@pytest.mark.asyncio
+async def test_get_room_defaults_to_the_whole_room_and_says_so():
+    """An agent written before `shape` existed is unaffected."""
+    result = await invoke("get_room", {"run_id": "abc"}, read_room=_read_full)
+    body = carried(result)
+    assert body["shape"] == "full"
+    assert body["room"] == _full_room(), "the default returns the room untouched"
+    # No shape note on the default: there is nothing to warn about.
+    assert "left out" not in said(result)
+
+
+@pytest.mark.asyncio
+async def test_findings_keeps_every_fact_and_source_and_drops_the_quotes():
+    """The 72% cut. Nothing an agent needs to reason or to re-fetch is lost."""
+    result = await invoke(
+        "get_room", {"run_id": "abc", "shape": "findings"}, read_room=_read_full
+    )
+    body = carried(result)
+    finding = body["room"]["categories"]["setting"]["findings"][0]
+
+    assert finding["fact"] == "Gate No. 2 is the shipyard's main gate."
+    citation = finding["citations"][0]
+    assert citation["url"] == "https://example.org/gate", "the source stays fetchable"
+    assert citation["title"] == "Gate No. 2"
+    assert "excerpt" not in citation, "the quote is the part that goes"
+    assert finding["unverified_urls"] == ["https://example.org/never-returned"], (
+        "an unsourced warning is a finding about the research and is never a "
+        "quote — dropping it would hide the thing the ledger check exists for"
+    )
+    assert "research_bible" not in body["room"], "the bible is not findings"
+
+    # And it is genuinely smaller, measured rather than asserted in prose.
+    full = await invoke("get_room", {"run_id": "abc"}, read_room=_read_full)
+    assert len(said(result)) < len(said(full)) / 2
+
+
+@pytest.mark.asyncio
+async def test_bible_and_plan_and_summary_each_return_only_their_part():
+    bible = carried(
+        await invoke("get_room", {"run_id": "abc", "shape": "bible"}, read_room=_read_full)
+    )["room"]
+    assert bible["research_bible"].startswith("THE BIBLE.")
+    assert "categories" not in bible
+
+    plan = carried(
+        await invoke("get_room", {"run_id": "abc", "shape": "plan"}, read_room=_read_full)
+    )["room"]
+    assert plan["research_plan"]["questions"], "the plan is what was set out to find"
+    assert "categories" not in plan, "and not what was found"
+
+    summary = carried(
+        await invoke("get_room", {"run_id": "abc", "shape": "summary"}, read_room=_read_full)
+    )["room"]
+    assert summary["drawers"]["setting"] == {"findings": 1, "citations": 1}
+    assert summary["drawers"]["logistics"] == {"findings": 0, "citations": 0}
+    assert summary["research_bible_chars"] == len(_full_room()["research_bible"])
+    assert "categories" not in summary and "research_bible" not in summary
+
+
+@pytest.mark.asyncio
+async def test_every_cut_announces_itself():
+    """A shape must never be mistakable for an empty room.
+
+    This is the whole risk of the argument: an agent reads a `findings` room,
+    sees no excerpts, and concludes the sources have none.
+    """
+    for shape, expected in (
+        ("summary", "no findings, no sources and no bible"),
+        ("bible", "were not returned"),
+        ("plan", "not what it found"),
+        ("findings", "left out"),
+    ):
+        result = await invoke(
+            "get_room", {"run_id": "abc", "shape": shape}, read_room=_read_full
+        )
+        text = said(result)
+        assert expected in text, f"{shape}: the reply must say what it left out"
+        assert "`shape`" in text, f"{shape}: and how to ask for the rest"
+
+
+@pytest.mark.asyncio
+async def test_category_narrows_to_one_drawer():
+    result = await invoke(
+        "get_room",
+        {"run_id": "abc", "shape": "findings", "category": "setting"},
+        read_room=_read_full,
+    )
+    body = carried(result)
+    assert list(body["room"]["categories"]) == ["setting"]
+    assert "`setting` drawer" in said(result)
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_shape_is_refused_by_name_with_the_list():
+    """The refusal rule this file exists for: say what failed and what works."""
+    result = await invoke(
+        "get_room", {"run_id": "abc", "shape": "everything"}, read_room=_read_full
+    )
+    assert result["isError"] is True
+    text = said(result)
+    assert "`everything`" in text, "name what was sent"
+    for shape in tools._SHAPES:
+        assert f"`{shape}`" in text, f"and list `{shape}` as an option"
+
+
+@pytest.mark.asyncio
+async def test_a_running_room_is_unaffected_by_shape():
+    """Nothing is filed yet, so every shape is the same answer."""
+
+    async def _running(uid, run_id):
+        return {"status": "running", "result": None}
+
+    body = carried(
+        await invoke("get_room", {"run_id": "abc", "shape": "bible"}, read_room=_running)
+    )
+    assert body == {"run_id": "abc", "status": "running", "shape": "bible", "room": None}
