@@ -118,7 +118,7 @@ catch its own people in the first thirty seconds, with no copy required.
 | `--manila` | `#D2B98C` | Folder stock. A component surface, never the page ground. |
 | `--manila-edge` | `#B99F70` | Folder edge, tab shadow. |
 | `--onionskin` | `#E9E2D2` | The expanded reading surface. A component inside an opened drawer. |
-| `--aniline` | `#5C3D91` | **Filed.** Flat stamp ink. Surviving 1950s file cards are stamped violet because rubber-stamp ink was aniline violet. |
+| `--aniline` | `#5C3D91` | **Filed and verified**, at the citation level. Flat stamp ink. Surviving 1950s file cards are stamped violet because rubber-stamp ink was aniline violet. **A container-level stamp takes `--ink`** — see below. |
 | `--oxide` | `#B3341F` | **Flagged.** `UNSOURCED`, and the anachronism verdict. |
 | `--pencil` | `#7E8B7F` | Metadata, labels, and the unstamped state. |
 | `--pencil-text` | `color-mix(--pencil 85%, --onionskin)` | `--pencil` when it must be read rather than drawn. One value serving both dark grounds so there is no second number to drift. |
@@ -128,6 +128,27 @@ The irony is on the record and worth keeping there: the aversion research flags
 violet as the loudest AI tell of 2026. Aniline here is the opposite of that, a
 flat stamp-ink solid used only for a verified state. **The tell is the gradient,
 not the hue.** If it ever appears as a gradient, the direction has failed.
+
+**Corrected 2026-08-11 (F-018), and this amends the stick rather than the code.**
+The aniline row above read "**Filed.**" — a transcription of DIRECTION.md:111,
+which reads "**Filed and verified.**", with the load-bearing half dropped.
+DIRECTION.md:117 says the same thing a second way: aniline is "used only for a
+verified state".
+
+That matters because the missing word is what scopes the colour. A round-1
+finding observed that FILED appears four times across the first two screens with
+no aniline anywhere, and proposed putting aniline on the drawer stamp's rule to
+close the gap. **That proposal is struck.** `web/drawer.js:13-24` argues the
+reason on the record: DIRECTION.md specifies the aniline stamp at the
+per-**citation** level, firing when the ledger check passes against one Finding's
+citations, and no drawer state has a citation to check — a drawer is a container
+for clips, and the check happens inside one. Painting it aniline would assert in
+colour the verification copy rule 3 forbids in words.
+
+**Verified in the live DOM rather than inferred:** every drawer stamp renders
+`rgb(27, 33, 29)` for both its text and its border, which is `--ink` exactly.
+Aniline is `#5C3D91` and appears on none of them. The code was right; the row
+describing it was not.
 
 ## Component rules
 
