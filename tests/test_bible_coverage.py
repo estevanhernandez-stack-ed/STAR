@@ -25,6 +25,7 @@ place, checked below in both directions.
 
 from __future__ import annotations
 
+import json
 from unittest import mock
 
 import pytest
@@ -207,6 +208,34 @@ async def test_a_shaped_read_still_hears_about_a_short_bible():
     assert "stops early" in payload["content"][0]["text"]
 
 
+@pytest.mark.asyncio
+async def test_the_bible_shape_carries_the_measurement_with_the_document():
+    """`shape: "bible"` is the one request where the measurement is most
+    obviously the caller's business, and it is also the shape that strips the
+    room down to two keys. An agent that asked for the bible and got a
+    truncated one back with no count has to eyeball prose to notice."""
+
+    class _Calls:
+        async def read_room(self, uid, run_id):
+            # As `_read_room` really answers: the measurement travels inside
+            # the room, not beside it.
+            room = _room("## 1. Setting & Atmosphere\na")
+            room["bible_coverage"] = bible.coverage(room)
+            return {"status": "complete", "result": room}
+
+    payload = await tools._get_room(
+        {"run_id": "r", "shape": "bible"}, _Calls(), mock.Mock(uid="uid-one")
+    )
+    # `_payload` ships one block: the plain-language line, a blank line, then
+    # the JSON it is about. The report itself can contain blank lines, so the
+    # JSON is what follows the LAST one.
+    text = payload["content"][0]["text"]
+    room = json.loads(text.rsplit("\n\n", 1)[-1])["room"]
+
+    assert room["bible_coverage"]["covered"] == 1
+    assert room["bible_coverage"]["expected"] == 4
+
+
 # --- what the browser is given ----------------------------------------------
 
 
@@ -232,9 +261,12 @@ def test_the_room_payload_carries_the_count_so_the_browser_need_not_recompute():
     ):
         body = client.get("/api/rooms/r", headers=AUTH).json()
 
-    assert body["bible_coverage"]["covered"] == 1
-    assert body["bible_coverage"]["expected"] == 4
-    assert body["bible_coverage"]["missing"] == [
+    # Read where the BROWSER reads it. The first version of this test asserted
+    # `body["bible_coverage"]`, the browser's test asserted
+    # `result.bible_coverage`, both passed, and the live page rendered nothing.
+    assert body["result"]["bible_coverage"]["covered"] == 1
+    assert body["result"]["bible_coverage"]["expected"] == 4
+    assert body["result"]["bible_coverage"]["missing"] == [
         "Objects & Props",
         "Logistics",
         "Forces & Conflicts",
@@ -259,7 +291,7 @@ def test_a_whole_room_ships_a_coverage_the_browser_will_stay_quiet_about():
     ):
         body = client.get("/api/rooms/r", headers=AUTH).json()
 
-    assert body["bible_coverage"]["missing"] == []
+    assert body["result"]["bible_coverage"]["missing"] == []
 
 
 # --- the two ends of the one fact -------------------------------------------

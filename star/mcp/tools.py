@@ -242,7 +242,15 @@ _ROOM_ID = (
 _SHAPES = ("full", "findings", "plan", "bible", "summary")
 
 # Everything but `categories`, which is the only part that carries bodies.
-_LIGHT_KEYS = ("created_at", "story_profile", "search_count", "source_count")
+_LIGHT_KEYS = (
+    "created_at",
+    "story_profile",
+    "search_count",
+    "source_count",
+    # Travels with every shape that carries counts, because a caller who asked
+    # for less should not thereby be told less about what the room holds.
+    "bible_coverage",
+)
 
 
 TOOLS: tuple[dict, ...] = (
@@ -886,6 +894,10 @@ def _project_room(result: object, shape: str, category: str | None) -> object:
         return {
             "created_at": result.get("created_at"),
             "research_bible": result.get("research_bible") or "",
+            # The one shape where the measurement is most obviously the
+            # caller's business: they asked for the bible, so whether it is
+            # whole is part of the answer.
+            "bible_coverage": result.get("bible_coverage"),
         }
     if shape == "plan":
         return {

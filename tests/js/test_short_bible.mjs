@@ -93,6 +93,26 @@ assert.match(
   "section names are server strings and go through escapeHtml like the rest"
 );
 
+/* 3b — the seam: the key this file reads is the key the server writes. --- */
+//
+// This assertion exists because its absence shipped. The server attached the
+// measurement at the TOP LEVEL of the response, this file read it off the
+// room, and both source tests passed — the Python test asserted
+// `body["bible_coverage"]`, this one asserted `result.bible_coverage`, and
+// neither could see the other's path. The live page rendered no note at all.
+// Two green suites either side of a contract neither one crosses is not
+// coverage, so the crossing is checked here, in the file that has to read
+// both languages anyway.
+
+const serverPy = read("star/server.py");
+assert.match(
+  serverPy,
+  /result\["bible_coverage"\] = counts/,
+  "the server must attach the measurement INSIDE the room payload — that is " +
+    "the object renderBible receives, and putting it beside the room instead " +
+    "is invisible to every source test on both sides of the wire"
+);
+
 /* 4 — the two languages name the same four sections. -------------------- */
 
 const drawerLabels = read("web/drawer.js").match(

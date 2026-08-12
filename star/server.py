@@ -962,9 +962,18 @@ def _with_coverage(payload: dict) -> dict:
     shared read so that both doors carry the same number and the browser never
     has to compute it a second time in a second language.
     """
-    counts = bible.coverage(payload.get("result"))
+    result = payload.get("result")
+    counts = bible.coverage(result)
     if counts:
-        payload["bible_coverage"] = counts
+        # INSIDE the result, not beside it. The first version of this put the
+        # count at the top level of the response and every source test on both
+        # sides passed: the server test read `body["bible_coverage"]`, the
+        # browser test read `result.bible_coverage`, and neither could see that
+        # those were two different places. The live page rendered no note at
+        # all. The count belongs to the room, so it travels with the room —
+        # through this door, through `get_room`'s payload, and through any
+        # projection that keeps the bible.
+        result["bible_coverage"] = counts
     return payload
 
 
