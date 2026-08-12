@@ -2200,6 +2200,16 @@ def test_the_consent_screen_states_no_tool_count_it_would_have_to_chase():
 # context, in the department's voice, before it can agree to lose it.
 
 
+async def _one_room(uid):
+    """The account, for delete's first call.
+
+    It now reads the room list to say what continues from the room being
+    deleted. One standalone room is what these tests have always assumed, and
+    saying so explicitly beats a double that answers whatever it is asked.
+    """
+    return [{"run_id": "abc", "continues": ""}]
+
+
 @pytest.mark.asyncio
 async def test_the_first_call_destroys_nothing_and_says_what_would_go():
     deleted = []
@@ -2209,7 +2219,7 @@ async def test_the_first_call_destroys_nothing_and_says_what_would_go():
         return {}
 
     result = await invoke(
-        "delete_room", {"run_id": "abc"}, read_room=_read_full, delete_room=_delete
+        "delete_room", {"run_id": "abc"}, read_room=_read_full, delete_room=_delete, list_rooms_for=_one_room
     )
     body = carried(result)
     text = said(result)
@@ -2235,7 +2245,7 @@ async def test_the_second_call_with_the_token_deletes():
         return {"deleted_at": "2026-08-11T00:00:00+00:00"}
 
     first = carried(await invoke(
-        "delete_room", {"run_id": "abc"}, read_room=_read_full, delete_room=_delete
+        "delete_room", {"run_id": "abc"}, read_room=_read_full, delete_room=_delete, list_rooms_for=_one_room
     ))
     result = await invoke(
         "delete_room",
@@ -2258,11 +2268,11 @@ async def test_a_token_works_once():
         return {"deleted_at": "x"}
 
     first = carried(await invoke(
-        "delete_room", {"run_id": "abc"}, read_room=_read_full, delete_room=_delete
+        "delete_room", {"run_id": "abc"}, read_room=_read_full, delete_room=_delete, list_rooms_for=_one_room
     ))
     args = {"run_id": "abc", "confirm": first["confirm"]}
-    await invoke("delete_room", args, read_room=_read_full, delete_room=_delete)
-    replayed = await invoke("delete_room", args, read_room=_read_full, delete_room=_delete)
+    await invoke("delete_room", args, read_room=_read_full, delete_room=_delete, list_rooms_for=_one_room)
+    replayed = await invoke("delete_room", args, read_room=_read_full, delete_room=_delete, list_rooms_for=_one_room)
 
     assert replayed["isError"] is True
     assert "works once" in said(replayed)
@@ -2276,7 +2286,7 @@ async def test_a_token_cannot_be_spent_on_a_different_room():
         return {"deleted_at": "x"}
 
     first = carried(await invoke(
-        "delete_room", {"run_id": "abc"}, read_room=_read_full, delete_room=_delete
+        "delete_room", {"run_id": "abc"}, read_room=_read_full, delete_room=_delete, list_rooms_for=_one_room
     ))
     wrong = await invoke(
         "delete_room",
@@ -2313,6 +2323,7 @@ async def test_deleting_a_room_that_is_not_there_says_so_without_a_token():
 
     result = await invoke(
         "delete_room", {"run_id": "nope"}, read_room=_missing,
+        list_rooms_for=_one_room,
         delete_room=_unreachable("delete_room"),
     )
     assert carried(result)["deleted"] is False
@@ -2346,3 +2357,129 @@ def test_deleting_needs_its_own_scope_and_writing_does_not_grant_it():
     assert "rooms:delete" not in metadata.SCOPES_DEFAULT, (
         "and a client that names no scope is not registered for it"
     )
+
+
+# --- Rooms that follow other rooms -------------------------------------------
+#
+# THE BUG this closes half of. A story spanning five eras was five unrelated
+# rooms, and nothing at either door said they belonged together. The web app now
+# lets a writer say which room a room follows; this door reports that link and,
+# before a delete, says what leans on the room about to go.
+#
+# Rooms that follow are NOT deleted with their parent. A room's delete already
+# takes its scenes, and extending that to a story's later rooms would let one
+# confirmation destroy work the caller never named.
+
+
+async def _story(uid):
+    """Four rooms: a standalone one, and a three-room story."""
+    return [
+        {"run_id": "alone", "continues": ""},
+        {"run_id": "first", "continues": ""},
+        {"run_id": "second", "continues": "first"},
+        {"run_id": "third", "continues": "second"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_the_delete_warning_counts_the_whole_chain_not_the_first_hop():
+    async def _delete(uid, run_id):
+        return {}
+
+    result = await invoke(
+        "delete_room", {"run_id": "first"}, read_room=_read_full,
+        delete_room=_delete, list_rooms_for=_story,
+    )
+
+    assert carried(result)["followed_by"] == ["second", "third"]
+    assert "2 rooms" in spoken(result)
+
+
+@pytest.mark.asyncio
+async def test_the_warning_says_the_followers_stay():
+    """Without that, "2 rooms continue from this one" one call before spending
+    a token reads as a warning that two more rooms are about to go."""
+
+    async def _delete(uid, run_id):
+        return {}
+
+    result = await invoke(
+        "delete_room", {"run_id": "first"}, read_room=_read_full,
+        delete_room=_delete, list_rooms_for=_story,
+    )
+    prose = spoken(result)
+
+    assert "They stay and keep their research" in prose
+    assert "no longer filed" in prose
+
+
+@pytest.mark.asyncio
+async def test_one_follower_is_spoken_of_in_the_singular():
+    async def _delete(uid, run_id):
+        return {}
+
+    result = await invoke(
+        "delete_room", {"run_id": "second"}, read_room=_read_full,
+        delete_room=_delete, list_rooms_for=_story,
+    )
+    prose = spoken(result)
+
+    assert "1 room in this account continues" in prose
+    assert "It stays and keeps its research" in prose
+    assert "What it loses" in prose, "the whole sentence agrees, not half of it"
+
+
+@pytest.mark.asyncio
+async def test_a_room_nothing_follows_says_nothing_about_followers():
+    """No empty clause on the common case. A standalone room's delete warning
+    should read exactly as it did before this feature existed."""
+
+    async def _delete(uid, run_id):
+        return {}
+
+    result = await invoke(
+        "delete_room", {"run_id": "alone"}, read_room=_read_full,
+        delete_room=_delete, list_rooms_for=_story,
+    )
+
+    assert carried(result)["followed_by"] == []
+    assert "continue from this one" not in spoken(result)
+
+
+@pytest.mark.asyncio
+async def test_a_ring_in_the_data_does_not_spin_the_delete_warning():
+    """The web door refuses to create one and so does nothing else, but data
+    written before that guard existed must not hang a delete. A room is also
+    never among its own followers, which in a ring it would otherwise reach."""
+
+    async def _ring(uid):
+        return [
+            {"run_id": "x", "continues": "y"},
+            {"run_id": "y", "continues": "x"},
+        ]
+
+    async def _delete(uid, run_id):
+        return {}
+
+    result = await invoke(
+        "delete_room", {"run_id": "x"}, read_room=_read_full,
+        delete_room=_delete, list_rooms_for=_ring,
+    )
+
+    assert carried(result)["followed_by"] == ["y"]
+
+
+@pytest.mark.asyncio
+async def test_list_rooms_carries_the_link_so_an_agent_can_see_the_shape():
+    result = await invoke("list_rooms", list_rooms_for=_story)
+    rooms = carried(result)["rooms"]
+
+    assert [room["continues"] for room in rooms] == ["", "", "first", "second"]
+
+
+def test_the_list_rooms_description_names_the_field_it_returns():
+    """A tool description that omits a returned field is a field an agent never
+    asks about. The same discipline the README's tool list is pinned under."""
+    listed = tools._TOOLS_BY_NAME["list_rooms"]["description"]
+
+    assert "`continues`" in listed
