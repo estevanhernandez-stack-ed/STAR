@@ -539,6 +539,47 @@ a {
 
    --pencil-text on --drawer-shadow is 4.80:1, recorded in this file already
    for the rail's own metadata; no new pair. */
+/* What the researchers said to check before writing, on the docket's manila.
+   --ink at 0.85, which this file already records as 7.34:1 there for
+   .room-delete-note — the docket's one measured pair for secondary text, and
+   no new one for this.
+
+   Not an alert box, and deliberately so. These are not errors: they are the
+   department telling a writer what it could not settle, and in the best case
+   that their own premise is dated wrong. The department's register does not
+   raise its voice for that, it says it plainly where it will be read. The rule
+   above the block does the work a colour would otherwise be asked to do. */
+.verify-notes {
+  margin: 1rem 0 0;
+  padding-top: 0.8rem;
+  max-width: 62ch;
+  border-top: 1px solid color-mix(in srgb, var(--ink) 25%, transparent);
+}
+
+.verify-notes-head {
+  margin: 0 0 0.4rem;
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.verify-notes-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--ink);
+  opacity: 0.85;
+}
+
+.verify-notes-list li + li {
+  margin-top: 0.4rem;
+}
+
 /* The delete warning, on the docket's manila. --ink at 0.85 is 7.34:1 there,
    the same treatment .uncertainty-line already carries on paper. Empty until
    the first press, and role="alert" so a reader who cannot see it is told what

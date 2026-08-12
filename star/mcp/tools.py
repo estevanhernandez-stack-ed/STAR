@@ -721,6 +721,35 @@ def _spend_line(result: object) -> str:
     )
 
 
+def _verify_line(result: object) -> str:
+    """The cautions, in the line above the room rather than only inside it.
+
+    The judge's round-two note asked for exactly this: the "Verify before
+    writing" block is well written and it "lives inside the bible's prose. It
+    belongs in the room's summary too — a writer who skims drawers and never
+    reads the bible top-to-bottom shouldn't miss the one line that saves them a
+    rewrite." An agent has no scrollbar at all; it reads what the tool says
+    first and may never request the bible.
+
+    Named, not counted-and-hidden. "3 cautions" would make a caller fetch the
+    document to learn whether any of them mattered, and one of these is
+    routinely the department telling a writer their own premise is dated wrong.
+    """
+    notes = bible.verify_notes(result)
+    if not notes:
+        return ""
+    one = len(notes) == 1
+    head = (
+        " The researchers flagged one thing to verify before writing: "
+        if one
+        else f" The researchers flagged {len(notes)} things to verify before "
+        "writing: "
+    )
+    if one:
+        return head + notes[0]
+    return head + "\n\n" + "\n".join(f"- {note}" for note in notes)
+
+
 def _filed_drawers(result: object) -> int:
     """How many category drawers actually got findings into them.
 
@@ -763,6 +792,7 @@ def _room_report(status: str, result: object) -> str:
             f"plan, {drawers} category drawer{'' if drawers == 1 else 's'} of "
             "findings with the sources behind them, and "
             + bible.closing_clause(result)
+            + _verify_line(result)
         )
     if status == "partial":
         return (

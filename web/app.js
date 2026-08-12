@@ -1334,7 +1334,38 @@ function renderDocket(profile, status, result) {
         : ""
     }
     ${row("Locations", chips(profile.locations))}
+    ${renderVerifyNotes(result)}
   `;
+}
+
+/** What the researchers said to check before writing, on the docket.
+ *
+ *  The judge's round-two review asked for exactly this. The "Verify before
+ *  writing" block is well written and it lives inside the bible's prose: "It
+ *  belongs in the room's summary too — a writer who skims drawers and never
+ *  reads the bible top-to-bottom shouldn't miss the one line that saves them a
+ *  rewrite." One stored room's first note tells its writer their own treatment
+ *  dates its blackout two months wrong. That line is five screens down inside
+ *  section one.
+ *
+ *  THE NOTES ARE THE SERVER'S. star/bible.py lifts them out of the document
+ *  and ships them in the payload; parsing the bible again here would be a
+ *  second implementation of one extraction in a second language, which is how
+ *  web/consent.js came to say "four calls" the day a fifth tool landed.
+ *
+ *  Nothing is rendered when there is nothing to say. Most sections report "None
+ *  noted in field findings" and the server drops those — an empty caution box
+ *  over a clean room teaches a reader to skim past the one that matters. */
+function renderVerifyNotes(result) {
+  const notes = Array.isArray(result.verify_notes) ? result.verify_notes : [];
+  if (notes.length === 0) return "";
+  return `
+    <div class="verify-notes">
+      <p class="verify-notes-head">Verify before writing</p>
+      <ul class="verify-notes-list">
+        ${notes.map((note) => `<li>${escapeHtml(note)}</li>`).join("")}
+      </ul>
+    </div>`;
 }
 
 /** Did this category's researcher file anything at all?

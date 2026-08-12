@@ -990,6 +990,13 @@ def _with_coverage(payload: dict) -> dict:
     has to compute it a second time in a second language.
     """
     result = payload.get("result")
+    # The cautions the researchers flagged, lifted out of the bible's prose so
+    # a reader who never scrolls it still meets them. One stored room's first
+    # note says the writer's own treatment dates its blackout two months wrong;
+    # that line sits five screens down inside section one.
+    notes = bible.verify_notes(result)
+    if notes and isinstance(result, dict):
+        result["verify_notes"] = notes
     counts = bible.coverage(result)
     if counts:
         # INSIDE the result, not beside it. The first version of this put the
