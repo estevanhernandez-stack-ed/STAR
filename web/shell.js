@@ -186,6 +186,104 @@ function renderDeleted() {
   }
 }
 
+/** The rail's order: stories together, in the order they were written.
+ *
+ *  A story spanning five eras used to be five strangers in a list sorted
+ *  newest-first, which is the fragmentation a writer feels on their second
+ *  room. Rooms that follow one another now sit together, oldest first, because
+ *  that is the story's own order — a chain read newest-first is a story told
+ *  backwards.
+ *
+ *  Derived, not stored. There is no story document and no membership list; a
+ *  chain is whatever the `continues` links say it is, which is the same
+ *  discipline the bible mark is written under — a mark is derived, never
+ *  authored. A second source of truth for something the links already say is a
+ *  second thing that can disagree.
+ *
+ *  Standalone rooms keep the existing newest-first behaviour exactly. A story
+ *  of one room is not a group, and drawing a heading over a single room would
+ *  be the rail asserting a shape the writer never drew.
+ */
+export function orderRail(rooms) {
+  const byId = new Map(rooms.map((room) => [room.run_id, room]));
+  const children = new Map();
+  for (const room of rooms) {
+    // A link to a room that is not in this list — deleted, purged, or simply
+    // gone — is treated as no link at all. The room keeps its place in the
+    // rail rather than disappearing into a group whose head does not exist.
+    const parent = room.continues && byId.has(room.continues) ? room.continues : "";
+    if (!parent) continue;
+    if (!children.has(parent)) children.set(parent, []);
+    children.get(parent).push(room);
+  }
+
+  const roots = rooms.filter(
+    (room) => !(room.continues && byId.has(room.continues))
+  );
+
+  const ordered = [];
+  const drawn = new Set();
+  for (const root of roots) {
+    // Depth-first from each root, so a chain reads down the story: the room a
+    // writer started with, then what followed it. `seen` bounds the walk
+    // against a ring already in the data — the endpoint refuses to create one,
+    // but data written before that guard existed must not hang the rail.
+    const stack = [root];
+    while (stack.length) {
+      const room = stack.pop();
+      // No seen-check here, deliberately. A room names exactly one parent, so
+      // it appears in exactly one children list and the walk reaches it once;
+      // and a ring cannot be entered from outside, because every room in one
+      // has its parent inside it. Mutation testing proved a guard here could
+      // not be made to fail, which meant it was an untested branch pretending
+      // to be a safety net. `drawn` is still kept — the sweep below is what
+      // actually needs it.
+      drawn.add(room.run_id);
+      ordered.push(room);
+      const kids = children.get(room.run_id) || [];
+      // Reversed onto the stack so they come off oldest-first.
+      for (let i = kids.length - 1; i >= 0; i -= 1) stack.push(kids[i]);
+    }
+  }
+
+  // Anything the walk never reached. Rooms in a ring have no root — each one
+  // follows another that is present — so the loop above cannot enter them, and
+  // they would drop out of the rail entirely. The endpoint refuses to create a
+  // ring, but data written before that guard existed, or by a race, must not
+  // make a writer's rooms invisible. Found by mutation testing: the earlier
+  // version returned only what it could reach and the test was too weak to
+  // notice two rooms had gone.
+  for (const room of rooms) {
+    if (!drawn.has(room.run_id)) ordered.push(room);
+  }
+  return ordered;
+}
+
+/** How many rooms follow this one, directly or further down the chain. */
+export function chainSize(rooms, runId) {
+  const children = new Map();
+  for (const room of rooms) {
+    const parent = room.continues || "";
+    if (!parent) continue;
+    if (!children.has(parent)) children.set(parent, []);
+    children.get(parent).push(room.run_id);
+  }
+  const seen = new Set();
+  const stack = [...(children.get(runId) || [])];
+  while (stack.length) {
+    const id = stack.pop();
+    if (seen.has(id)) continue;
+    seen.add(id);
+    stack.push(...(children.get(id) || []));
+  }
+  // A room is never among the rooms that follow it. In a ring it reaches
+  // itself, and a delete warning that counted the room being deleted as one of
+  // its own dependents would overstate what is at stake by one — on the exact
+  // screen where overstating is least forgivable.
+  seen.delete(runId);
+  return seen.size;
+}
+
 export function renderRail(rooms, activeRunId, { unreadable = _unreadable } = {}) {
   _rooms = rooms || [];
   _activeRunId = activeRunId !== undefined ? activeRunId : _activeRunId;
@@ -208,7 +306,17 @@ export function renderRail(rooms, activeRunId, { unreadable = _unreadable } = {}
   }
 
   railList.innerHTML = "";
-  for (const room of _rooms) {
+  // Which rooms follow a room that is actually in this list. One step of
+  // indent regardless of depth: a five-room story indented five times eats a
+  // 300px rail, and the fact worth showing is "this belongs to the one above",
+  // not how many hops back the start is.
+  const present = new Set(_rooms.map((room) => room.run_id));
+  const follows = new Set(
+    _rooms
+      .filter((room) => room.continues && present.has(room.continues))
+      .map((room) => room.run_id)
+  );
+  for (const room of orderRail(_rooms)) {
     const isRunning = room.status === "running";
     const isFlagged = room.status === "error" || room.status === "interrupted";
     const btn = document.createElement("button");
@@ -217,7 +325,8 @@ export function renderRail(rooms, activeRunId, { unreadable = _unreadable } = {}
       "rail-room" +
       (room.run_id === _activeRunId ? " active" : "") +
       (isRunning ? " running" : "") +
-      (isFlagged ? " flagged" : "");
+      (isFlagged ? " flagged" : "") +
+      (follows.has(room.run_id) ? " follows" : "");
     btn.dataset.runId = room.run_id;
     btn.setAttribute("aria-current", room.run_id === _activeRunId ? "true" : "false");
     // A run in flight has no title and no era yet, and star/store.py writes the
