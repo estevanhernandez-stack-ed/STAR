@@ -57,6 +57,9 @@ import {
   setDrawerState,
   tickDrawerClocks,
 } from "/drawer.js";
+// The stamp's own formatters, from the module that prints the stamp. See the
+// note above roomDate for why they moved out of this file.
+import { isoStamp, stampDate } from "/clip.js";
 import {
   initScriptCheck,
   openedCheck,
@@ -490,14 +493,18 @@ function pad2(n) {
   return String(n).padStart(2, "0");
 }
 
-/** DD MON YYYY, matching the stamp's slug-face convention in
- *  docs/design/visual-directions.md's own mockup ("RET 09 AUG 2026"). Called
- *  with no argument during a live run, where the retrieval genuinely just
- *  happened, so client "now" and server "now" differ by network latency only
- *  and not by anything worth reconciling. */
-function stampDate(d = new Date()) {
-  return `${pad2(d.getDate())} ${d.toLocaleString("en-US", { month: "short" }).toUpperCase()} ${d.getFullYear()}`;
-}
+/*  stampDate — DD MON YYYY, matching the stamp's slug-face convention in
+ *  docs/design/visual-directions.md's own mockup ("RET 09 AUG 2026") — now
+ *  lives in web/clip.js, which is the module that prints the stamp. A finding
+ *  requisitioned into a room after it was built carries a retrieval date of
+ *  its own, and clip.js needs this format to render it; reaching upward from
+ *  clip.js to here would invert the import graph (app -> drawer -> clip), and
+ *  a second copy of two lines of formatting is how a drawer's date and a
+ *  finding's date come to disagree about what a date looks like.
+ *
+ *  Still called here with no argument during a live run, where the retrieval
+ *  genuinely just happened, so client "now" and server "now" differ by network
+ *  latency only and not by anything worth reconciling. */
 
 /** The room's own date, in the stamp's face — or nothing.
  *
@@ -513,11 +520,7 @@ function stampDate(d = new Date()) {
  *  Missing or unparseable returns "", and every caller drops the line rather
  *  than filling it. A document written before the field existed is the real
  *  case; a malformed one is the defensive case. Neither is worth a guess. */
-function roomDate(createdAt) {
-  if (!createdAt) return "";
-  const parsed = new Date(createdAt);
-  return Number.isNaN(parsed.getTime()) ? "" : stampDate(parsed);
-}
+const roomDate = isoStamp;
 
 /** Elapsed time only — never a prediction. Research obligation 6 forbids an
  *  ETA or a progress bar implying completion; it says nothing against

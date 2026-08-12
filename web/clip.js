@@ -44,6 +44,30 @@
 
 import { excerptProse } from "/excerpt.js";
 
+const pad2 = (n) => String(n).padStart(2, "0");
+
+/** A Date in the stamp's face: DD MON YYYY.
+ *
+ *  Here rather than in web/app.js, which is where it was, because this file
+ *  owns the stamp — it is the module that prints `RET <date>` — and per-finding
+ *  retrieval dates need the same format without clip.js reaching upward into
+ *  app.js for it. The import graph runs app -> drawer -> clip -> excerpt and
+ *  stays that way; a second copy of two lines of formatting is how the drawer's
+ *  date and a finding's date come to disagree about what a date looks like. */
+export function stampDate(d = new Date()) {
+  return `${pad2(d.getDate())} ${d.toLocaleString("en-US", { month: "short" }).toUpperCase()} ${d.getFullYear()}`;
+}
+
+/** An ISO timestamp in the stamp's face, or "" when there is nothing honest
+ *  to print. Missing is the ordinary case — every finding a build filed has no
+ *  date of its own — and unparseable is the defensive one. Neither is worth a
+ *  guess, and every caller drops the line rather than filling it. */
+export function isoStamp(iso) {
+  if (!iso) return "";
+  const parsed = new Date(iso);
+  return Number.isNaN(parsed.getTime()) ? "" : stampDate(parsed);
+}
+
 export function escapeHtml(s) {
   return String(s)
     .replaceAll("&", "&amp;")
@@ -319,7 +343,19 @@ export function renderClip(finding, stamp = {}) {
 export function renderClips(findings, stamp = {}, { hasFieldNotes = false } = {}) {
   const list = Array.isArray(findings) ? findings : [];
   const clips = list
-    .map((f) => renderClip(f, stamp))
+    // The drawer's retrieval date is the room's, and it is the honest one for
+    // every finding a BUILD filed — those searches all ran while the room was
+    // being made. A requisitioned finding breaks that: its sources came back
+    // when the writer asked, which may be days after the room was created, so
+    // it carries `retrieved_at` of its own and that wins here. Passing the
+    // drawer's date over it would be the fabricated provenance claim this
+    // file's own stamp rule exists to refuse — see the `retrieved` note in
+    // web/drawer.js. A finding with no date of its own is unchanged, and one
+    // whose date will not parse drops the RET line rather than inventing one.
+    .map((f) => {
+      const own = isoStamp(f?.retrieved_at);
+      return renderClip(f, own ? { ...stamp, date: own } : stamp);
+    })
     .filter(Boolean)
     .join("");
   if (!clips) {

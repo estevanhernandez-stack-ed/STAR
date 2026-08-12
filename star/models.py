@@ -80,6 +80,17 @@ class Finding(BaseModel):
         "owed the reason it was, and 'added later' on its own invites the "
         "guess that the department missed it the first time.",
     )
+    retrieved_at: str = Field(
+        default="",
+        description="When THIS finding's sources came back from search, when "
+        "that is not the room's own created_at. Empty for everything a build "
+        "filed, because a build's searches all ran while the room was being "
+        "made and the room's timestamp is the honest answer for all of them. "
+        "A requisitioned finding is the case that breaks: its sources were "
+        "fetched when the question was asked, which may be days later, and "
+        "stamping the room's date on it would be a fabricated provenance "
+        "claim on the one element whose whole job is provenance.",
+    )
 
 
 class ResearchDoc(BaseModel):

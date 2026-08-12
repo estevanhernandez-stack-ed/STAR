@@ -1595,8 +1595,17 @@ async def _run_requisition(
     # ledger this run just filled. A requisitioned finding is therefore cited
     # to the same standard or it is not cited at all.
     doc = parse_findings(state.get(f"findings_{category.value}"), category, run_ledger)
+    # Stamped with when THESE sources came back, which is now and not when the
+    # room was made. Every other finding in this drawer was retrieved while the
+    # room was being built, so the room's `created_at` is their honest date and
+    # they carry none of their own — see web/drawer.js on why a caller that
+    # cannot supply a retrieval date gets no RET line rather than a borrowed one.
+    retrieved = datetime.now(timezone.utc).isoformat()  # noqa: UP017
     filed = [
-        finding.model_copy(update={"requisition": question}) for finding in doc.findings
+        finding.model_copy(
+            update={"requisition": question, "retrieved_at": retrieved}
+        )
+        for finding in doc.findings
     ]
     spent = int(state.get("search_count") or 0)
     if not filed:
