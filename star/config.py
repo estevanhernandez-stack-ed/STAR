@@ -34,6 +34,18 @@ def max_treatment_chars() -> int:
     return int(os.environ.get("STAR_MAX_TREATMENT_CHARS", "8000"))
 
 
+def max_room_title_chars() -> int:
+    """Ceiling on a room's name.
+
+    120 because a title is read in a rail column, not in a document: past
+    roughly this it stops being a name and starts being a sentence the list
+    has to truncate anyway. Unlike the treatment cap this was never measured
+    against a cost — nothing downstream is priced by it — so it exists to keep
+    the rail legible rather than to bound a spend.
+    """
+    return int(os.environ.get("STAR_MAX_ROOM_TITLE_CHARS", "120"))
+
+
 def max_scene_chars() -> int:
     """Ceiling on one pasted scene (Pipeline B).
 
