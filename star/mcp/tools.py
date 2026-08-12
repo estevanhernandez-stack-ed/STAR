@@ -261,9 +261,16 @@ TOOLS: tuple[dict, ...] = (
             "first.\n\n"
             "Takes no arguments. Returns one entry per room: `run_id`, which "
             "is the id every other tool takes, plus `title`, `era`, `status`, "
-            "`created_at`, and `search_count`, the number of live web "
-            "searches that room cost to build. It does not return the "
-            "research itself; call `get_room` with a `run_id` for that.\n\n"
+            "`created_at`, `search_count`, the number of live web searches "
+            "that room cost to build, and `continues`, the `run_id` of the "
+            "room this one follows. It does not return the research itself; "
+            "call `get_room` with a `run_id` for that.\n\n"
+            "A writer's rooms are not always a flat list. One story can span "
+            "several eras, and a room that continues from another belongs "
+            "under it — reading a chain from its first room forward is "
+            "reading the story in the order it was researched. An empty "
+            "`continues` means the room starts a story or stands alone. Only "
+            "the writer sets that link; this door reports it.\n\n"
             "Costs nothing, spends no searches, and is never rate-limited. "
             "Start here when you do not already hold a room id. An account "
             "with no rooms yet is a normal answer and not an error."
@@ -1155,6 +1162,60 @@ def _what_goes(document: dict) -> str:
     return ", ".join(parts)
 
 
+async def _following(calls: Calls, uid: str, run_id: str) -> list[str]:
+    """Every room that continues from this one, however far down the chain.
+
+    Read off the account's own list, which the rail already builds, rather than
+    a query: the link points UP, so there is no index that answers "what points
+    at me" without scanning anyway.
+
+    Bounded by what it has already seen. The web door refuses to create a ring
+    and so does nothing else, but data written before that guard existed must
+    not spin a delete warning — and a room is never among its own followers,
+    which in a ring it would otherwise reach.
+    """
+    rooms = await calls.list_rooms_for(uid)
+    children: dict[str, list[str]] = {}
+    for room in rooms:
+        parent = (room.get("continues") or "").strip()
+        if parent:
+            children.setdefault(parent, []).append(room.get("run_id") or "")
+
+    seen: set[str] = set()
+    stack = list(children.get(run_id) or ())
+    while stack:
+        current = stack.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        stack.extend(children.get(current) or ())
+    seen.discard(run_id)
+    return sorted(seen)
+
+
+def _follows_note(followers: list[str]) -> str:
+    """The sentence a delete earns when other rooms lean on this one.
+
+    Says what does NOT happen as plainly as what does. The reader is one call
+    from spending a token, and "3 rooms continue from this one" without "they
+    stay" reads like a warning that three more rooms are about to go.
+    """
+    if not followers:
+        return ""
+    count = len(followers)
+    if count == 1:
+        return (
+            " 1 room in this account continues from this one. It stays and "
+            "keeps its research. What it loses is the link, which afterwards "
+            "reads as a room that is no longer filed."
+        )
+    return (
+        f" {count} rooms in this account continue from this one. They stay and "
+        "keep their research. What they lose is the link, which afterwards "
+        "reads as a room that is no longer filed."
+    )
+
+
 async def _delete_room(arguments: dict, calls: Calls, identity) -> dict:
     values = _arguments(_TOOLS_BY_NAME["delete_room"], arguments)
     run_id = values["run_id"]
@@ -1166,17 +1227,25 @@ async def _delete_room(arguments: dict, calls: Calls, identity) -> dict:
         document = room.get("result")
         if not isinstance(document, dict):
             return _payload(ROOM_NOT_FOUND, {"run_id": run_id, "deleted": False})
+        # What ELSE this delete touches. Rooms that continue from this one are
+        # not deleted with it — a room's delete already takes its scenes, and
+        # extending that to a story's later rooms would let one confirmation
+        # destroy work the caller never named. But their link goes stale, and a
+        # caller about to spend a token is owed that before they spend it.
+        followers = await _following(calls, identity.uid, run_id)
         token = _mint_confirm(identity.uid, run_id)
         return _payload(
             f"This has deleted nothing yet. The room holds {_what_goes(document)}. "
             f"Deleting it takes it out of the writer's rail at once and keeps it "
             f"recoverable in the web app for {days} days, after which it is "
-            f"destroyed for good along with every check filed against it.\n\n"
+            f"destroyed for good along with every check filed against it."
+            f"{_follows_note(followers)}\n\n"
             f"To go ahead, call `delete_room` again with `confirm` set to "
             f"`{token}`. That token is good once, for this room only, for about "
             f"ten minutes. Do nothing and nothing happens.",
             {"run_id": run_id, "deleted": False, "confirm": token,
-             "retention_days": days, "holds": _what_goes(document)},
+             "retention_days": days, "holds": _what_goes(document),
+             "followed_by": followers},
         )
 
     if not _spend_confirm(identity.uid, run_id, confirm):
