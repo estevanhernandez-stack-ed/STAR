@@ -1443,22 +1443,44 @@ def _file_findings(
     the room cost, and the requisition cost what it spent, so the caller
     passes the spend and this adds it.
 
-    `source_count` is the room's, from the room's own drawers, recounted
-    rather than incremented. Adding this run's ledger size would double-count
-    every source the room already held that the requisition also found — the
-    ledger is per-run and knows nothing about what is already filed.
+    `source_count` GROWS BY WHAT IS GENUINELY NEW, and neither of the two
+    obvious alternatives is right. Adding this run's ledger size double-counts
+    every source the room already held that the requisition also found. And
+    recounting citations across the room replaces the stored number with a
+    different quantity entirely: `_persist` files `len(run["ledger"])`, the
+    distinct urls a build SAW, while a walk of the drawers counts citation
+    entries, which misses every source no finding cited and counts twice any
+    source two findings share. Measured on the first live requisition, that
+    recount moved a real room from 99 to 74 — a room reporting fewer sources
+    after research was added to it.
+
+    So the delta is the urls this requisition cited that the room was not
+    already citing. Monotonic, and it means what the field has always meant:
+    how many distinct sources stand behind this room.
     """
     document = dict(document)
     categories = dict(document.get("categories") or {})
+
+    def _urls(entries: dict) -> set[str]:
+        return {
+            url
+            for entry in entries.values()
+            for finding in (entry or {}).get("findings") or []
+            for url in (
+                str((citation or {}).get("url") or "")
+                for citation in (finding or {}).get("citations") or []
+            )
+            if url
+        }
+
+    already = _urls(categories)
     drawer = dict(categories.get(category.value) or {})
     drawer["findings"] = list(drawer.get("findings") or []) + jsonable_encoder(filed)
     categories[category.value] = drawer
     document["categories"] = categories
     document["search_count"] = (document.get("search_count") or 0) + spent
-    document["source_count"] = sum(
-        len((finding or {}).get("citations") or [])
-        for entry in categories.values()
-        for finding in (entry or {}).get("findings") or []
+    document["source_count"] = (document.get("source_count") or 0) + len(
+        _urls(categories) - already
     )
     return document
 

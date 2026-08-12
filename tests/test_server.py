@@ -575,11 +575,80 @@ def test_a_requisition_appends_to_a_drawer_without_disturbing_the_rest():
         "the drawer that was already there is untouched"
     )
     assert out["search_count"] == 19, "the room's cost grows by what this spent"
-    assert out["source_count"] == 2, (
-        "recounted from the room's own drawers, not incremented by a per-run "
-        "ledger that knows nothing about what was already filed"
+    assert out["source_count"] == 1, (
+        "one url the room was not already citing. Not a recount of citations "
+        "across the drawers, which is a different quantity from the stored "
+        "one — `_persist` files the size of the build's LEDGER, and a recount "
+        "moved a real room from 99 sources to 74 the first time this ran live"
     )
     assert document["search_count"] == 17, "and the input document is not mutated"
+
+
+def test_a_requisition_does_not_count_a_source_the_room_already_had():
+    """The half a recount gets wrong in the other direction.
+
+    Two findings citing one url are one source, and a requisition that lands
+    on a page the room already cited has not found the room a new one. Without
+    this the number inflates every time a researcher returns to a good site,
+    which on a well-researched subject is most of the time.
+    """
+    document = {
+        "source_count": 40,
+        "categories": {
+            "setting": {
+                "findings": [
+                    {"fact": "A gate.", "citations": [{"url": "https://a.example"}]}
+                ]
+            }
+        },
+    }
+    filed = [
+        Finding(
+            fact="A curfew.",
+            citations=[
+                Citation(url="https://a.example", title="A", excerpt="e"),
+                Citation(url="https://b.example", title="B", excerpt="e"),
+            ],
+        )
+    ]
+
+    out = server._file_findings(document, Category.LOGISTICS, filed, 1)
+
+    assert out["source_count"] == 41, (
+        "b.example is new and a.example was already cited — one source, not two"
+    )
+
+
+def test_a_requisition_never_lowers_the_count_of_sources_behind_a_room():
+    """The property the live run broke, stated as the property.
+
+    A room that says it stands on fewer sources after research was added to it
+    is telling a writer their room got thinner by growing. Whatever the delta
+    is computed from, it cannot be negative.
+    """
+    document = {
+        # Higher than any walk of the drawers can see, which is the real shape:
+        # `_persist` files the size of the build's ledger, and a ledger holds
+        # every url a search returned including ones no finding ended up citing.
+        "source_count": 99,
+        "categories": {
+            "setting": {
+                "findings": [
+                    {"fact": "A gate.", "citations": [{"url": "https://a.example"}]}
+                ]
+            }
+        },
+    }
+
+    out = server._file_findings(
+        document,
+        Category.LOGISTICS,
+        [Finding(fact="A curfew.", citations=[Citation(url="https://a.example", title="A", excerpt="e")])],
+        1,
+    )
+
+    assert out["source_count"] >= 99, "adding research cannot shrink the room"
+    assert out["source_count"] == 99, "and nothing new was cited, so it does not grow"
 
 
 def test_a_requisition_into_an_existing_drawer_keeps_what_was_there():
