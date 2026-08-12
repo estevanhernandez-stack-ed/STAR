@@ -643,6 +643,30 @@ a {
   opacity: 0.85;
 }
 
+/* A room that follows another. One step of indent and a hairline back to the
+   room above it — a story spanning five eras used to be five strangers in a
+   list sorted newest-first, and this is the whole of what makes it read as one
+   body of work.
+
+   One step regardless of depth. Five rooms indented five times eats a 300px
+   rail, and the fact worth showing is "this belongs to the one above", not how
+   many hops back the start is.
+
+   The rule is --ink at 25%, the same weight the room editor's edge carries:
+   present enough to draw the eye down the chain, quiet enough that it never
+   competes with .rail-room.active's own left border, which is the one thing in
+   this list that has to stay loud. */
+.rail-room.follows {
+  margin-left: 0.85rem;
+  border-left: 3px solid color-mix(in srgb, var(--ink) 25%, transparent);
+}
+
+.rail-room.follows.active {
+  /* The active room wins its own border back. A reader has to be able to see
+     which room they are in before they can see what it belongs to. */
+  border-left-color: var(--ink);
+}
+
 .rail-deleted-legend {
   margin: 1.4rem 0 0.2rem;
   padding-left: 0.1rem;
