@@ -31,7 +31,7 @@ from unittest import mock
 import pytest
 from fastapi.testclient import TestClient
 
-from star import bible, server
+from star import bible, server, store
 from star.agents.synthesis import synthesis_agent
 from star.mcp import tools
 from star.models import SECTION_TITLES, Category
@@ -60,6 +60,7 @@ def test_a_whole_bible_is_not_marked():
         "covered": 4,
         "expected": 4,
         "missing": [],
+        "truncated": False,
     }
 
 
@@ -89,6 +90,41 @@ def test_a_subheading_is_not_a_section_arriving_late():
     assert "Logistics" in counts["missing"]
 
 
+def test_a_document_that_keeps_its_sections_at_h3_is_still_whole():
+    """The false positive an absolute `#{1,2}` rule shipped with, caught by
+    replaying a real room rather than by a test. The same room, the same
+    prompt, one setting apart, produced `## 1. Setting & Atmosphere` in one
+    document and `### 1. Setting & Atmosphere` in the other — both with all
+    four sections, both entirely healthy. The second scored 0 of 4: a whole
+    bible reported as stopping before its own first section, which is the
+    expensive direction for this measurement to be wrong in."""
+    deep = "\n".join(
+        f"### {n}. {SECTION_TITLES[c]}\n#### A subheading\nprose\n"
+        for n, c in enumerate(Category, start=1)
+    )
+    counts = bible.coverage(_room("# Research Bible: A Room\n\n" + deep))
+
+    assert counts == {"covered": 4, "expected": 4, "missing": [], "truncated": False}
+
+
+def test_depth_is_read_from_the_document_not_from_a_constant():
+    """The two halves have to hold at once: a section is whatever sits at the
+    shallowest level that names one, and anything deeper is inside it. Here
+    that level is h3, so the h4 line naming Logistics is a subheading — the
+    same judgement the `##`/`###` pair gets, one level down."""
+    counts = bible.coverage(
+        _room(
+            "# Research Bible\n"
+            "### 1. Setting & Atmosphere\n"
+            "#### Cash Logistics and Objects & Props of the Trade\n"
+            "prose"
+        )
+    )
+
+    assert counts["covered"] == 1
+    assert counts["missing"] == ["Objects & Props", "Logistics", "Forces & Conflicts"]
+
+
 def test_only_drawers_that_filed_are_expected():
     """A build whose logistics researcher came back empty has no logistics
     section to miss. Expecting one would be the app inventing a failure."""
@@ -102,7 +138,7 @@ def test_only_drawers_that_filed_are_expected():
         _room("## 1. Setting & Atmosphere\na\n## 2. Objects & Props\nb", two)
     )
 
-    assert counts == {"covered": 2, "expected": 2, "missing": []}
+    assert counts == {"covered": 2, "expected": 2, "missing": [], "truncated": False}
 
 
 def test_a_heading_indented_the_way_markdown_allows_still_counts():
@@ -118,7 +154,7 @@ def test_a_heading_indented_the_way_markdown_allows_still_counts():
         _room("  ## 1. Setting & Atmosphere\na\n   ## 2. Objects & Props\nb", two)
     )
 
-    assert counts == {"covered": 2, "expected": 2, "missing": []}
+    assert counts == {"covered": 2, "expected": 2, "missing": [], "truncated": False}
 
 
 def test_a_stored_bible_with_windows_line_endings_measures_the_same():
@@ -234,6 +270,70 @@ async def test_the_bible_shape_carries_the_measurement_with_the_document():
 
     assert room["bible_coverage"]["covered"] == 1
     assert room["bible_coverage"]["expected"] == 4
+
+
+# --- the run's own verdict, which counting sections cannot reach -------------
+
+
+def test_a_bible_with_every_section_can_still_have_been_cut_off():
+    """The gap the heading count cannot close. One stored room reached all
+    four sections and ends on the word "outside" — whole by the only question
+    counting asks, and unfinished by the only one that matters to a reader.
+    `finish_reason` is first-hand and settles it."""
+    room = _room(WHOLE)
+    room["bible_finish_reason"] = "MAX_TOKENS"
+
+    counts = bible.coverage(room)
+
+    assert counts["missing"] == []
+    assert counts["truncated"] is True
+
+
+def test_a_clean_finish_is_not_a_truncation():
+    room = _room(WHOLE)
+    room["bible_finish_reason"] = "STOP"
+
+    assert bible.coverage(room)["truncated"] is False
+
+
+def test_a_room_built_before_the_verdict_was_recorded_claims_nothing():
+    """Every room stored before this shipped has no finish reason at all, and
+    absence must not read as a truncation — that would mark the whole existing
+    corpus on a fact nobody measured."""
+    assert bible.coverage(_room(WHOLE))["truncated"] is False
+
+
+def test_a_cut_off_bible_with_every_section_is_not_called_short():
+    """Nothing is missing, so there is no list to give the reader, and "short"
+    would send them looking for absent sections that are all present."""
+    room = _room(WHOLE)
+    room["bible_finish_reason"] = "MAX_TOKENS"
+    report = tools._room_report("complete", room)
+
+    assert "stops early" not in report
+    assert "reached all 4 of its sections" in report
+    assert "stopped before it finished" in report
+
+
+def test_the_stored_document_keeps_the_verdict_because_it_cannot_be_rederived():
+    """A bible that was cut off looks, in the text, exactly like a bible about
+    a thin subject. The evidence exists once, at generation."""
+    doc = store.room_to_document(
+        "run-1",
+        {
+            "research_bible": WHOLE,
+            "categories": FOUR_DRAWERS,
+            "bible_finish_reason": "MAX_TOKENS",
+            "bible_tokens": {"thinking": 15358, "output": 638},
+        },
+        "complete",
+        "2026-08-11T00:00:00Z",
+    )
+
+    assert doc["bible_finish_reason"] == "MAX_TOKENS"
+    assert doc["bible_tokens"] == {"thinking": 15358, "output": 638}
+    # And survives the round trip, or the mark cannot read it back.
+    assert store.document_to_room(doc)["bible_finish_reason"] == "MAX_TOKENS"
 
 
 # --- what the browser is given ----------------------------------------------

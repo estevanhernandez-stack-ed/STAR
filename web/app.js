@@ -1399,7 +1399,18 @@ function renderBible(result, status) {
  *  consent.js came to say "four calls" on the day a fifth tool shipped. */
 function shortBibleNote(result) {
   const counts = result.bible_coverage;
-  if (!counts || !counts.missing || counts.missing.length === 0) return "";
+  if (!counts || !counts.missing) return "";
+  if (counts.missing.length === 0) {
+    // Every section arrived and the document still stopped short. Only rooms
+    // built since the editor's own finish reason started being recorded can
+    // say this — counting sections cannot see it, because by that question
+    // the document is whole.
+    if (!counts.truncated) return "";
+    return `<p class="bible-short">This bible reached all ${counts.expected} of its
+      sections and then stopped before it finished, mid-sentence. Nothing is
+      missing from the room: the findings behind every section are filed above
+      with their sources.</p>`;
+  }
   const missing = counts.missing.map(escapeHtml);
   const names =
     missing.length === 1

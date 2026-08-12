@@ -77,12 +77,35 @@ assert.doesNotMatch(
   "and must not type a count it was handed"
 );
 
-// Quiet when there is nothing to say: a missing coverage, or an empty missing
-// list, both render nothing rather than an empty paragraph.
+// Quiet when there is nothing to say, and that is now two conditions rather
+// than one: no measurement at all, and a bible with every section that also
+// finished cleanly. An empty paragraph above a healthy document is worse than
+// no note, because a reader takes any note as a warning.
 assert.match(
   note[1],
-  /if \(!counts \|\| !counts\.missing \|\| counts\.missing\.length === 0\) return "";/,
-  "a whole bible, or a room with no measurement at all, should render nothing"
+  /if \(!counts \|\| !counts\.missing\) return "";/,
+  "a room with no measurement should render nothing"
+);
+assert.match(
+  note[1],
+  /if \(!counts\.truncated\) return "";/,
+  "and so should a whole bible that finished — the zero-missing branch has to " +
+    "stay quiet unless the run itself reported being cut off"
+);
+
+// The third case, which counting sections cannot see: every section present
+// and the document still stopped mid-sentence. Only rooms built since the
+// editor's finish reason started being recorded can report it.
+assert.match(
+  note[1],
+  /counts\.truncated[\s\S]*?stopped before it finished/,
+  "a bible that reached every section and still got cut off should say so"
+);
+assert.doesNotMatch(
+  note[1].split("counts.missing.length === 0")[1]?.split("}")[0] || "",
+  /is short/,
+  "and must not call it short — nothing is missing, so the reader has no list " +
+    "to be given and 'short' would send them looking for absent sections"
 );
 
 /* 3 — the escaping every server string in this file already gets. ------- */

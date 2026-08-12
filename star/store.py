@@ -102,6 +102,12 @@ def room_to_document(
         "search_count": spent.get("search_count", result.get("search_count") or 0),
         "source_count": spent.get("source_count", result.get("source_count") or 0),
         "categories": result.get("categories") or {},
+        # What the editor said about its own turn. Stored because it cannot be
+        # recovered afterwards: a bible that was cut off looks, in the text,
+        # exactly like a bible about a thin subject, and every diagnosis of one
+        # before this was inference from headings weeks after the fact.
+        "bible_finish_reason": result.get("bible_finish_reason") or "",
+        "bible_tokens": result.get("bible_tokens") or {},
     }
 
 
@@ -130,6 +136,8 @@ def document_to_room(doc: dict) -> dict:
         "search_count": doc.get("search_count") or 0,
         "source_count": doc.get("source_count") or 0,
         "categories": doc.get("categories") or {},
+        "bible_finish_reason": doc.get("bible_finish_reason") or "",
+        "bible_tokens": doc.get("bible_tokens") or {},
     }
 
 

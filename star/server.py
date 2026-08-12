@@ -422,6 +422,12 @@ async def _salvage(run: dict, run_id: str) -> bool:
                 "search_count": run["search_count"],
                 "categories": categories,
                 "source_count": len(run["ledger"]),
+                # A salvaged run is the case where this matters most: the
+                # bible is the half that did not arrive, so whatever the
+                # editor managed to say about its own turn is the only
+                # first-hand evidence of why.
+                "bible_finish_reason": run.get("bible_finish_reason"),
+                "bible_tokens": run.get("bible_tokens"),
             }
         )
         return True
@@ -492,6 +498,25 @@ async def _run_pipeline(run_id: str, treatment: str) -> None:
             # in the SSE "search" event above.
             run["ledger"].record(author, getattr(response, "response", None))
 
+        # What the model said about its own turn, kept for the one author
+        # whose output IS the product. Every diagnosis of a truncated bible
+        # before this was archaeology on stored text — counting headings weeks
+        # later and reasoning backwards — because the two facts that settle it
+        # were on the event all along and were read by nobody. `finish_reason`
+        # says whether the document ended or was cut off; the token counts say
+        # what ate the ceiling, which is how a thinking budget that was being
+        # silently ignored went a day and a half without being noticed.
+        if author == "synthesis":
+            reason = getattr(event, "finish_reason", None)
+            if reason is not None:
+                run["bible_finish_reason"] = getattr(reason, "name", str(reason))
+            usage = getattr(event, "usage_metadata", None)
+            if usage is not None:
+                run["bible_tokens"] = {
+                    "thinking": getattr(usage, "thoughts_token_count", None) or 0,
+                    "output": getattr(usage, "candidates_token_count", None) or 0,
+                }
+
         content = getattr(event, "content", None)
         if content and getattr(content, "parts", None):
             text = "".join(
@@ -528,6 +553,8 @@ async def _run_pipeline(run_id: str, treatment: str) -> None:
             "search_count": run["search_count"],
             "categories": _build_categories(state, run["ledger"]),
             "source_count": len(run["ledger"]),
+            "bible_finish_reason": run.get("bible_finish_reason"),
+            "bible_tokens": run.get("bible_tokens"),
         }
     )
 

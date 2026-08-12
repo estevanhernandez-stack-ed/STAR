@@ -16,30 +16,28 @@ synthesis_agent = Agent(
     # below is the accelerant — every title fed in is a title synthesis may
     # enumerate back out. See config.max_synthesis_output_tokens.
     #
-    # THE THINKING BUDGET IS WHY BIBLES WERE ARRIVING CUT IN HALF, and it is
-    # the second half of that same lesson. `max_output_tokens` on a thinking
-    # model bounds THINKING PLUS OUTPUT, not output. So a long deliberation
-    # eats the writing budget and the response stops mid-word, with a normal
-    # finish and nothing raised.
+    # THINKING IS WHY BIBLES ARRIVED CUT IN HALF, and it is the second half of
+    # that same lesson. `max_output_tokens` on a thinking model bounds THINKING
+    # PLUS OUTPUT, not output. Thinking runs first, so a long deliberation eats
+    # the writing budget and the response stops mid-word, with a normal finish
+    # and nothing raised. Measured across the stored rooms, the correlation
+    # runs the wrong way for any other explanation: MORE research in produced
+    # LESS bible out, and the room that researched best shipped the worst
+    # document.
     #
-    # Measured 2026-08-11 across three stored rooms, and the correlation runs
-    # the wrong way for any other explanation — MORE input produced LESS bible:
+    # `thinking_level`, NOT `thinking_budget`. The budget is the Gemini 2.5
+    # control and this model ignores it — a 4,000-token allowance shipped here
+    # on 2026-08-10, was never applied, and bibles kept arriving in pieces for
+    # another day and a half while the config said the problem was solved. The
+    # replay is in config.synthesis_thinking_level; the short version is that
+    # the budget row and the MEDIUM row came back identical to within two
+    # tokens, which is what a silently ignored parameter looks like.
     #
-    #     125 sources in ->    654 tokens out, cut mid-word ("\n\nStreet")
-    #      99 sources in ->  1,503 tokens out, cut mid-word ("river tracks to")
-    #      95 sources in ->  3,528 tokens out, complete, ending on a citation
-    #
-    # All three finished `complete`, all three under a 16,000 ceiling nothing
-    # came near. A richer room thinks longer, and the room that researched best
-    # shipped the worst document.
-    #
-    # So the budget is split explicitly rather than shared implicitly. Thinking
-    # gets a bounded allowance and the writing gets the rest, which is what the
-    # original ceiling was always meant to bound.
+    # The ceiling below stays, and still bounds the runaway it was written for.
     generate_content_config=types.GenerateContentConfig(
         max_output_tokens=config.max_synthesis_output_tokens(),
         thinking_config=types.ThinkingConfig(
-            thinking_budget=config.max_synthesis_thinking_tokens(),
+            thinking_level=config.synthesis_thinking_level(),
         ),
     ),
     instruction=(

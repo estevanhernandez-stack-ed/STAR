@@ -5,14 +5,15 @@ same claim as "the bible is whole", and for a stretch of this app's life the
 two came apart: `max_output_tokens` on a thinking model bounds thinking PLUS
 output, so a room with more research to weigh deliberated longer, left less
 budget for the writing, and the document stopped mid-word with a normal finish
-and nothing raised. See `config.max_synthesis_thinking_tokens`, which splits
-the budget and is why this is rarer than it was.
+and nothing raised. `config.synthesis_thinking_level` carries the replay that
+finally pinned it, and the correction — the control being set was the one this
+model ignores.
 
-Rarer, not gone. Measured across the 13 stored `complete` rooms on 2026-08-11,
-seven carried a bible missing at least one section, and three of those were
-built hours after the split was serving. So this module exists for the half
-that ships regardless of how good generation gets: whatever the bible turns
-out to be, the app has to describe it accurately.
+That should make truncation rare. It does not make this module unnecessary,
+and the reason is the whole point: seven of the fourteen rooms stored on
+2026-08-11 carried a short bible, and every one of them said `complete`
+anyway. Whatever the editor turns out to produce, the app has to describe it
+accurately rather than assume the good case.
 
 THE MARK IS DERIVED, NEVER AUTHORED. Nothing here is a length threshold or a
 quality judgement — both would be this file inventing a standard. The only
@@ -38,14 +39,11 @@ import re
 
 from star.models import SECTION_TITLES, Category
 
-# `#` or `##` followed by something that is not another `#`. Markdown's own
-# rule for a top-level heading, applied to a document written by a model that
-# was asked for numbered sections and usually obliges.
-_TOP_LEVEL = re.compile(r"^#{1,2}[^#]")
+_HEADING = re.compile(r"^(#+)\s*(.*)$")
 
 
-def _headings(bible: str) -> str:
-    """Every top-level heading in the document, folded for comparison.
+def _section_levels(bible: str, titles: list[str]) -> dict[str, int]:
+    """Every heading that names a section, and how deep it sits.
 
     No CRLF normalisation, deliberately, and this is the one place in the repo
     where leaving it out is right. The usual trap is a pattern anchored to
@@ -55,9 +53,44 @@ def _headings(bible: str) -> str:
     removed: mutation testing showed the test guarding it could not be made to
     fail, which means the line did nothing and the test was proving it.
     """
-    return "\n".join(
-        line.strip() for line in bible.split("\n") if _TOP_LEVEL.match(line.strip())
-    ).casefold()
+    found: dict[str, int] = {}
+    for raw in bible.split("\n"):
+        match = _HEADING.match(raw.strip())
+        if not match:
+            continue
+        depth, text = len(match.group(1)), match.group(2).casefold()
+        for title in titles:
+            if title.casefold() in text:
+                found.setdefault(title, depth)
+                found[title] = min(found[title], depth)
+    return found
+
+
+def _at_section_depth(found: dict[str, int]) -> set[str]:
+    """Which of those headings are sections, and which are inside one.
+
+    The document's own outline answers it, not a fixed heading level. The
+    editor is a model writing markdown, and it does not use the same depth
+    every time: replayed against the same room, one setting produced `##
+    1. Setting & Atmosphere` and another produced `### 1. Setting &
+    Atmosphere`, both with all four sections and both entirely healthy.
+
+    A `#{1,2}` rule was written here first and scored that second document
+    **0 of 4** — a whole bible marked as stopping before its own first
+    section, which is the expensive direction for this measurement to be
+    wrong in. Caught by replaying a real room, not by a test.
+
+    So depth is read relatively: the shallowest heading that names any
+    section is the level this document keeps its sections at, and anything
+    deeper is inside one. That still excludes the case the absolute rule
+    existed for — `### Escudo Currency & Physical Cash Logistics` sits under
+    `## 1. Setting & Atmosphere` in a real stored room, and counting it as
+    section three scored that room 2 of 4 instead of 1 of 4.
+    """
+    if not found:
+        return set()
+    top = min(found.values())
+    return {title for title, depth in found.items() if depth == top}
 
 
 def coverage(result: object) -> dict | None:
@@ -78,17 +111,15 @@ def coverage(result: object) -> dict | None:
     if not isinstance(categories, dict):
         return None
 
-    headings = _headings(bible)
     expected: list[str] = []
-    missing: list[str] = []
     for category in Category:
         drawer = categories.get(category.value) or {}
         if not isinstance(drawer, dict) or not drawer.get("findings"):
             continue
-        title = SECTION_TITLES[category]
-        expected.append(title)
-        if title.casefold() not in headings:
-            missing.append(title)
+        expected.append(SECTION_TITLES[category])
+
+    present = _at_section_depth(_section_levels(bible, expected))
+    missing = [title for title in expected if title not in present]
 
     if not expected:
         return None
@@ -96,6 +127,13 @@ def coverage(result: object) -> dict | None:
         "covered": len(expected) - len(missing),
         "expected": len(expected),
         "missing": missing,
+        # First-hand, and only for rooms built after the editor's own verdict
+        # started being recorded. It catches what counting headings cannot: a
+        # document that reached all four sections and still stopped mid-
+        # sentence inside the last one. One stored room is exactly that — four
+        # sections, ending on the word "outside" — and the heading count calls
+        # it whole, correctly, because by its own question it is.
+        "truncated": result.get("bible_finish_reason") == "MAX_TOKENS",
     }
 
 
@@ -117,8 +155,21 @@ def closing_clause(result: object) -> str:
     in the room, so the research is not lost, only the summary of it.
     """
     counts = coverage(result)
-    if not counts or not counts["missing"]:
+    if not counts:
         return "the research bible."
+    if not counts["missing"]:
+        if not counts["truncated"]:
+            return "the research bible."
+        # Every section arrived and the document still stopped short. Said
+        # separately because the reader's situation is different: nothing is
+        # absent, so there is no list to give them, and the loss is the end of
+        # the last section rather than whole subjects.
+        return (
+            "a research bible that reached all "
+            f"{counts['expected']} of its sections and then stopped before it "
+            "finished, mid-sentence. Nothing is missing from the room, and "
+            "the findings behind every section are filed with their sources."
+        )
     missing = counts["missing"]
     names = missing[0] if len(missing) == 1 else _join(missing)
     return (

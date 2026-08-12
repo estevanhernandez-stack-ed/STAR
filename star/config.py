@@ -7,6 +7,8 @@ change behavior under a rehearsed demo.
 
 import os
 
+from google.genai.types import ThinkingLevel
+
 # Pinned, not floating. `gemini-flash-latest` is an alias that resolved to
 # gemini-3.6-flash on 2026-08-09 — the model both verified room builds ran on.
 # Leaving the alias in place means Google can move the model out from under a
@@ -173,25 +175,56 @@ def max_synthesis_output_tokens() -> int:
     return int(os.environ.get("STAR_MAX_SYNTHESIS_TOKENS", "16000"))
 
 
-def max_synthesis_thinking_tokens() -> int:
-    """How much of the synthesis ceiling deliberation may spend.
+def synthesis_thinking_level() -> str:
+    """How hard the editor is allowed to think before it starts writing.
 
-    `max_output_tokens` on a thinking model bounds thinking PLUS output, so
-    without this the two compete and thinking wins: it runs first. A room with
-    more research to weigh thinks longer, leaves less budget for the writing,
+    `max_output_tokens` on a thinking model bounds thinking PLUS output, and
+    thinking runs first, so the two compete and thinking wins. A room with more
+    research to weigh deliberates longer, leaves less budget for the writing,
     and the response stops mid-word with a normal finish and nothing raised.
 
-    Measured 2026-08-11 on three stored rooms, and the correlation is backwards
-    for any other cause -- more sources in produced a SHORTER bible out:
-    125 sources gave 654 tokens cut mid-word, 99 gave 1,503 cut mid-word, 95
-    gave a complete 3,528. The room that researched hardest shipped the worst
-    document, and all three reported `complete`.
+    The diagnosis was right and the CONTROL WAS WRONG. `thinking_budget` is the
+    Gemini 2.5 knob; `gemini-3.6-flash` takes `thinking_level` and ignores a
+    budget entirely. So the "fix" that shipped on 2026-08-10 set a 4,000-token
+    allowance that was never applied, and the bibles kept arriving in pieces
+    for another day and a half while the config said the problem was solved.
 
-    4,000 is generous for weighing four drawers and leaves 12,000 for prose
-    against bibles that have run 3,500 tokens at their longest. Set to 0 to
-    switch thinking off entirely if a future model makes that the better trade.
+    Replayed 2026-08-11 against the Lenin Shipyard room's own findings — one
+    model call per row, same prompt, same 16,000 ceiling:
+
+        thinking_budget=4000   MAX_TOKENS   15,358 thinking    638 out   1 of 4
+        thinking_level=MEDIUM  MAX_TOKENS   15,356 thinking    640 out   0 of 4
+        thinking_level=LOW     STOP          7,400 thinking  4,096 out   4 of 4
+        thinking_level=MINIMAL STOP              0 thinking  4,544 out   4 of 4
+
+    The budget row and the MEDIUM row are the same run to within two tokens,
+    which is what "silently ignored" looks like from the outside.
+
+    LOW over MINIMAL, deliberately. Both finish, and MINIMAL is marginally
+    longer, but this call is the one place in the pipeline where four
+    researchers' findings get weighed against each other and ordered for a
+    writer. Buying that judgement for 7,400 tokens inside a ceiling that has
+    room for it is the trade this step exists to make; MINIMAL is the setting
+    to reach for if a future model makes deliberation cheap enough not to
+    matter, or expensive enough not to afford.
     """
-    return int(os.environ.get("STAR_MAX_SYNTHESIS_THINKING_TOKENS", "4000"))
+    level = os.environ.get("STAR_SYNTHESIS_THINKING_LEVEL", "LOW")
+    # Checked against the SDK's own enum, and raised rather than warned.
+    #
+    # This is the whole lesson of the defect, generalised. The genai client
+    # accepts an unrecognised level with a UserWarning and carries on with the
+    # model's default — which is precisely how a setting can be present, wrong,
+    # and invisible for a day and a half. A misconfigured ceiling on the one
+    # call that writes the product is not a thing to warn about, and the app
+    # reads this once at import, so failing here fails at boot with the name of
+    # the bad value in it.
+    valid = {member.name for member in ThinkingLevel}
+    if level not in valid:
+        raise ValueError(
+            f"STAR_SYNTHESIS_THINKING_LEVEL={level!r} is not a thinking level "
+            f"this SDK knows. Valid: {', '.join(sorted(valid))}."
+        )
+    return level
 
 
 def max_sources_per_category() -> int:
