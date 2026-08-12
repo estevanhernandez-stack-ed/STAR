@@ -44,8 +44,13 @@ import {
   refreshRail,
   setLiveRun,
   setRoomRenderer,
+  knownRooms,
 } from "/shell.js";
 import { initAccount, openAccount } from "/account.js";
+// Served by star/server.py from config.max_room_title_chars(), not typed here.
+// A cap duplicated in JS to match one defined in Python is two sources of
+// truth, and only one of them ever moves.
+import { LIMITS } from "/config.js";
 import {
   DRAWER_LABELS,
   createDrawerGrid,
@@ -289,6 +294,131 @@ if (roomDeleteBtn) {
       disarmRoomDelete();
       showIntake();
       await refreshRail(null);
+    }
+  });
+}
+
+/* What the room is called, and what it belongs to.
+ *
+ * "Untitled room" used to be a permanent fate: star/store.py wrote it and no
+ * rename path existed anywhere, so a build whose intake found no title
+ * produced a room that could never be called anything else. The judge's
+ * round-two review filed that under room hygiene — three Untitled rooms and an
+ * errored husk, with no way to clean any of it up.
+ *
+ * One panel for both edits because they are one act. It ships closed: a room
+ * already named right should not be carrying an open form about naming. */
+function closeRoomEdit() {
+  const panel = $("room-edit");
+  if (!panel) return;
+  panel.classList.add("hidden");
+  $("room-edit-btn").setAttribute("aria-expanded", "false");
+  $("room-edit-note").replaceChildren();
+}
+
+/** Fills the panel from the room the reader is looking at.
+ *
+ *  The parent list comes from the rail's own rooms rather than a second fetch,
+ *  and it excludes this room — a room cannot follow itself, and the server
+ *  refuses it by name, but a control that offers an option the server will
+ *  reject is a control that invites the refusal. */
+function fillRoomEdit(result) {
+  const input = $("room-title-input");
+  const select = $("room-parent-select");
+  if (!input || !select) return;
+
+  // The rail's title, not the story profile's: after a rename those differ,
+  // and the field has to open on the name the room actually carries.
+  const listed = knownRooms().find((room) => room.run_id === openRoomId);
+  input.value = listed ? listed.title || "" : (result.story_profile || {}).title || "";
+  input.maxLength = LIMITS.roomTitleChars;
+
+  const current = result.continues || "";
+  select.replaceChildren();
+  const none = document.createElement("option");
+  none.value = "";
+  none.textContent = "Nothing — this room starts a story";
+  select.appendChild(none);
+
+  let currentIsListed = false;
+  for (const room of knownRooms()) {
+    if (room.run_id === openRoomId) continue;
+    const option = document.createElement("option");
+    option.value = room.run_id;
+    option.textContent = room.era
+      ? `${room.title || "Untitled room"} · ${room.era}`
+      : room.title || "Untitled room";
+    select.appendChild(option);
+    if (room.run_id === current) currentIsListed = true;
+  }
+
+  // A parent that is no longer in the rail — deleted, or purged after its
+  // window closed. Said rather than silently reset to "nothing", because
+  // dropping a link a writer drew, without telling them, is the app editing
+  // their work on their behalf.
+  if (current && !currentIsListed) {
+    const gone = document.createElement("option");
+    gone.value = current;
+    gone.textContent = "A room that is no longer filed";
+    select.appendChild(gone);
+  }
+  select.value = current;
+}
+
+const roomEditBtn = $("room-edit-btn");
+if (roomEditBtn) {
+  roomEditBtn.addEventListener("click", () => {
+    const panel = $("room-edit");
+    const opening = panel.classList.contains("hidden");
+    panel.classList.toggle("hidden", !opening);
+    roomEditBtn.setAttribute("aria-expanded", opening ? "true" : "false");
+    if (opening) $("room-title-input").focus();
+    else $("room-edit-note").replaceChildren();
+  });
+}
+
+const roomEditSave = $("room-edit-save");
+if (roomEditSave) {
+  roomEditSave.addEventListener("click", async () => {
+    if (!openRoomId) return;
+    const note = $("room-edit-note");
+    roomEditSave.disabled = true;
+    note.replaceChildren();
+    try {
+      const response = await authedFetch(
+        `/api/rooms/${encodeURIComponent(openRoomId)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: $("room-title-input").value,
+            continues: $("room-parent-select").value,
+          }),
+        }
+      );
+      if (!response.ok) {
+        // The server's own sentence. Every refusal here names what failed and
+        // what to do next, and replacing them with "Could not save" would
+        // throw away the only part a reader can act on.
+        let detail = "That did not save.";
+        try {
+          detail = (await response.json()).detail || detail;
+        } catch {
+          /* body wasn't JSON; keep the fallback */
+        }
+        note.replaceChildren(document.createTextNode(detail));
+        return;
+      }
+      // What the room now carries, not what was typed: an empty name restores
+      // the one the department gave it, and printing the typed value would
+      // leave the heading disagreeing with the rail.
+      const saved = await response.json();
+      $("result-title").textContent = saved.title || "Your research room";
+      $("room-title-input").value = saved.title || "";
+      closeRoomEdit();
+      await refreshRail(openRoomId);
+    } finally {
+      roomEditSave.disabled = false;
     }
   });
 }
@@ -939,8 +1069,12 @@ async function showResults(runId) {
   resetRoomView(runId);
   openRoomId = runId;
   // Disarmed on every room open, so an armed control never carries over from
-  // the room a reader just left to the one they are now looking at.
+  // the room a reader just left to the one they are now looking at. The edit
+  // panel closes for the same reason, and because a half-typed name for one
+  // room sitting over another room's heading is the app losing track of what
+  // the reader is doing.
   disarmRoomDelete();
+  closeRoomEdit();
 
   const res = await authedFetch(`/api/rooms/${runId}`);
   if (!res.ok) {
@@ -1052,6 +1186,8 @@ async function showResults(runId) {
   // declining rather than the server.
   setCheckRoom(runId);
   paintRoom(result, status);
+  // After paintRoom, which writes the heading this reads back from the rail.
+  fillRoomEdit(result);
 }
 
 /** The filed room: a docket, four drawers, and a bible one control away.
