@@ -30,6 +30,8 @@ router instead of the run registry moving to a service module.
 """
 
 import json
+import secrets
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -87,8 +89,13 @@ INSTRUCTIONS = (
     "across four categories (setting, objects and props, logistics, forces "
     "and conflicts), and files what comes back as findings, each one carrying "
     "the sources behind it, plus a research bible.\n\n"
-    "There are five tools. `list_rooms`, `get_room` and `ask_room` read; "
-    "`build_room` and `check_scene` spend.\n\n"
+    "There are six tools. `list_rooms`, `get_room` and `ask_room` read; "
+    "`build_room` and `check_scene` spend; `delete_room` removes.\n\n"
+    "`delete_room` is the only call here that destroys anything, and it takes "
+    "two: the first tells you what the room holds and hands back a one-time "
+    "token, the second spends it. A deleted room is recoverable in the web app "
+    "for a window, and only there — an agent can remove a room from a writer's "
+    "workspace and cannot put it back.\n\n"
     "`ask_room` is the cheapest way in: give it a question and it returns the "
     "findings that bear on it, with their sources, out of a room that already "
     "exists. It searches what was filed and never writes an answer of its "
@@ -115,7 +122,7 @@ INSTRUCTIONS = (
 
 @dataclass(frozen=True)
 class Calls:
-    """The four things a tool is allowed to do, injected by star/server.py.
+    """The five things a tool is allowed to do, injected by star/server.py.
 
     Frozen because the router holds one of these for the life of the process
     and nothing should be able to swap a callable out from under an in-flight
@@ -128,6 +135,7 @@ class Calls:
     read_room: Callable[..., Any]
     list_rooms_for: Callable[..., Any]
     run_check: Callable[..., Any]
+    delete_room: Callable[..., Any]
 
 
 # --- The strings a refusal is made of ---------------------------------------
@@ -365,6 +373,48 @@ TOOLS: tuple[dict, ...] = (
                 },
             },
             "required": ["run_id", "question"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "delete_room",
+        "description": (
+            "Delete a filed room. Two calls, and the first one deletes "
+            "nothing.\n\n"
+            "Call it with `run_id` alone and it tells you what the room holds "
+            "— findings, sources, searches spent, the size of its bible — and "
+            "hands back a one-time `confirm` token. Call it again with that "
+            "token to go ahead. Do nothing after the first call and nothing "
+            "happens.\n\n"
+            "The two calls are the point rather than ceremony. A room costs "
+            "real money and several minutes to build, and this is the only "
+            "call at this door that destroys anything, so what is about to be "
+            "lost is put in front of you before you can agree to lose it.\n\n"
+            "A deleted room leaves the writer's rail immediately and stays "
+            "recoverable in the web app for a window the reply names, after "
+            "which it and every check filed against it are destroyed for good. "
+            "**Restoring is the writer's decision and there is no tool for it "
+            "here** — an agent can remove a room from their workspace and "
+            "cannot put it back.\n\n"
+            "Costs nothing and spends no searches. Needs the `rooms:delete` "
+            "scope, which is granted separately from reading and building.\n\n"
+            "Read the room with `get_room` first if you are deciding rather "
+            "than executing — this tool tells you what a room holds in counts, "
+            "and `get_room` tells you what is actually in it."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "run_id": {"type": "string", "description": _ROOM_ID},
+                "confirm": {
+                    "type": "string",
+                    "description": (
+                        "the one-time token the first call handed back. Leave "
+                        "it out to see what the room holds and get one"
+                    ),
+                },
+            },
+            "required": ["run_id"],
             "additionalProperties": False,
         },
     },
@@ -975,6 +1025,114 @@ async def _ask_room(arguments: dict, calls: Calls, identity) -> dict:
     })
 
 
+# Pending delete confirmations, keyed by (uid, run_id) -> (token, issued_at).
+#
+# In memory, for the reason star/server.py keeps `_runs` there: this service
+# deploys at `--min-instances=1` with the abuse guards already depending on
+# single-process state, so a second store would be new infrastructure for a
+# value that is worthless ten minutes after it is minted. A restart drops
+# pending confirmations and an agent simply asks again — which the refusal
+# below says, because an agent told only "invalid token" would retry the
+# confirm rather than restart the handshake.
+_PENDING_DELETES: dict[tuple[str, str], tuple[str, float]] = {}
+
+# Long enough for an agent to read what it is about to destroy and decide;
+# short enough that a token found in a log is worthless.
+_CONFIRM_TTL_SECONDS = 600
+
+
+def _mint_confirm(uid: str, run_id: str) -> str:
+    token = secrets.token_urlsafe(9)
+    _PENDING_DELETES[(uid, run_id)] = (token, time.monotonic())
+    return token
+
+
+def _spend_confirm(uid: str, run_id: str, offered: str) -> bool:
+    """Single use, and only for the room it was minted against.
+
+    Keyed by room as well as by account so a token handed out for one room can
+    never delete another — an agent holding a confirmation for a room it meant
+    to remove must not be one argument away from removing a different one.
+    """
+    held = _PENDING_DELETES.get((uid, run_id))
+    if held is None:
+        return False
+    token, issued = held
+    del _PENDING_DELETES[(uid, run_id)]
+    if time.monotonic() - issued > _CONFIRM_TTL_SECONDS:
+        return False
+    return secrets.compare_digest(token, offered)
+
+
+def _what_goes(document: dict) -> str:
+    """What this delete costs, in the department's own counts.
+
+    The whole point of the first call. web/scriptcheck.js argues that a
+    destructive control must say "exactly what goes" before it acts, and that
+    "nothing is hidden behind a browser dialog: the warning is on the page". An
+    agent has no page, so the warning is this sentence, in its context, before
+    it can commit.
+    """
+    categories = (document.get("categories") or {}).values()
+    findings = sum(len((doc or {}).get("findings") or []) for doc in categories)
+    parts = [
+        f"{findings} findings",
+        f"{document.get('source_count') or 0} sources",
+        f"{document.get('search_count') or 0} searches spent",
+    ]
+    bible = len(document.get("research_bible") or "")
+    if bible:
+        parts.append(f"a {bible:,}-character research bible")
+    return ", ".join(parts)
+
+
+async def _delete_room(arguments: dict, calls: Calls, identity) -> dict:
+    values = _arguments(_TOOLS_BY_NAME["delete_room"], arguments)
+    run_id = values["run_id"]
+    confirm = values.get("confirm")
+    days = config.room_retention_days()
+
+    if not confirm:
+        room = await calls.read_room(identity.uid, run_id)
+        document = room.get("result")
+        if not isinstance(document, dict):
+            return _payload(ROOM_NOT_FOUND, {"run_id": run_id, "deleted": False})
+        token = _mint_confirm(identity.uid, run_id)
+        return _payload(
+            f"This has deleted nothing yet. The room holds {_what_goes(document)}. "
+            f"Deleting it takes it out of the writer's rail at once and keeps it "
+            f"recoverable in the web app for {days} days, after which it is "
+            f"destroyed for good along with every check filed against it.\n\n"
+            f"To go ahead, call `delete_room` again with `confirm` set to "
+            f"`{token}`. That token is good once, for this room only, for about "
+            f"ten minutes. Do nothing and nothing happens.",
+            {"run_id": run_id, "deleted": False, "confirm": token,
+             "retention_days": days, "holds": _what_goes(document)},
+        )
+
+    if not _spend_confirm(identity.uid, run_id, confirm):
+        return text_result(
+            "That confirmation is not good for this room. A token works once, "
+            "for the room it was issued against, for about ten minutes, and "
+            "the department forgets every pending one if it restarts. Call "
+            "`delete_room` with `run_id` and no `confirm` to see what the room "
+            "holds and get a fresh one.",
+            is_error=True,
+        )
+
+    document = await calls.delete_room(identity.uid, run_id)
+    if document is None:
+        return text_result(ROOM_NOT_FOUND, is_error=True)
+    return _payload(
+        f"Deleted. The room is out of the writer's rail now and recoverable in "
+        f"the web app for {days} days; after that it and every check filed "
+        f"against it are destroyed for good. Nothing at this door can bring it "
+        f"back — restoring is the writer's decision to make.",
+        {"run_id": run_id, "deleted": True,
+         "deleted_at": document.get("deleted_at") or "", "retention_days": days},
+    )
+
+
 async def _build_room(arguments: dict, calls: Calls, identity) -> dict:
     values = _arguments(_TOOLS_BY_NAME["build_room"], arguments)
     treatment = values["treatment"]
@@ -1154,6 +1312,7 @@ _RUNNERS: dict[str, Callable[[dict, "Calls", Any], Any]] = {
     "build_room": _build_room,
     "check_scene": _check_scene,
     "ask_room": _ask_room,
+    "delete_room": _delete_room,
 }
 
 

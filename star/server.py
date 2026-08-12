@@ -1623,12 +1623,30 @@ async def _resolve_mcp_token(authorization: str | None):
     return await tokens.resolve(authorization, _token_store)
 
 
+async def _mcp_delete_room(uid: str, run_id: str) -> dict | None:
+    """The agent door's delete, on the same store call the browser door uses.
+
+    Returns the room document when it soft-deleted one and None when there was
+    nothing there, so the tool can report what it removed rather than only that
+    it removed something. Reads before writing for that reason alone — the
+    store's own answer is a bool.
+    """
+    document = await asyncio.to_thread(_store.get, uid, run_id)
+    if document is None:
+        return None
+    when = datetime.now(timezone.utc).isoformat()  # noqa: UP017
+    if not await asyncio.to_thread(_store.soft_delete_room, uid, run_id, when):
+        return None
+    return {**document, "deleted_at": document.get("deleted_at") or when}
+
+
 app.include_router(
     build_mcp_router(
         start_build=_mcp_start_build,
         read_room=_read_room,
         list_rooms_for=_list_rooms_for,
         run_check=_run_check,
+        delete_room=_mcp_delete_room,
         resolve_token=_resolve_mcp_token,
     )
 )
