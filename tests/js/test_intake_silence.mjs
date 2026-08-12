@@ -36,7 +36,12 @@ import {
 } from "./_account_module.mjs";
 
 const REPO_ROOT = new URL("../../", import.meta.url);
-const read = (path) => readFileSync(new URL(path, REPO_ROOT), "utf8");
+const read = (path) =>
+  // Normalised at read: working copies are CRLF and CI is not, so a pattern
+  // anchored to a newline passes on one checkout and fails on another. This
+  // file shipped without it and went red the first time git handed the
+  // source back with CRLF.
+  readFileSync(new URL(path, REPO_ROOT), "utf8").replace(/\r\n/g, "\n");
 
 /* The one place "Google" is allowed to appear where a reader can see it, on
    any surface reachable without opening the card. It names the stack, it

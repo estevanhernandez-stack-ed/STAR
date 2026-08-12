@@ -28,7 +28,12 @@ import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
 
 const REPO_ROOT = new URL("../../", import.meta.url);
-const read = (path) => readFileSync(new URL(path, REPO_ROOT), "utf8");
+const read = (path) =>
+  // Normalised at read: working copies are CRLF and CI is not, so a pattern
+  // anchored to a newline passes on one checkout and fails on another. This
+  // file shipped without it and went red the first time git handed the
+  // source back with CRLF.
+  readFileSync(new URL(path, REPO_ROOT), "utf8").replace(/\r\n/g, "\n");
 
 function stripComments(source) {
   return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
