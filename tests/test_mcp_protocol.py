@@ -35,10 +35,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from star import config, server, tokens
-from star.oauth import metadata
 from star.guards import DailyCap, RateLimiter
 from star.mcp import protocol, tools
 from star.models import Citation, ClaimResult, ScriptCheckResult, Verdict
+from star.oauth import metadata
 from star.store import TokenStore
 from tests.test_server import _FakeRequest
 from tests.test_store import _FakeClient
