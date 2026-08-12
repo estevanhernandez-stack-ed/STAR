@@ -1530,6 +1530,106 @@ async def restore_room(run_id: str, authorization: str | None = Header(None)) ->
     return {"run_id": run_id, "restored": True}
 
 
+def _chain_would_close(rooms: list[dict], run_id: str, parent_id: str) -> bool:
+    """Would making `parent_id` the parent of `run_id` create a loop?
+
+    Walks up from the proposed parent. If the walk reaches `run_id`, the link
+    would close a ring and the rail's grouping would never terminate. Bounded
+    by the number of rooms as well as by reaching the top, because a ring that
+    already exists in the data — written by an older build, or by a race
+    between two edits — must not hang the request that is trying to fix it.
+    """
+    parents = {room["run_id"]: (room.get("continues") or "") for room in rooms}
+    seen: set[str] = set()
+    current = parent_id
+    while current:
+        if current == run_id:
+            return True
+        if current in seen:
+            return False
+        seen.add(current)
+        current = parents.get(current) or ""
+    return False
+
+
+@app.patch("/api/rooms/{run_id}")
+async def update_room(
+    run_id: str,
+    body: dict | None = None,
+    authorization: str | None = Header(None),
+) -> dict:
+    """Rename a room, or say which room it follows. Both, or either.
+
+    One endpoint for two edits because they are one act: a writer looking at a
+    room deciding what it is and what it belongs to. Two endpoints would mean
+    two round trips for one save and two places for the ownership rule to live.
+
+    Absent keys are left alone; `title: ""` and `continues: ""` are meaningful
+    and do the documented thing (restore the derived title, clear the link).
+    That distinction is why `body` is read as a plain dict rather than a model
+    with defaults — a default cannot tell "not mentioned" from "set to empty",
+    and both edits here need to.
+
+    The body is OPTIONAL so that authorization is the first gate. Declared
+    required, FastAPI validates it before this function runs, and an
+    unauthenticated caller with no body gets 422 instead of 401 — which both
+    answers a stranger who should have been turned away and tells them the
+    route exists. Caught by the route audit in tests/test_server.py, which
+    sweeps every registered route rather than the ones someone remembered.
+    """
+    uid = _require_uid(authorization)
+    body = body or {}
+
+    if "title" in body:
+        title = str(body.get("title") or "")
+        if len(title) > config.max_room_title_chars():
+            raise HTTPException(
+                400,
+                f"Room names are capped at {config.max_room_title_chars()} "
+                "characters. Shorten it and save again.",
+            )
+
+    if "continues" in body:
+        parent_id = str(body.get("continues") or "").strip()
+        if parent_id:
+            # Refused by name, each for its own reason, because "that did not
+            # work" on a link a writer just drew is the least useful sentence
+            # available. The room list is read once and answers all three.
+            if parent_id == run_id:
+                raise HTTPException(400, "A room cannot continue from itself.")
+            rooms = await asyncio.to_thread(_store.list_rooms, uid)
+            known = {room["run_id"] for room in rooms}
+            if parent_id not in known:
+                raise HTTPException(
+                    404,
+                    "That room is not filed under this account, so it cannot "
+                    "be the one this room follows.",
+                )
+            if _chain_would_close(rooms, run_id, parent_id):
+                raise HTTPException(
+                    400,
+                    "That room already follows this one, directly or through "
+                    "another, and a story cannot loop back into itself. Point "
+                    "this room at an earlier one instead.",
+                )
+        if not await asyncio.to_thread(_store.set_continues, uid, run_id, parent_id):
+            raise HTTPException(404, "Unknown run")
+
+    updated = {"run_id": run_id}
+    if "title" in body:
+        named = await asyncio.to_thread(_store.set_title, uid, run_id, title)
+        if named is None:
+            raise HTTPException(404, "Unknown run")
+        # The name the room now carries, which is not always the name that was
+        # sent: an empty one restores what intake called it. The browser prints
+        # what comes back rather than what it typed, or a writer who cleared
+        # the field would watch the rail disagree with the room.
+        updated["title"] = named
+    if "continues" in body:
+        updated["continues"] = parent_id
+    return updated
+
+
 @app.delete("/api/rooms/{run_id}/scenes/{scene_id}")
 async def delete_scene(
     run_id: str, scene_id: str, authorization: str | None = Header(None)
