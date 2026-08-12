@@ -183,24 +183,54 @@ Carried forward as roadmap, not blockers:
    marked `partial` — the status describes the run, which is what it has always
    meant, and the artefact now describes itself.
 
-   **Generation is not fixed.** `config.max_synthesis_thinking_tokens` split a
-   budget that thinking used to eat whole, and it plainly helped — BROWNOUT,
-   117 sources, came back a whole 16,453 characters where 125 sources had
-   produced 654 tokens before it. But three rooms built *after* that was
-   serving still lost sections, the latest by ten hours:
+   **Generation is fixed, and the earlier fix was not.** The diagnosis was
+   right the whole time and the CONTROL WAS WRONG. `thinking_budget` is the
+   Gemini 2.5 knob; `gemini-3.6-flash` takes `thinking_level` and ignores a
+   budget with a `UserWarning` at most. So the 4,000-token allowance that
+   shipped 2026-08-10 was never applied, and bibles kept arriving in pieces for
+   another day and a half while `config.py` said the problem was solved.
 
-   | built (UTC) | room | sections | bible |
-   | --- | --- | --- | --- |
-   | 08-11 02:40 | Gdansk 1978 | 1 of 4 | 2,855 |
-   | 08-11 04:10 | The 28 Tram Heist | 1 of 4 | 2,579 |
-   | 08-11 12:41 | Glasgow Shipyard Work-In | 3 of 4 | 9,331 |
+   Replayed against the Lenin Shipyard room's own findings — one model call per
+   row, same prompt, same 16,000 ceiling, no live searches spent:
 
-   So the ceiling is a cause and not the whole cause. Next move is instrument
-   rather than guess: `finish_reason` and the response's own token counts are
-   available at generation and are recorded nowhere, so every diagnosis of this
-   so far has been archaeology on stored text. Capture them, and a room that
-   was truncated can say so from the run rather than be inferred from the
-   document weeks later.
+   | control | finish | thinking | output | sections |
+   | --- | --- | --- | --- | --- |
+   | `thinking_budget=4000` | MAX_TOKENS | 15,358 | 638 | 1 of 4 |
+   | `thinking_level=MEDIUM` | MAX_TOKENS | 15,356 | 640 | 0 of 4 |
+   | `thinking_level=LOW` | STOP | 7,400 | 4,096 | 4 of 4 |
+   | `thinking_level=MINIMAL` | STOP | 0 | 4,544 | 4 of 4 |
+
+   The budget row and the MEDIUM row are the same run to within two tokens.
+   That is what a silently ignored parameter looks like from outside, and it is
+   the reason a bogus level now RAISES at boot rather than warning.
+
+   `LOW` ships. Under it, all three rooms that had failed come back whole:
+   Lenin Shipyard 2,618 chars to 13,070, Gdansk 2,855 to 12,396, Glasgow 9,331
+   to 13,905 — every one `STOP`, every one 4 of 4. Verified twice, because the
+   defect being fixed is "a config that was believed": once against the API
+   directly, and once through the real ADK runner, which is the seam that could
+   still have dropped it (STOP, 5,709 thinking, 14,158 chars, 4 of 4).
+
+   **The run now says so itself.** `finish_reason` and the token split were on
+   the ADK event all along and read by nobody, which is why every diagnosis
+   until this one was archaeology on stored text. Both are captured for the
+   editor's turn and stored on the room, and they close a gap counting sections
+   cannot: a document that reached all four sections and still stopped
+   mid-sentence is whole by the heading count and unfinished to a reader. One
+   stored room is exactly that.
+
+   **The measurement had a false positive, caught by the replay.** The heading
+   rule was absolute (`#` or `##`), and MINIMAL wrote a complete four-section
+   bible at `###` — scored 0 of 4, a whole document reported as stopping before
+   its own first section. Depth is read from the document now: the shallowest
+   heading naming a section is that document's section level, anything deeper
+   is inside one. Verdicts on all 14 stored rooms are unchanged.
+
+   **What is left.** Nothing was resynthesized. The seven short bibles are
+   still short, and they now describe themselves accurately, which was the
+   decision: status describes the run. Rebuilding a room is a writer's call and
+   costs their daily budget, so the app says what it has rather than spending
+   for them.
 
 5. **Adoption — `ask_room` first.** The door has no question-shaped tool. An
    agent can read a room or build one, but cannot ask it anything, so the
