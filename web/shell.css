@@ -897,6 +897,38 @@ a {
    retention notice a writer reads after handing over unprotected IP is a
    receipt, not a disclosure. Every clause in the copy itself was checked
    against what star/store.py actually persists; see the phase ledger. */
+/* What the department reads a treatment for. Closed by default, so it costs a
+   reader nothing until they want it — the hint above answers most pastes, and
+   an intake that opens with three paragraphs of instructions reads as an app
+   apologising for itself.
+
+   No box and no rule. .retention below is set off because it is a claim about
+   what the app stores, which a reader is owed whether or not they went looking;
+   this is guidance they asked for by clicking, and dressing it the same way
+   would put two competing boxes above one textarea. */
+.intake-guide {
+  margin: 0 0 1.25rem;
+  max-width: 60ch;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+.intake-guide summary {
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.intake-guide p {
+  margin: 0.7rem 0 0;
+  opacity: 0.85;
+}
+
 .retention {
   margin: 0 0 1.25rem;
   max-width: 60ch;
