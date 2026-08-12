@@ -14,6 +14,18 @@ class Category(str, Enum):
     FORCES_CONFLICTS = "forces_conflicts"
 
 
+#: The section each category becomes in the research bible. Lives here rather
+#: than inside the synthesis prompt so that the instruction the editor is given
+#: and the check on what it produced read the same names. web/drawer.js carries
+#: the same four for the drawer headings; that pair is checked by a test.
+SECTION_TITLES: dict[Category, str] = {
+    Category.SETTING: "Setting & Atmosphere",
+    Category.OBJECTS_PROPS: "Objects & Props",
+    Category.LOGISTICS: "Logistics",
+    Category.FORCES_CONFLICTS: "Forces & Conflicts",
+}
+
+
 class StoryProfile(BaseModel):
     """What the IntakeAgent extracts from a treatment."""
 

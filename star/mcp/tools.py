@@ -38,7 +38,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
-from star import config
+from star import bible, config
 from star.findings import _tokenize
 from star.models import Category
 
@@ -706,6 +706,19 @@ def _spend_line(result: object) -> str:
     )
 
 
+def _filed_drawers(result: object) -> int:
+    """How many category drawers actually got findings into them.
+
+    The companion to `_filed_anything`, which answers whether any did. Read off
+    the payload for the same reason: the status says the pipeline finished, and
+    that is not the same question as what is in the cabinet.
+    """
+    categories = (result or {}).get("categories") or {}
+    if not isinstance(categories, dict):
+        return 0
+    return sum(1 for doc in categories.values() if (doc or {}).get("findings"))
+
+
 def _room_report(status: str, result: object) -> str:
     """The line that goes above a room, chosen by what actually came back.
 
@@ -719,10 +732,22 @@ def _room_report(status: str, result: object) -> str:
     if status == "running":
         return STILL_BUILDING
     if status == "complete":
+        # The last clause is the one that can be wrong. A room whose editor
+        # stopped after section one is still filed and still complete by every
+        # other measure, and this sentence is fair right up to the point where
+        # it promises a document the room does not have. So the clause is
+        # asked for rather than asserted.
+        # "four category drawers" was typed here, and it was the same defect
+        # one clause early: four is what a healthy room has, not what this
+        # room necessarily filed, and a complete build whose logistics
+        # researcher came back empty was told it had four drawers of findings.
+        # Counted now, from the same payload the drawers themselves come from.
+        drawers = _filed_drawers(result)
         return (
             "This room is filed and complete: the story profile, the research "
-            "plan, four category drawers of findings with the sources behind "
-            "them, and the research bible."
+            f"plan, {drawers} category drawer{'' if drawers == 1 else 's'} of "
+            "findings with the sources behind them, and "
+            + bible.closing_clause(result)
         )
     if status == "partial":
         return (
@@ -882,8 +907,13 @@ async def _get_room(arguments: dict, calls: Calls, identity) -> dict:
     category = values.get("category")
     room = await calls.read_room(identity.uid, run_id)
     status = room.get("status") or "unknown"
-    result = _project_room(room.get("result"), shape, category)
-    report = _room_report(status, result)
+    whole = room.get("result")
+    result = _project_room(whole, shape, category)
+    # Reported off the WHOLE room, not the projection. A caller asking for
+    # `findings` gets a payload with no bible in it, and reporting off that
+    # would have told them the bible was fine by saying nothing about it —
+    # the shape they asked for deciding what they are allowed to learn.
+    report = _room_report(status, whole)
     if shape != "full" or category:
         report = f"{report}\n\n{_shape_note(shape, category)}"
     return _payload(

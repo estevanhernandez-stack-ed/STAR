@@ -4,6 +4,7 @@ from google.adk.agents import Agent
 from google.genai import types
 
 from star import config
+from star.models import SECTION_TITLES, Category
 
 synthesis_agent = Agent(
     name="synthesis",
@@ -70,9 +71,16 @@ synthesis_agent = Agent(
         "{sources_logistics?}"
         "{sources_forces_conflicts?}"
         "</sources>\n\n"
-        "Produce a single markdown document with four sections:\n"
-        "1. Setting & Atmosphere  2. Objects & Props  3. Logistics  "
-        "4. Forces & Conflicts\n\n"
+        # Built from SECTION_TITLES rather than typed here, so the names the
+        # editor is asked for and the names star/bible.py looks for cannot
+        # drift apart. The count is gone rather than derived: the list states
+        # it, and "four sections" above a list of four is a second place for
+        # the same fact to go wrong.
+        "Produce a single markdown document with these sections, in order:\n"
+        + "  ".join(
+            f"{n}. {SECTION_TITLES[c]}" for n, c in enumerate(Category, start=1)
+        )
+        + "\n\n"
         "Rules: keep every fact tied to its source with inline numbered "
         "markers like [1], and end each section with its numbered source list "
         "(title — URL). Take every title VERBATIM from the <sources> block "

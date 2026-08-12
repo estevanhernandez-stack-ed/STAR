@@ -1373,12 +1373,42 @@ function renderBible(result, status) {
   if (markdown) {
     return `
       <h3 class="bible-heading">The research bible</h3>
+      ${shortBibleNote(result)}
       <div class="bible-body">${bibleHtml(markdown)}</div>`;
   }
   const { heading, body } = noBibleCopy(status, result.categories);
   return `
     <h3 class="bible-heading">${heading}</h3>
     ${body.map((line) => `<p class="bible-note">${line}</p>`).join("")}`;
+}
+
+/** A bible that stops early, said above the bible rather than discovered
+ *  halfway down it.
+ *
+ *  A room reports "complete" when the pipeline reached its end, which is not
+ *  the same claim as "the bible is whole" — and for seven of the fourteen
+ *  rooms stored on 2026-08-11 the two came apart. The document just stops,
+ *  usually mid-sentence, with sections the researchers filed for missing. A
+ *  reader who scrolls to the bottom finds that out the slow way and has no
+ *  way to tell a short bible from a short subject.
+ *
+ *  THE COUNT IS THE SERVER'S, not this file's. star/bible.py measures which of
+ *  the room's own filed drawers reached the document and ships the answer in
+ *  the payload. Recomputing it here would be the second implementation of one
+ *  fact in a language that cannot see the first — which is exactly how
+ *  consent.js came to say "four calls" on the day a fifth tool shipped. */
+function shortBibleNote(result) {
+  const counts = result.bible_coverage;
+  if (!counts || !counts.missing || counts.missing.length === 0) return "";
+  const missing = counts.missing.map(escapeHtml);
+  const names =
+    missing.length === 1
+      ? missing[0]
+      : `${missing.slice(0, -1).join(", ")} and ${missing[missing.length - 1]}`;
+  return `<p class="bible-short">This bible is short: it covers ${counts.covered} of
+    the ${counts.expected} drawers this room filed, and stops before ${names}.
+    The findings those sections would have been written from are filed above
+    and carry their sources.</p>`;
 }
 
 function bibleHtml(markdown) {

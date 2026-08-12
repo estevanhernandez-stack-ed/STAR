@@ -27,7 +27,8 @@
    because a header that documents values the file does not ship is the same
    defect as a stale comment, in the one file that invokes that lesson.
      --ink on --onionskin                    12.70:1  body text, headings
-     --ink at 0.85 on --onionskin             8.45:1  .bible-note
+     --ink at 0.85 on --onionskin             8.45:1  .bible-note,
+                                                      .bible-short
      mix(--aniline 70%, --ink) on --onionskin 8.10:1  links (was the raw
                                                       token at 6.43:1; both
                                                       clear AA, the mixed
@@ -259,8 +260,15 @@
 /* A room with no bible, in the department's voice. Body face at reading size,
    not an alert box and not italicised apology text — web/app.js's noBibleCopy
    carries the reasoning, and the styling has to agree with it: a partial room
-   is a complete outcome of a different shape, so its copy looks like copy. */
-.bible-note {
+   is a complete outcome of a different shape, so its copy looks like copy.
+
+   .bible-short is the same register for the same reason, one step milder: a
+   bible that stops early is still a real document and its caveat is still
+   copy, not chrome. It shares this rule rather than getting its own so that
+   there is one measured pair here and not two, and so the two notes cannot
+   drift into looking like different kinds of statement. */
+.bible-note,
+.bible-short {
   margin: 0 0 0.9rem;
   max-width: 72ch;
   font-family: var(--body);
@@ -268,6 +276,13 @@
   line-height: 1.6;
   color: var(--ink);
   opacity: 0.85;
+}
+
+/* The short-bible caveat sits between the heading and the document, so it
+   loses .bible-note's bottom-heavy margin and gains room above the prose it
+   is about. Everything else it inherits from the rule above. */
+.bible-short {
+  margin: -0.2rem 0 1.2rem;
 }
 
 /* ---------------------------------------------------------------------

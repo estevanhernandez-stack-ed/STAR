@@ -39,7 +39,7 @@ from google.adk.runners import InMemoryRunner  # noqa: E402
 from google.genai import types  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
-from star import config  # noqa: E402
+from star import bible, config  # noqa: E402
 
 config.validate_env()
 
@@ -953,6 +953,21 @@ async def list_rooms(authorization: str | None = Header(None)) -> dict:
     }
 
 
+def _with_coverage(payload: dict) -> dict:
+    """Attach what the bible actually covers, measured at read.
+
+    Derived here rather than stored, for the reason a stamp is derived rather
+    than authored: the measurement can get better, and a field written into
+    fourteen documents on 2026-08-11 could not. Attached on the way OUT of the
+    shared read so that both doors carry the same number and the browser never
+    has to compute it a second time in a second language.
+    """
+    counts = bible.coverage(payload.get("result"))
+    if counts:
+        payload["bible_coverage"] = counts
+    return payload
+
+
 async def _read_room(uid: str, run_id: str) -> dict:
     """One room, live or filed. Transport-free; both doors call it.
 
@@ -991,7 +1006,7 @@ async def _read_room(uid: str, run_id: str) -> dict:
                 "search_count": run.get("search_count") or 0,
                 "source_count": len(run.get("ledger") or ()),
             }
-        return {"status": run["status"], "result": result}
+        return _with_coverage({"status": run["status"], "result": result})
 
     # Off the event loop; see list_rooms above for why.
     document = await asyncio.to_thread(_store.get, uid, run_id)
@@ -1004,12 +1019,14 @@ async def _read_room(uid: str, run_id: str) -> dict:
     # which is the one thing the window exists to allow.
     deleted_at = document.get("deleted_at") or ""
     if deleted_at:
-        return {
-            "status": "deleted",
-            "deleted_at": deleted_at,
-            "purges_after_days": config.room_retention_days(),
-            "result": document_to_room(document),
-        }
+        return _with_coverage(
+            {
+                "status": "deleted",
+                "deleted_at": deleted_at,
+                "purges_after_days": config.room_retention_days(),
+                "result": document_to_room(document),
+            }
+        )
 
     # Stored as running but absent from memory: the in-flight asyncio task did
     # not survive a restart, and nothing will ever finish it. Say so once
@@ -1023,7 +1040,9 @@ async def _read_room(uid: str, run_id: str) -> dict:
             raise HTTPException(404, "Unknown run")
         document["status"] = "interrupted"
 
-    return {"status": document.get("status", "complete"), "result": document_to_room(document)}
+    return _with_coverage(
+        {"status": document.get("status", "complete"), "result": document_to_room(document)}
+    )
 
 
 @app.get("/api/rooms/{run_id}")
