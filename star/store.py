@@ -108,6 +108,10 @@ def room_to_document(
         # before this was inference from headings weeks after the fact.
         "bible_finish_reason": result.get("bible_finish_reason") or "",
         "bible_tokens": result.get("bible_tokens") or {},
+        # Which room this one follows. Empty at build: a story becomes a story
+        # when its writer says so, not when the department guesses from two
+        # treatments sharing a decade.
+        "continues": "",
     }
 
 
@@ -138,6 +142,7 @@ def document_to_room(doc: dict) -> dict:
         "categories": doc.get("categories") or {},
         "bible_finish_reason": doc.get("bible_finish_reason") or "",
         "bible_tokens": doc.get("bible_tokens") or {},
+        "continues": doc.get("continues") or "",
     }
 
 
@@ -155,6 +160,10 @@ def room_summary(doc: dict) -> dict:
         "status": doc.get("status") or "unknown",
         "created_at": doc.get("created_at") or "",
         "search_count": doc.get("search_count") or 0,
+        # Here rather than only in the full room, because the rail groups on it.
+        # Reading twenty rooms whole to draw a list of twenty is the exact cost
+        # this shape exists to avoid.
+        "continues": doc.get("continues") or "",
     }
 
 
@@ -339,6 +348,54 @@ class RoomStore:
         if (snapshot.to_dict() or {}).get("deleted_at"):
             return True
         document.update({"deleted_at": when})
+        return True
+
+    def set_title(self, uid: str, run_id: str, title: str) -> str | None:
+        """Rename a room, and hand back the name it now carries.
+
+        Returns None when there was nothing there, for the reason
+        `delete_scene` reads before it writes: the endpoint turns that into a
+        404, and a rename that always reported success would tell a writer they
+        had named a room that was never theirs. A room under another account
+        never reaches the write — the path is rooted at `users/{uid}`, so the
+        read finds nothing by construction rather than by an ownership check.
+
+        **An empty title restores the derived one** rather than storing `""`.
+        A room called nothing is worse than a room called what the intake
+        thought it was, and `story_profile.title` still holds that, untouched
+        by every rename, so the original is never actually spent. This is why
+        there is no `title_set_by_writer` flag: a second field to explain the
+        first is a second thing that has to stay true.
+        """
+        document = self._rooms(uid).document(run_id)
+        snapshot = document.get()
+        if not snapshot.exists:
+            return None
+        stored = snapshot.to_dict() or {}
+
+        chosen = title.strip()
+        if not chosen:
+            profile = stored.get("story_profile") or {}
+            chosen = profile.get("title") or _UNTITLED
+        document.update({"title": chosen})
+        return chosen
+
+    def set_continues(self, uid: str, run_id: str, parent_id: str) -> bool:
+        """Say which room this one follows, or clear it with an empty parent.
+
+        Writes the link and nothing else. Whether the parent exists, belongs to
+        this account, or would close a cycle is decided **above** this method,
+        in the endpoint, because those are three different refusals with three
+        different sentences and a store method that returned one bool for all
+        of them would force the door to invent the reason.
+
+        False when the room itself is missing, the same way every other write
+        here answers a run_id that was never this account's.
+        """
+        document = self._rooms(uid).document(run_id)
+        if not document.get().exists:
+            return False
+        document.update({"continues": parent_id.strip()})
         return True
 
     def restore_room(self, uid: str, run_id: str) -> bool:
