@@ -119,6 +119,62 @@ function escapeHtml(s) {
  *  when the payload only proved nothing was filed; and this. refreshRail
  *  already knows which case it is at its two call sites; it just was not
  *  saying. */
+/* Rooms the reader deleted and can still take back, and how long they have.
+   Held here rather than passed through renderRail's signature because the rail
+   is drawn from three places and only refreshRail ever learns them. */
+let _deleted = [];
+let _retentionDays = 0;
+
+/** The deleted group, drawn under the live rooms or not at all.
+ *
+ *  Without this the window is thirty days a person cannot reach: a deleted
+ *  room leaves the rail by design, and if nothing lists it again then every
+ *  sentence promising the room is "recoverable in the web app" — including the
+ *  one the agent door prints — is false. This is what makes that copy true. */
+function renderDeleted() {
+  if (!_deleted.length) return;
+
+  const heading = document.createElement("p");
+  heading.className = "rail-legend rail-deleted-legend";
+  heading.textContent = "Deleted";
+  railList.appendChild(heading);
+
+  const note = document.createElement("p");
+  note.className = "rail-deleted-note";
+  note.textContent = _retentionDays
+    ? `Kept for ${_retentionDays} days, then destroyed for good.`
+    : "Kept for a while, then destroyed for good.";
+  railList.appendChild(note);
+
+  for (const room of _deleted) {
+    const row = document.createElement("div");
+    row.className = "rail-deleted-row";
+
+    const name = document.createElement("span");
+    name.className = "rail-deleted-title";
+    name.textContent = room.title || "Untitled room";
+    row.appendChild(name);
+
+    const restore = document.createElement("button");
+    restore.type = "button";
+    restore.className = "rail-restore-btn";
+    restore.textContent = "Put it back";
+    restore.setAttribute("aria-label", `Put back ${name.textContent}`);
+    restore.addEventListener("click", async () => {
+      restore.disabled = true;
+      try {
+        await authedFetch(`/api/rooms/${encodeURIComponent(room.run_id)}/restore`, {
+          method: "POST",
+        });
+      } finally {
+        await refreshRail();
+      }
+    });
+    row.appendChild(restore);
+    railList.appendChild(row);
+  }
+}
+
 export function renderRail(rooms, activeRunId, { unreadable = _unreadable } = {}) {
   _rooms = rooms || [];
   _activeRunId = activeRunId !== undefined ? activeRunId : _activeRunId;
@@ -136,6 +192,7 @@ export function renderRail(rooms, activeRunId, { unreadable = _unreadable } = {}
     railList.innerHTML = unreadable
       ? '<p class="rail-empty">Your filed rooms could not be reached just now. They are not lost — reload to try again.</p>'
       : '<p class="rail-empty">Nothing filed yet. Paste a treatment below and the department gets started.</p>';
+    renderDeleted();
     return;
   }
 
@@ -209,6 +266,7 @@ export function renderRail(rooms, activeRunId, { unreadable = _unreadable } = {}
     });
     railList.appendChild(btn);
   }
+  renderDeleted();
 }
 
 /** Fetches a saved room and hands it to whatever's registered as the room
@@ -243,7 +301,9 @@ export async function refreshRail(activeRunId) {
       renderRail([], nextActive, { unreadable: true });
       return;
     }
-    const { rooms } = await res.json();
+    const { rooms, deleted, retention_days: retention } = await res.json();
+    _deleted = Array.isArray(deleted) ? deleted : [];
+    _retentionDays = typeof retention === "number" ? retention : _retentionDays;
     renderRail(rooms, nextActive, { unreadable: !Array.isArray(rooms) });
   } catch {
     renderRail([], nextActive, { unreadable: true });

@@ -66,7 +66,7 @@ def test_the_protected_resource_document_names_the_resource_and_its_server():
 
     assert document["resource"] == RESOURCE
     assert document["authorization_servers"] == [RESOURCE]
-    assert document["scopes_supported"] == ["rooms:read", "rooms:write"]
+    assert document["scopes_supported"] == list(metadata.SCOPES_SUPPORTED)
     assert document["bearer_methods_supported"] == ["header"]
 
 
@@ -92,7 +92,7 @@ def test_the_as_metadata_carries_every_field_the_spec_names():
     assert document["registration_endpoint"] == f"{RESOURCE}/oauth/register"
     assert document["response_types_supported"] == ["code"]
     assert document["grant_types_supported"] == ["authorization_code", "refresh_token"]
-    assert document["scopes_supported"] == ["rooms:read", "rooms:write"]
+    assert document["scopes_supported"] == list(metadata.SCOPES_SUPPORTED)
     assert document["token_endpoint_auth_methods_supported"] == ["none"]
     assert document["client_id_metadata_document_supported"] is True
 
@@ -501,19 +501,29 @@ def test_dcr_refuses_a_scope_this_server_does_not_offer_rather_than_dropping_it(
     something it was told it had and being refused at `/authorize` with no
     explanation."""
     outcome = clients.register(
-        {"redirect_uris": ["https://c.example/cb"], "scope": "rooms:read rooms:delete"},
+        # A scope this server genuinely does not offer. It used to be
+        # `rooms:delete`, which stopped being an example of an unknown scope
+        # the day delete shipped — a fixture that quietly becomes valid is a
+        # test that quietly stops testing.
+        {"redirect_uris": ["https://c.example/cb"], "scope": "rooms:read rooms:publish"},
         NOW,
     )
 
     assert isinstance(outcome, clients.Rejected)
-    assert "rooms:delete" in outcome.description
-    assert "rooms:read rooms:write" in outcome.description
+    assert "rooms:publish" in outcome.description
+    assert " ".join(metadata.SCOPES_SUPPORTED) in outcome.description
 
 
 def test_dcr_defaults_an_absent_scope_to_everything_on_offer():
     outcome = clients.register({"redirect_uris": ["https://c.example/cb"]}, NOW)
 
-    assert outcome.scope == "rooms:read rooms:write"
+    assert outcome.scope == " ".join(metadata.SCOPES_DEFAULT)
+    assert "rooms:delete" not in outcome.scope, (
+        "a client that named no scope must not come away registered for "
+        "delete — registration is what a client may ASK for, and a blank "
+        "field should never be how a reader is asked to hand over their "
+        "ability to keep their own rooms"
+    )
 
 
 def test_a_registered_client_id_can_never_be_mistaken_for_a_metadata_url():
@@ -1151,7 +1161,7 @@ async def test_a_card_token_with_neither_field_is_still_accepted_for_anything():
     identity = await card_tokens.resolve(f"Bearer {plaintext}", store, now=NOW)
 
     assert identity.oauth is None
-    for need in (None, "rooms:read", "rooms:write"):
+    for need in (None, *metadata.SCOPES_SUPPORTED):
         outcome = validate.check(identity, need=need, now=NOW + timedelta(days=400))
         assert isinstance(outcome, validate.Allowed), need
 
@@ -1268,7 +1278,7 @@ def test_a_request_for_a_scope_the_client_never_registered_is_refused_outright()
     # than the client asked for, and the client would fail at its first call
     # with a 403 naming a scope its own registration says it has.
     assert validate.requested_scope("rooms:write", "rooms:read") is None
-    assert validate.requested_scope("rooms:delete", "rooms:read rooms:write") is None
+    assert validate.requested_scope("rooms:publish", "rooms:read rooms:write") is None
     assert validate.requested_scope(17, "rooms:read") is None
     assert validate.requested_scope("rooms:read", "") is None
 

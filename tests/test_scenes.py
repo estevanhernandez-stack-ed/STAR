@@ -1088,3 +1088,83 @@ def test_a_rooms_filed_checks_do_not_show_up_in_the_rail():
     store.save_scene(UID, ROOM, "s1", scene_to_document(RESULT, "INT. GARAGE"))
 
     assert [room["run_id"] for room in store.list_rooms(UID)] == [ROOM]
+
+
+# -- deleting a room ---------------------------------------------------------
+#
+# The opposite call from a scene, and the endpoint says why: a scene is the
+# writer's script pages and goes for good the moment they say so, while a room
+# is research that cost money and minutes, where losing it is the expensive
+# mistake rather than keeping it. Both leave the reader's sight at once.
+
+
+def test_deleting_a_room_hides_it_but_keeps_it_for_the_window():
+    store, client = a_store()
+    store.save(UID, ROOM, filed_room())
+
+    with checking(store):
+        http = TestClient(server.app)
+        gone = http.delete(f"/api/rooms/{ROOM}", headers=AUTH)
+        listed = http.get("/api/rooms", headers=AUTH).json()
+        read_back = http.get(f"/api/rooms/{ROOM}", headers=AUTH)
+
+    assert gone.status_code == 200
+    body = gone.json()
+    assert body["retention_days"] == config.room_retention_days(), (
+        "a delete that will not say when it becomes permanent is asking the "
+        "reader to trust a number nobody stated"
+    )
+    assert listed["rooms"] == [], "out of the rail immediately"
+
+    # Still readable, and readable AS deleted.
+    assert read_back.status_code == 200, "404 would make restore impossible"
+    assert read_back.json()["status"] == "deleted"
+    assert read_back.json()["deleted_at"] == body["deleted_at"]
+    assert client.data[f"users/{UID}/rooms/{ROOM}"]["deleted_at"], "kept, not destroyed"
+
+
+def test_a_deleted_room_can_be_restored_and_comes_back_to_the_rail():
+    store, _ = a_store()
+    store.save(UID, ROOM, filed_room())
+
+    with checking(store):
+        http = TestClient(server.app)
+        http.delete(f"/api/rooms/{ROOM}", headers=AUTH)
+        restored = http.post(f"/api/rooms/{ROOM}/restore", headers=AUTH)
+        listed = http.get("/api/rooms", headers=AUTH).json()
+
+    assert restored.status_code == 200
+    assert [r["run_id"] for r in listed["rooms"]] == [ROOM]
+
+
+def test_restoring_a_room_that_was_never_deleted_is_not_found():
+    store, _ = a_store()
+    store.save(UID, ROOM, filed_room())
+
+    with checking(store):
+        response = TestClient(server.app).post(f"/api/rooms/{ROOM}/restore", headers=AUTH)
+
+    assert response.status_code == 404
+
+
+def test_deleting_a_room_that_is_not_there_is_not_found():
+    store, _ = a_store()
+
+    with checking(store):
+        response = TestClient(server.app).delete("/api/rooms/never-existed", headers=AUTH)
+
+    assert response.status_code == 404
+
+
+def test_another_uids_room_survives_a_delete_aimed_at_it():
+    store, client = a_store()
+    store.save("uid-two", ROOM, filed_room())
+
+    with checking(store):
+        response = TestClient(server.app).delete(f"/api/rooms/{ROOM}", headers=AUTH)
+
+    assert response.status_code == 404
+    assert not client.data[f"users/uid-two/rooms/{ROOM}"].get("deleted_at"), (
+        "ownership is by path construction: users/{uid}/rooms never resolves "
+        "across accounts, so this is refused by the shape of the read"
+    )

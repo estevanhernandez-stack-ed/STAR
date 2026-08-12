@@ -637,7 +637,10 @@ def _scope(value: object) -> tuple[str, str]:
     with no explanation.
     """
     if value is None or value == "":
-        return metadata.SCOPE_SEPARATOR.join(metadata.SCOPES_SUPPORTED), ""
+        # The non-destructive default, not everything on offer. See
+        # metadata.SCOPES_DEFAULT: a blank field must not be how a client comes
+        # to request the ability to delete a writer's rooms.
+        return metadata.SCOPE_SEPARATOR.join(metadata.SCOPES_DEFAULT), ""
     if not isinstance(value, str):
         return "", "`scope` must be a space-delimited string."
     unknown = sorted(set(value.split()) - set(metadata.SCOPES_SUPPORTED))

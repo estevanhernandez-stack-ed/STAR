@@ -38,6 +38,7 @@ from star import config, server, tokens
 from star.guards import DailyCap, RateLimiter
 from star.mcp import protocol, tools
 from star.models import Citation, ClaimResult, ScriptCheckResult, Verdict
+from star.oauth import metadata
 from star.store import TokenStore
 from tests.test_server import _FakeRequest
 from tests.test_store import _FakeClient
@@ -1002,6 +1003,7 @@ def calls_for(**handlers) -> tools.Calls:
             handlers.get("list_rooms_for") or _unreachable("list_rooms_for")
         ),
         run_check=handlers.get("run_check") or _unreachable("run_check"),
+        delete_room=handlers.get("delete_room") or _unreachable("delete_room"),
     )
 
 
@@ -1012,6 +1014,17 @@ async def invoke(name, arguments=None, **handlers) -> dict:
 def said(result: dict) -> str:
     """The one piece of text a calling model actually reads."""
     return result["content"][0]["text"]
+
+
+def spoken(result: dict) -> str:
+    """The prose half only — what a model actually READS before the payload.
+
+    said() returns both halves, so an assertion about the warning passes when
+    the number it looks for survives only in the JSON. Two mutations that
+    stripped the department's sentence and left the payload intact were caught
+    by nothing until this existed.
+    """
+    return said(result).rsplit("\n\n", 1)[0]
 
 
 def carried(result: dict) -> dict:
@@ -1041,6 +1054,7 @@ def test_no_tool_is_a_second_name_for_another_tools_answer():
         "list_rooms",
         "get_room",
         "ask_room",
+        "delete_room",
         "build_room",
         "check_scene",
     ]
@@ -1117,7 +1131,7 @@ def test_the_instructions_explain_the_department_rather_than_padding_the_handsha
     assert "several minutes" in instructions
     assert "live web search actually returned" in instructions
     assert "stored with its room" in instructions
-    assert "five tools" in instructions
+    assert "six tools" in instructions
     # The cheapest way in is named in the handshake, because an agent that
     # only reads INSTRUCTIONS should not have to discover it from tools/list.
     assert "ask_room" in instructions
@@ -1136,6 +1150,7 @@ async def test_tools_list_puts_them_all_on_the_wire_with_their_descriptions():
         "list_rooms",
         "get_room",
         "ask_room",
+        "delete_room",
         "build_room",
         "check_scene",
     ]
@@ -2159,10 +2174,175 @@ def test_the_consent_screen_states_no_tool_count_it_would_have_to_chase():
     consent = (repo / "web" / "consent.js").read_text(encoding="utf-8")
     # Matched within one literal: the sentence is split across a JS `+`, so a
     # pattern spanning the join fails on formatting rather than on meaning.
-    assert "No call the department" in consent
-    assert "deletes a room, a check, or a scene" in consent
+    #
+    # The claim narrowed when delete shipped. "Nothing at this door removes
+    # anything" was true of the whole surface and stopped being true; what is
+    # true now is scope-shaped — this REQUEST removes nothing, and removing is
+    # asked for separately. A promise that outlives the thing it described is
+    # worse than no promise, which is why the sentence changed rather than the
+    # tool being quietly excused from it.
+    assert "Nothing in this request removes anything" in consent
+    assert "separate permission" in consent
     for stale in ("offers four", "offers five", "four calls", "five calls"):
         assert stale not in consent, (
             f"'{stale}' is a count of a list that lives in star/mcp/tools.py, "
             "in a file that cannot see it"
         )
+
+
+# -- delete_room -------------------------------------------------------------
+#
+# The only call at this door that destroys anything, and the reason it takes two
+# is that the web app's arming does not survive translation. A person gets two
+# presses and a warning on the page; an agent has no eyes and no pause, so
+# "press twice" is just "call twice" and protects nothing. What survives is the
+# WARNING: the first call puts what is about to be lost into the agent's
+# context, in the department's voice, before it can agree to lose it.
+
+
+@pytest.mark.asyncio
+async def test_the_first_call_destroys_nothing_and_says_what_would_go():
+    deleted = []
+
+    async def _delete(uid, run_id):
+        deleted.append(run_id)
+        return {}
+
+    result = await invoke(
+        "delete_room", {"run_id": "abc"}, read_room=_read_full, delete_room=_delete
+    )
+    body = carried(result)
+    text = said(result)
+
+    assert deleted == [], "the first call must not delete"
+    assert body["deleted"] is False
+    assert body["confirm"], "and it hands back a token"
+    assert "deleted nothing yet" in text
+    # What goes, in counts, before agreeing to lose it.
+    prose = spoken(result)
+    assert "1 findings" in prose and "110 sources" in prose and "17 searches" in prose
+    assert str(config.room_retention_days()) in prose, (
+        "and when it becomes permanent — in the SENTENCE, not only the payload"
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_second_call_with_the_token_deletes():
+    calls = []
+
+    async def _delete(uid, run_id):
+        calls.append(run_id)
+        return {"deleted_at": "2026-08-11T00:00:00+00:00"}
+
+    first = carried(await invoke(
+        "delete_room", {"run_id": "abc"}, read_room=_read_full, delete_room=_delete
+    ))
+    result = await invoke(
+        "delete_room",
+        {"run_id": "abc", "confirm": first["confirm"]},
+        read_room=_read_full,
+        delete_room=_delete,
+    )
+
+    assert calls == ["abc"]
+    assert carried(result)["deleted"] is True
+    assert "recoverable in the web app" in said(result)
+    assert "Nothing at this door can bring it back" in said(result), (
+        "an agent must be told the restore is not its to make"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_token_works_once():
+    async def _delete(uid, run_id):
+        return {"deleted_at": "x"}
+
+    first = carried(await invoke(
+        "delete_room", {"run_id": "abc"}, read_room=_read_full, delete_room=_delete
+    ))
+    args = {"run_id": "abc", "confirm": first["confirm"]}
+    await invoke("delete_room", args, read_room=_read_full, delete_room=_delete)
+    replayed = await invoke("delete_room", args, read_room=_read_full, delete_room=_delete)
+
+    assert replayed["isError"] is True
+    assert "works once" in said(replayed)
+
+
+@pytest.mark.asyncio
+async def test_a_token_cannot_be_spent_on_a_different_room():
+    """The trap this key shape exists to close: an agent holding a confirmation
+    for one room must not be one argument away from deleting another."""
+    async def _delete(uid, run_id):
+        return {"deleted_at": "x"}
+
+    first = carried(await invoke(
+        "delete_room", {"run_id": "abc"}, read_room=_read_full, delete_room=_delete
+    ))
+    wrong = await invoke(
+        "delete_room",
+        {"run_id": "other-room", "confirm": first["confirm"]},
+        read_room=_read_full,
+        delete_room=_delete,
+    )
+
+    assert wrong["isError"] is True
+    assert "for the room it was issued against" in said(wrong)
+
+
+@pytest.mark.asyncio
+async def test_an_invented_token_is_refused_with_how_to_get_a_real_one():
+    result = await invoke(
+        "delete_room",
+        {"run_id": "abc", "confirm": "made-up"},
+        read_room=_read_full,
+        delete_room=_unreachable("delete_room"),
+    )
+    assert result["isError"] is True
+    text = said(result)
+    assert "no `confirm`" in text, "say how to start the handshake properly"
+    assert "restarts" in text, (
+        "and that a restart drops pending confirmations, so an agent retries "
+        "the first call rather than hammering the second"
+    )
+
+
+@pytest.mark.asyncio
+async def test_deleting_a_room_that_is_not_there_says_so_without_a_token():
+    async def _missing(uid, run_id):
+        return {"status": "unknown", "result": None}
+
+    result = await invoke(
+        "delete_room", {"run_id": "nope"}, read_room=_missing,
+        delete_room=_unreachable("delete_room"),
+    )
+    assert carried(result)["deleted"] is False
+    assert "list_rooms" in said(result), "and points at how to get an id that works"
+
+
+def test_every_tool_is_mapped_to_a_scope():
+    """A tool missing from SCOPE_BY_TOOL is not scope-free, it is unfinished.
+
+    star/mcp/router.py skips the check when `scope_for` returns None, so an
+    unmapped tool is callable by ANY valid token whatever it was granted.
+    `ask_room` shipped that way and nothing noticed until `delete_room` made
+    the same omission dangerous. This is the same completeness assertion the
+    runner map already gets, for the same reason.
+    """
+    from star.oauth import validate
+
+    assert set(validate.SCOPE_BY_TOOL) == {tool["name"] for tool in tools.TOOLS}
+    assert set(validate.SCOPE_BY_TOOL.values()) <= set(metadata.SCOPES_SUPPORTED)
+
+
+def test_deleting_needs_its_own_scope_and_writing_does_not_grant_it():
+    """Building and deleting are opposite risks. A reader who let an agent
+    research for them has said nothing about whether it may clear their
+    workspace, and folding delete into rooms:write would infer the second
+    consent from the first."""
+    from star.oauth import validate
+
+    assert validate.SCOPE_BY_TOOL["delete_room"] == "rooms:delete"
+    assert validate.SCOPE_BY_TOOL["build_room"] == "rooms:write"
+    assert "rooms:delete" not in metadata.SCOPES_DEFAULT, (
+        "and a client that names no scope is not registered for it"
+    )

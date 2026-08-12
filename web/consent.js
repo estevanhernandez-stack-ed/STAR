@@ -148,6 +148,21 @@ const SCOPES = {
       "It costs nothing, spends no searches, and is never rate-limited.",
     ],
   },
+  "rooms:delete": {
+    title: "Delete rooms from your workspace",
+    lines: [
+      "Lets this client remove a filed room: the research, its sources, and " +
+        "every check filed against it. It takes two calls and the first one " +
+        "deletes nothing — it reports what the room holds and hands back a " +
+        "one-time confirmation — but the second call does not ask you.",
+      "A deleted room leaves your rail at once and stays recoverable HERE, " +
+        "in the web app, for a window this screen names below. After that it " +
+        "is destroyed for good and nothing can bring it back.",
+      "Restoring is yours alone. Nothing at this door can undo a delete, so " +
+        "granting this means an agent can empty your workspace and only you " +
+        "can refill it.",
+    ],
+  },
   "rooms:write": {
     title: "Build new rooms, and check scenes against them",
     lines: [
@@ -156,8 +171,8 @@ const SCOPES = {
         "count against a daily budget the whole department shares.",
       "A scene sent to be checked is stored with the room it was checked " +
         "against, and stays there until it is deleted from the web app.",
-      "Nothing at this door removes anything. No call the department " +
-        "offers here deletes a room, a check, or a scene.",
+      "Nothing in this request removes anything. Deleting a room is a " +
+        "separate permission, asked for separately, and this is not it.",
     ],
   },
 };

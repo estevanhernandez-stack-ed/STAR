@@ -39,9 +39,23 @@ SCOPE_SEPARATOR = metadata.SCOPE_SEPARATOR
 SCOPE_BY_TOOL = {
     "list_rooms": "rooms:read",
     "get_room": "rooms:read",
+    "ask_room": "rooms:read",
     "build_room": "rooms:write",
     "check_scene": "rooms:write",
+    # Its own scope, not folded into rooms:write. Building and deleting are
+    # opposite risks — one spends money to make something, the other destroys
+    # something already paid for — and a reader handing an agent the ability to
+    # research for them has said nothing about whether it may clear their
+    # workspace. Granting them together would be inferring the second consent
+    # from the first.
+    "delete_room": "rooms:delete",
 }
+
+# A tool missing from the map above is not scope-free, it is unfinished: the
+# router skips the check when `scope_for` returns None, so an unmapped tool is
+# callable by any valid token whatever it was granted. `ask_room` shipped that
+# way and was caught by adding delete. tests/test_mcp_protocol.py asserts this
+# map covers every tool, which is the guard that stops the next one.
 
 # RFC 6750's two, and they are the only two this file emits.
 INVALID_TOKEN = "invalid_token"

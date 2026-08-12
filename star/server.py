@@ -933,7 +933,16 @@ async def _list_rooms_for(uid: str) -> list[dict]:
 @app.get("/api/rooms")
 async def list_rooms(authorization: str | None = Header(None)) -> dict:
     uid = _require_uid(authorization)
-    return {"rooms": await _list_rooms_for(uid)}
+    # Both lists in one answer. The rail draws them apart and a reader who
+    # deleted something needs to find it again without knowing an id — without
+    # this, the window is thirty days a person cannot reach, and every sentence
+    # promising the room is "recoverable in the web app" is false.
+    deleted = await asyncio.to_thread(_store.list_deleted_rooms, uid)
+    return {
+        "rooms": await _list_rooms_for(uid),
+        "deleted": deleted,
+        "retention_days": config.room_retention_days(),
+    }
 
 
 async def _read_room(uid: str, run_id: str) -> dict:
@@ -966,6 +975,19 @@ async def _read_room(uid: str, run_id: str) -> dict:
     document = await asyncio.to_thread(_store.get, uid, run_id)
     if document is None:
         raise HTTPException(404, "Unknown run")
+
+    # A deleted room answers as deleted rather than as missing, for the whole
+    # window it is recoverable. 404 would be the app lying about what it still
+    # holds — and it would make restore impossible for anyone holding the id,
+    # which is the one thing the window exists to allow.
+    deleted_at = document.get("deleted_at") or ""
+    if deleted_at:
+        return {
+            "status": "deleted",
+            "deleted_at": deleted_at,
+            "purges_after_days": config.room_retention_days(),
+            "result": document_to_room(document),
+        }
 
     # Stored as running but absent from memory: the in-flight asyncio task did
     # not survive a restart, and nothing will ever finish it. Say so once
@@ -1387,6 +1409,50 @@ async def get_scene(
     return document_to_scene(document)
 
 
+@app.delete("/api/rooms/{run_id}")
+async def delete_room(run_id: str, authorization: str | None = Header(None)) -> dict:
+    """Take a room out of sight, keeping it recoverable for the window.
+
+    A flag on the document, not the document, and that is the opposite call
+    from `delete_scene` below on purpose. A scene is a writer's script pages
+    and the promise above the paste box is that the text stops being kept, so
+    it goes for good the moment they say so. A room is research that cost real
+    money and several minutes, its loss is the expensive mistake rather than
+    its retention, and nothing in this app promises a room stops existing the
+    instant it leaves the rail. It leaves the rail immediately either way;
+    what the window buys is the morning after.
+
+    Returns when it purges, because a delete that will not say when it becomes
+    permanent is asking the reader to trust a number nobody stated.
+    """
+    uid = _require_uid(authorization)
+    when = datetime.now(timezone.utc).isoformat()  # noqa: UP017
+    if not await asyncio.to_thread(_store.soft_delete_room, uid, run_id, when):
+        raise HTTPException(404, "Unknown run")
+    return {
+        "run_id": run_id,
+        "deleted_at": when,
+        "retention_days": config.room_retention_days(),
+    }
+
+
+@app.post("/api/rooms/{run_id}/restore")
+async def restore_room(run_id: str, authorization: str | None = Header(None)) -> dict:
+    """Put a deleted room back, if the window has not closed on it.
+
+    404 covers three cases the store reports apart — no such room, never
+    deleted, past the window — and collapses them here on purpose. The first is
+    genuinely unknown; the other two are indistinguishable from unknown to
+    anyone who should not learn which rooms exist under an account they cannot
+    read, and the web app is the only caller, where the reader just saw the
+    room in a list this endpoint's own answer built.
+    """
+    uid = _require_uid(authorization)
+    if not await asyncio.to_thread(_store.restore_room, uid, run_id):
+        raise HTTPException(404, "Unknown run")
+    return {"run_id": run_id, "restored": True}
+
+
 @app.delete("/api/rooms/{run_id}/scenes/{scene_id}")
 async def delete_scene(
     run_id: str, scene_id: str, authorization: str | None = Header(None)
@@ -1566,12 +1632,30 @@ async def _resolve_mcp_token(authorization: str | None):
     return await tokens.resolve(authorization, _token_store)
 
 
+async def _mcp_delete_room(uid: str, run_id: str) -> dict | None:
+    """The agent door's delete, on the same store call the browser door uses.
+
+    Returns the room document when it soft-deleted one and None when there was
+    nothing there, so the tool can report what it removed rather than only that
+    it removed something. Reads before writing for that reason alone — the
+    store's own answer is a bool.
+    """
+    document = await asyncio.to_thread(_store.get, uid, run_id)
+    if document is None:
+        return None
+    when = datetime.now(timezone.utc).isoformat()  # noqa: UP017
+    if not await asyncio.to_thread(_store.soft_delete_room, uid, run_id, when):
+        return None
+    return {**document, "deleted_at": document.get("deleted_at") or when}
+
+
 app.include_router(
     build_mcp_router(
         start_build=_mcp_start_build,
         read_room=_read_room,
         list_rooms_for=_list_rooms_for,
         run_check=_run_check,
+        delete_room=_mcp_delete_room,
         resolve_token=_resolve_mcp_token,
     )
 )

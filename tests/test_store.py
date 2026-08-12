@@ -55,8 +55,14 @@ class _FakeDoc:
 
 
 class _FakeSnapshot:
-    def __init__(self, data):
+    def __init__(self, data, reference=None):
         self._data = data
+        # Real snapshots carry a `.reference` back to the document they came
+        # from, and a sweep that deletes what it streamed uses it rather than
+        # rebuilding a path from a field inside the data. The fake grew one when
+        # RoomStore.purge_room needed it: modelling the API the code legitimately
+        # uses beats bending the code around a gap in the double.
+        self.reference = reference
 
     @property
     def exists(self):
@@ -103,7 +109,7 @@ class _FakeCollection:
                 and path.count("/") == depth
                 and (self._matches is None or self._matches(data))
             ):
-                yield _FakeSnapshot(data)
+                yield _FakeSnapshot(data, _FakeDoc(self._store, path))
 
 
 class _FakeClient:
@@ -243,3 +249,127 @@ def test_mark_interrupted_returns_false_when_the_document_is_gone():
     store = RoomStore(client=_FakeClient())
 
     assert store.mark_interrupted("uid-one", "does-not-exist") is False
+
+
+
+def _now() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat()  # noqa: UP017
+
+
+def _long_ago() -> str:
+    """Comfortably past any retention window a config could set."""
+    from datetime import datetime, timedelta, timezone
+
+    from star import config
+
+    days = config.room_retention_days() + 5
+    return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()  # noqa: UP017
+
+
+# -- deleting a room ---------------------------------------------------------
+#
+# Reversible for a window, then real. The two halves are tested apart because
+# they fail apart: a soft delete that does not hide the room leaves a workspace
+# that never gets clean, and a purge that misses the scenes subcollection leaves
+# the writer's own script pages under a path nothing lists and nobody can reach.
+
+
+def _room_with_a_check(store, uid="uid-one", run_id="abc123", created="2026-08-09T12:00:00Z"):
+    store.save(uid, run_id, room_to_document(run_id, RESULT, "complete", created))
+    store.save_scene(uid, run_id, "scene-1", {"scene_id": "scene-1", "scene": "INT. ..."})
+    return uid, run_id
+
+
+def _fresh():
+    return RoomStore(client=_FakeClient())
+
+
+def test_a_deleted_room_leaves_the_list_at_once_but_is_not_destroyed():
+    store = _fresh()
+    uid, run_id = _room_with_a_check(store)
+
+    assert store.soft_delete_room(uid, run_id, _now()) is True
+    assert store.list_rooms(uid) == [], "gone from the writer's sight immediately"
+    assert store.get(uid, run_id) is not None, "and still there to be restored"
+    assert store.get_scene(uid, run_id, "scene-1") is not None
+
+
+def test_deleting_a_room_that_is_not_there_says_so():
+    """`delete_scene`'s rule, for the same reason: the endpoint turns False into
+    a 404, and a delete that always reported success would tell a writer their
+    research was gone on a run_id that was never theirs."""
+    assert _fresh().soft_delete_room("uid-one", "never-existed", _now()) is False
+
+
+def test_deleting_twice_does_not_extend_the_window():
+    """A retry must not buy another thirty days. An agent that retries a delete
+    would otherwise keep a room alive indefinitely by trying to remove it."""
+    store = _fresh()
+    uid, run_id = _room_with_a_check(store)
+    first = "2026-07-01T00:00:00+00:00"
+
+    store.soft_delete_room(uid, run_id, first)
+    assert store.soft_delete_room(uid, run_id, _now()) is True
+    assert store.get(uid, run_id)["deleted_at"] == first, "the clock did not move"
+
+
+def test_restore_brings_a_room_back_inside_the_window():
+    store = _fresh()
+    uid, run_id = _room_with_a_check(store)
+    store.soft_delete_room(uid, run_id, _now())
+
+    assert store.restore_room(uid, run_id) is True
+    assert [r["run_id"] for r in store.list_rooms(uid)] == [run_id]
+
+
+def test_restore_refuses_a_room_that_was_never_deleted_or_is_past_the_window():
+    store = _fresh()
+    uid, run_id = _room_with_a_check(store)
+    assert store.restore_room(uid, run_id) is False, "nothing to bring back"
+
+    store.soft_delete_room(uid, run_id, _long_ago())
+    assert store.restore_room(uid, run_id) is False, "the window has closed"
+    assert store.restore_room(uid, "never-existed") is False
+
+
+def test_listing_destroys_a_room_whose_window_has_closed_and_its_checks_with_it():
+    """The purge, and the half that is easy to get wrong.
+
+    Firestore does not cascade: deleting a document leaves its subcollections
+    addressable and invisible. A purge that took the room and left the scenes
+    would keep the writer's own script pages forever under a path nothing lists.
+    """
+    store = _fresh()
+    uid, run_id = _room_with_a_check(store)
+    store.soft_delete_room(uid, run_id, _long_ago())
+
+    assert store.list_rooms(uid) == []
+    assert store.get(uid, run_id) is None, "the room is gone for good"
+    assert store.get_scene(uid, run_id, "scene-1") is None, (
+        "and the check filed against it went with it"
+    )
+
+
+def test_the_purge_leaves_every_other_room_alone():
+    store = _fresh()
+    uid, doomed = _room_with_a_check(store, run_id="doomed")
+    _room_with_a_check(store, run_id="kept", created="2026-08-10T12:00:00Z")
+    store.soft_delete_room(uid, doomed, _long_ago())
+
+    assert [r["run_id"] for r in store.list_rooms(uid)] == ["kept"]
+    assert store.get(uid, "kept") is not None
+    assert store.get_scene(uid, "kept", "scene-1") is not None
+
+
+def test_one_writers_delete_cannot_reach_another_writers_room():
+    """Ownership by path construction, the way delete_scene already gets it —
+    `users/{uid}/rooms/...` never resolves across accounts, so this is true by
+    the shape of the read rather than by a check somebody has to remember."""
+    store = _fresh()
+    _room_with_a_check(store, uid="owner", run_id="theirs")
+
+    assert store.soft_delete_room("stranger", "theirs", _now()) is False
+    assert store.purge_room("stranger", "theirs") is False
+    assert store.get("owner", "theirs") is not None

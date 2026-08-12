@@ -533,6 +533,72 @@ a {
   margin-top: 0.15rem;
 }
 
+/* The deleted group. Quieter than a live room in every respect — it is a
+   holding area, not a place to work — but never so quiet it reads as disabled,
+   because the control in it is the only way back from a delete.
+
+   --pencil-text on --drawer-shadow is 4.80:1, recorded in this file already
+   for the rail's own metadata; no new pair. */
+/* The delete warning, on the docket's manila. --ink at 0.85 is 7.34:1 there,
+   the same treatment .uncertainty-line already carries on paper. Empty until
+   the first press, and role="alert" so a reader who cannot see it is told what
+   the second press will do BEFORE they make it. */
+.room-delete-note {
+  margin: 0.6rem 0 0;
+  max-width: 62ch;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--ink);
+  opacity: 0.85;
+}
+
+.room-delete-note:empty {
+  margin: 0;
+}
+
+.rail-deleted-legend {
+  margin: 1.4rem 0 0.2rem;
+  padding-left: 0.1rem;
+}
+
+.rail-deleted-note {
+  margin: 0 0 0.5rem;
+  padding-left: 0.1rem;
+  font-family: var(--body);
+  font-size: var(--label-sm);
+  color: var(--pencil-text);
+}
+
+.rail-deleted-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.3rem 0.1rem;
+}
+
+.rail-deleted-title {
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  color: var(--pencil-text);
+  overflow-wrap: anywhere;
+}
+
+.rail-restore-btn {
+  flex: none;
+  background: none;
+  border: none;
+  padding: 0.1rem 0;
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--manila);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
 /* The card's entry, at the foot of the rail and nowhere else.
    Lives here rather than in web/account.css because every .rail-* rule in this
    app lives in this file, and the card's PANEL is what account.css owns. One
