@@ -276,6 +276,9 @@ def test_list_rooms_returns_only_the_callers_rooms():
     client = TestClient(server.app)
     fake_store = mock.Mock()
     fake_store.list_rooms.return_value = [{"run_id": "abc", "title": "1962 Memphis"}]
+    # A Mock returns a Mock, which is not serialisable — and the rail now asks
+    # for the deleted list in the same answer, so the double has to model it.
+    fake_store.list_deleted_rooms.return_value = []
 
     with (
         mock.patch("star.server.verify_token", return_value="uid-one"),
@@ -284,8 +287,11 @@ def test_list_rooms_returns_only_the_callers_rooms():
         response = client.get("/api/rooms", headers=AUTH)
 
     assert response.status_code == 200
-    assert response.json()["rooms"][0]["run_id"] == "abc"
+    body = response.json()
+    assert body["rooms"][0]["run_id"] == "abc"
+    assert body["deleted"] == [], "the rail is told about deleted rooms too"
     fake_store.list_rooms.assert_called_once_with("uid-one")
+    fake_store.list_deleted_rooms.assert_called_once_with("uid-one")
 
 
 def test_get_room_falls_back_to_firestore_when_not_in_memory():

@@ -238,8 +238,16 @@
                 aria-expanded="false" aria-controls="check-panel">Check a scene</button>
               <button id="bible-btn" class="docket-btn" type="button"
                 aria-expanded="false" aria-controls="bible-surface">The bible</button>
+              <!-- Two presses, the same arming web/scriptcheck.js's buildFoot
+                   uses for a check. A room costs real money and several
+                   minutes, so the first press says exactly what goes and the
+                   second does it, with the warning on the page rather than
+                   behind a browser dialog. -->
+              <button id="room-delete-btn" class="docket-btn" type="button"
+                data-armed="false">Delete this room</button>
             </div>
           </div>
+          <p id="room-delete-note" class="room-delete-note" role="alert"></p>
           <p id="result-stats" class="meter"></p>
           <div id="docket-body"></div>
         </div>

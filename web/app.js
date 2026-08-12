@@ -239,6 +239,60 @@ checkBtn.addEventListener("click", () => {
   setRoomMode(roomMode === "check" ? "drawers" : "check");
 });
 
+// The room a delete would remove. showResults sets it; nothing else does, so
+// the control can never be pointed at a room the reader is not looking at.
+let openRoomId = null;
+
+/* Two presses, and the first one only warns.
+ *
+ * The same arming web/scriptcheck.js's buildFoot uses for a check, and for the
+ * same argument it makes there: a room costs real money and several minutes,
+ * one stray click should not be able to spend that again, and the warning
+ * belongs on the page in the department's voice rather than behind a browser
+ * dialog nobody reads.
+ *
+ * It says the room is recoverable, because it is — unlike the check delete one
+ * file over, which says the opposite and means it. */
+function disarmRoomDelete() {
+  const btn = $("room-delete-btn");
+  if (!btn) return;
+  btn.setAttribute("data-armed", "false");
+  btn.replaceChildren(document.createTextNode("Delete this room"));
+  const note = $("room-delete-note");
+  if (note) note.replaceChildren();
+}
+
+const roomDeleteBtn = $("room-delete-btn");
+if (roomDeleteBtn) {
+  roomDeleteBtn.addEventListener("click", async () => {
+    if (!openRoomId) return;
+    const note = $("room-delete-note");
+    if (roomDeleteBtn.getAttribute("data-armed") !== "true") {
+      roomDeleteBtn.setAttribute("data-armed", "true");
+      roomDeleteBtn.replaceChildren(document.createTextNode("Delete it"));
+      note.replaceChildren(
+        document.createTextNode(
+          "This takes the room out of your rail along with every check filed " +
+            "against it. It stays in Deleted, at the foot of the rail, where " +
+            "you can put it back — after that it is destroyed for good."
+        )
+      );
+      return;
+    }
+    roomDeleteBtn.disabled = true;
+    try {
+      await authedFetch(`/api/rooms/${encodeURIComponent(openRoomId)}`, {
+        method: "DELETE",
+      });
+    } finally {
+      roomDeleteBtn.disabled = false;
+      disarmRoomDelete();
+      showIntake();
+      await refreshRail(null);
+    }
+  });
+}
+
 // One variable, three views, and exactly one visible at a time. It replaces
 // the boolean setBibleOpen carried, which could only ever describe two: with
 // a third surface a boolean becomes two booleans that have to be kept from
@@ -866,6 +920,10 @@ async function showResults(runId) {
   // First, before the request goes out. shell.js's loadRoom has already
   // revealed the stage by the time this runs — see resetRoomView.
   resetRoomView(runId);
+  openRoomId = runId;
+  // Disarmed on every room open, so an armed control never carries over from
+  // the room a reader just left to the one they are now looking at.
+  disarmRoomDelete();
 
   const res = await authedFetch(`/api/rooms/${runId}`);
   if (!res.ok) {

@@ -275,6 +275,25 @@ class RoomStore:
         live.sort(key=lambda d: d.get("created_at") or "", reverse=True)
         return [room_summary(d) for d in live]
 
+    def list_deleted_rooms(self, uid: str) -> list[dict]:
+        """The rooms a writer has deleted and can still take back.
+
+        Its own read rather than a flag on `list_rooms`, because the two lists
+        are answering different questions and the rail draws them apart. This
+        one does NOT purge: `list_rooms` owns that sweep, and a second caller
+        deleting documents mid-read is how the same room gets purged twice.
+        """
+        cutoff = _retention_cutoff()
+        docs = [
+            doc
+            for snapshot in self._rooms(uid).stream()
+            if snapshot.exists
+            for doc in [snapshot.to_dict()]
+            if (doc.get("deleted_at") or "") >= cutoff and doc.get("deleted_at")
+        ]
+        docs.sort(key=lambda d: d.get("deleted_at") or "", reverse=True)
+        return [{**room_summary(d), "deleted_at": d.get("deleted_at") or ""} for d in docs]
+
     def soft_delete_room(self, uid: str, run_id: str, when: str) -> bool:
         """Take a room out of sight, keeping it recoverable.
 

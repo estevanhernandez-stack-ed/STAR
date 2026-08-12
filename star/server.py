@@ -933,7 +933,16 @@ async def _list_rooms_for(uid: str) -> list[dict]:
 @app.get("/api/rooms")
 async def list_rooms(authorization: str | None = Header(None)) -> dict:
     uid = _require_uid(authorization)
-    return {"rooms": await _list_rooms_for(uid)}
+    # Both lists in one answer. The rail draws them apart and a reader who
+    # deleted something needs to find it again without knowing an id — without
+    # this, the window is thirty days a person cannot reach, and every sentence
+    # promising the room is "recoverable in the web app" is false.
+    deleted = await asyncio.to_thread(_store.list_deleted_rooms, uid)
+    return {
+        "rooms": await _list_rooms_for(uid),
+        "deleted": deleted,
+        "retention_days": config.room_retention_days(),
+    }
 
 
 async def _read_room(uid: str, run_id: str) -> dict:
