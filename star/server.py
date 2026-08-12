@@ -1761,9 +1761,15 @@ async def browser_config() -> Response:
         "projectId": os.environ.get("FIREBASE_PROJECT_ID", ""),
     }
     google = {"clientId": os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "")}
+    # Limits the browser has to agree with, served rather than duplicated. A
+    # cap typed into JS to match one defined in Python is the same defect
+    # web/consent.js shipped when it advertised "four calls" on the day a fifth
+    # tool landed: two sources of truth, and only one of them ever moves.
+    limits = {"roomTitleChars": config.max_room_title_chars()}
     return Response(
         f"export const FIREBASE = {json.dumps(payload)};\n"
-        f"export const GOOGLE = {json.dumps(google)};",
+        f"export const GOOGLE = {json.dumps(google)};\n"
+        f"export const LIMITS = {json.dumps(limits)};",
         media_type="application/javascript",
     )
 

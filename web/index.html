@@ -245,6 +245,32 @@
                    behind a browser dialog. -->
               <button id="room-delete-btn" class="docket-btn" type="button"
                 data-armed="false">Delete this room</button>
+              <!-- What the room is called and what it belongs to. One control
+                   for both because they are one act: a writer looking at a
+                   room and deciding those two things. Ships closed — a room
+                   that is already named right should not carry an open form
+                   about naming. -->
+              <button id="room-edit-btn" class="docket-btn" type="button"
+                aria-expanded="false" aria-controls="room-edit">Name and place</button>
+            </div>
+          </div>
+          <div id="room-edit" class="room-edit hidden">
+            <label class="room-edit-label" for="room-title-input">Name</label>
+            <input id="room-title-input" class="room-edit-input" type="text"
+              autocomplete="off" />
+            <p id="room-title-hint" class="room-edit-hint">
+              Clear it to go back to the name the department gave it.
+            </p>
+
+            <label class="room-edit-label" for="room-parent-select">Continues from</label>
+            <select id="room-parent-select" class="room-edit-select"></select>
+            <p class="room-edit-hint">
+              Rooms that follow one another are filed together in the rail.
+            </p>
+
+            <div class="room-edit-foot">
+              <button id="room-edit-save" class="docket-btn" type="button">Save</button>
+              <p id="room-edit-note" class="room-edit-note" role="alert"></p>
             </div>
           </div>
           <p id="room-delete-note" class="room-delete-note" role="alert"></p>

@@ -9,7 +9,7 @@ import pytest
 from fastapi.encoders import jsonable_encoder
 from fastapi.testclient import TestClient
 
-from star import server
+from star import config, server
 from star.ledger import SourceLedger
 from star.models import Category
 
@@ -855,12 +855,23 @@ def test_config_js_exposes_only_the_public_firebase_keys_and_no_secrets():
     # environment crosses into the browser, and the test that guards it has to
     # fail on an ADDED key rather than only on a changed one — a leak arrives
     # as something new in the payload, never as something missing from it.
-    assert set(exported) == {"FIREBASE", "GOOGLE"}
+    assert set(exported) == {"FIREBASE", "GOOGLE", "LIMITS"}
     assert set(exported["FIREBASE"]) == {"apiKey", "projectId"}
     assert exported["FIREBASE"]["apiKey"] == "public-web-key"
     assert exported["FIREBASE"]["projectId"] == "star-project"
     assert set(exported["GOOGLE"]) == {"clientId"}
     assert exported["GOOGLE"]["clientId"] == "public-oauth-client-id"
+
+    # LIMITS carries caps the browser has to agree with, and nothing else. It
+    # is here rather than typed into JS because a cap duplicated across two
+    # languages is two sources of truth and only one of them ever moves — the
+    # defect web/consent.js shipped when it advertised "four calls" on the day
+    # a fifth tool landed. Each entry is a number: a limit is a number, and a
+    # string in this block would be a value from the environment wearing a
+    # limit's name.
+    assert set(exported["LIMITS"]) == {"roomTitleChars"}
+    assert exported["LIMITS"]["roomTitleChars"] == config.max_room_title_chars()
+    assert all(isinstance(value, int) for value in exported["LIMITS"].values())
 
     # GOOGLE_OAUTH_CLIENT_ID is public and GOOGLE_API_KEY is the Gemini
     # credential, and as of this cycle they share a prefix. Anything that ever

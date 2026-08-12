@@ -543,6 +543,78 @@ a {
    the same treatment .uncertainty-line already carries on paper. Empty until
    the first press, and role="alert" so a reader who cannot see it is told what
    the second press will do BEFORE they make it. */
+/* Naming a room and saying what it follows. On the docket's manila, at the
+   --ink 0.85 this file already records as 7.34:1 there for .room-delete-note —
+   one measured pair for the whole docket's secondary text, not a new one per
+   control.
+
+   Ships hidden. A room already named right should not carry an open form about
+   naming, and the panel is a deliberate step rather than a field a stray click
+   can edit. */
+.room-edit {
+  margin: 0.7rem 0 0;
+  padding: 0.9rem 1rem;
+  max-width: 62ch;
+  border: 1px solid color-mix(in srgb, var(--ink) 25%, transparent);
+  border-radius: 3px;
+}
+
+.room-edit-label {
+  display: block;
+  margin: 0 0 0.3rem;
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.room-edit-input,
+.room-edit-select {
+  display: block;
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  font-family: var(--body);
+  font-size: var(--text-md);
+  color: var(--ink);
+  background: var(--onionskin);
+  border: 1px solid color-mix(in srgb, var(--ink) 45%, transparent);
+  border-radius: 2px;
+}
+
+.room-edit-hint {
+  margin: 0.35rem 0 0.9rem;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--ink);
+  opacity: 0.85;
+}
+
+.room-edit-foot {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
+
+/* Empty until something goes wrong, and role="alert" so a reader who cannot
+   see it is told the refusal rather than left with a form that did nothing. */
+.room-edit-note {
+  margin: 0;
+  flex: 1 1 24ch;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--ink);
+  opacity: 0.85;
+}
+
+.room-edit-note:empty {
+  margin: 0;
+}
+
 .room-delete-note {
   margin: 0.6rem 0 0;
   max-width: 62ch;

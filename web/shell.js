@@ -64,6 +64,17 @@ let _unreadable = false;
  *  endRun clears it — because a stale value here would send a reader to a live
  *  surface for a run that has already finished, which is the one failure this
  *  is meant to prevent in the other direction. */
+/** The rooms the rail last drew, for anything that needs the account's own
+ *  list without going back to the network.
+ *
+ *  A copy, not the array: a caller that sorted or spliced this in place would
+ *  silently reorder the rail on the next paint. The room editor needs it to
+ *  offer "continues from" over rooms that actually exist, and the alternative
+ *  is a second fetch of a list the rail is already holding. */
+export function knownRooms() {
+  return [..._rooms];
+}
+
 export function setLiveRun(runId) {
   _liveRunId = runId;
 }
