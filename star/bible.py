@@ -137,6 +137,158 @@ def coverage(result: object) -> dict | None:
     }
 
 
+_VERIFY = re.compile(r"(?i)verify\s+before\s+writing")
+
+#: Lines that ARE the block's opener rather than its content. A heading or a
+#: bare label carries no note, and the note is whatever comes after it.
+_LABEL_ONLY = re.compile(r"(?i)^[>#*\-\s]*verify\s+before\s+writing[:\s*]*$")
+
+#: The empty case, and the reason this filter exists at all. Synthesis is asked
+#: for a "Verify before writing" note per section and answers every time, so
+#: most sections carry "None noted in field findings" — six of the eight blocks
+#: in one stored room. Surfacing those as warnings would train a reader to skim
+#: past the one that matters, which is the exact failure this feature exists to
+#: prevent. Deliberately NARROW: it drops only unambiguous nothing-to-report
+#: statements, because a false negative here is a caution silently withheld and
+#: a false positive is one line of noise.
+#: Tested against the CLEANED note, never the raw line. The first version
+#: matched the raw one and leaked every time, because stripping the label off a
+#: single-line block leaves a colon the prefix class did not cover — "None
+#: noted in field findings." reached the summary as a caution. Matching what a
+#: reader would actually see removes the whole class of that mistake.
+_NOTHING = re.compile(r"(?i)^(?:none|no\b|n/?a|nothing)\b[^.]*\.?$")
+
+
+def verify_notes(result: object) -> list[str]:
+    """The cautions the researchers flagged, lifted out of the bible's prose.
+
+    THE PROBLEM THIS SOLVES. Synthesis is instructed to preserve researchers'
+    uncertainty flags in a "Verify before writing" note per section, and it
+    does — one stored room carries four, including the one that named a false
+    premise in its own writer's treatment: the intake said a September 1977
+    blackout, the research says July 13-14. That is the single most valuable
+    line in the document and it sits five screens down inside section one. A
+    writer who skims the drawers and never reads the bible top to bottom misses
+    the one line that saves them a rewrite.
+
+    PARSED FROM MODEL PROSE, WHICH IS A COMPROMISE AND IS WORTH NAMING. There
+    is no structured field for these; the editor writes them into the document
+    in whatever shape it likes, and across stored rooms that has been a
+    blockquote, an h3, an h4, a list item, and a bare line. So this reads
+    loosely and forgives formatting, and it errs toward INCLUDING a note it is
+    unsure about. The cost of a wrongly-included line is one line; the cost of
+    a wrongly-dropped one is a caution the department found and then withheld.
+    """
+    if not isinstance(result, dict):
+        return []
+    bible = result.get("research_bible") or ""
+    if not bible.strip():
+        return []
+
+    notes: list[str] = []
+    lines = bible.split("\n")
+    for index, raw in enumerate(lines):
+        if not _VERIFY.search(raw):
+            continue
+        # The note is either on this line after the label, or on the lines
+        # under it. A heading-only opener means look below.
+        if _LABEL_ONLY.match(raw.strip()):
+            body = _join_wrapped(_collect(lines, index + 1))
+        else:
+            body = [_VERIFY.sub("", raw, count=1)]
+        for line in body:
+            text = _clean(line)
+            if text and not _says_nothing(text) and text not in notes:
+                notes.append(text)
+    return notes
+
+
+def _collect(lines: list[str], start: int) -> list[str]:
+    """The lines belonging to a block that opened with a bare label.
+
+    Stops at the first heading or the first blank line that is not inside a
+    blockquote — the editor separates a note from the source list that follows
+    it with exactly one of those, in every stored room checked.
+    """
+    body: list[str] = []
+    for raw in lines[start : start + 12]:
+        stripped = raw.strip()
+        if stripped.startswith("#"):
+            break
+        if not stripped:
+            if body:
+                break
+            continue
+        body.append(raw)
+    return body
+
+
+def _join_wrapped(body: list[str]) -> list[str]:
+    """One note per bullet, however many lines the editor spread it over.
+
+    Markdown source is usually not hard-wrapped and every stored room's notes
+    sit on one line each, so this is protection rather than a fix for observed
+    data. It is worth having anyway because the failure is loud and ugly: a
+    wrapped caution became three separate cautions, each a sentence fragment,
+    printed as three things to check. Found by a test fixture that happened to
+    wrap where the real document did not.
+
+    A line starting a new bullet starts a new note. Anything else continues the
+    one before it.
+    """
+    joined: list[str] = []
+    for raw in body:
+        content = re.sub(r"^>\s*", "", raw.strip())
+        if not joined or re.match(r"^[-*+]\s+", content):
+            joined.append(content)
+        else:
+            joined[-1] = f"{joined[-1]} {content}".strip()
+    return joined
+
+
+def _says_nothing(text: str) -> bool:
+    """Is this a note reporting that there is nothing to report?
+
+    Checked twice: on the whole note, and on whatever follows a short leading
+    label. The editor writes both `None noted in field findings.` and
+    `Note for writer: No active setting uncertainty flags were noted`, and only
+    the first is caught by reading from the start. A label is any short run
+    before a colon — long enough to hold "Note for writer", too short to
+    swallow "Date Discrepancy: The story intake notes reference…", where the
+    text after the colon is the caution itself and must never be tested.
+    """
+    if _NOTHING.match(text):
+        return True
+    label, colon, rest = text.partition(":")
+    # The remainder gets its own strip. `Note for writer:* No active flags` puts
+    # an unpaired italic marker between the colon and the word, and testing
+    # from a `*` never matches anything — so the note read as a caution.
+    rest = rest.strip().lstrip("*").strip()
+    return bool(colon) and len(label) <= 24 and bool(_NOTHING.match(rest))
+
+
+def _clean(line: str) -> str:
+    """One note, without the markdown it arrived wearing."""
+    text = line.strip()
+    text = re.sub(r"^[>\-*\s]+", "", text)
+    text = _VERIFY.sub("", text, count=1)
+    text = text.lstrip(":*- ").strip()
+    # Every asterisk goes, paired or not. Two regexes unwrapping `**bold**` and
+    # `*italic*` stood here first and mutation testing could not make either
+    # fail — correctly, because this line already does their whole job. What it
+    # also does is the part they could not: `*Date Discrepancy:* The story
+    # intake…` loses its opening marker to the prefix strip above, leaving the
+    # closing one with nothing to pair against, and it reached a reader as
+    # "Date Discrepancy:*". A trailing one was likewise enough to defeat the
+    # end-anchor on the nothing-to-report filter, so "None.*" printed as a
+    # caution.
+    #
+    # Links and citation markers are left alone. A reader is better off seeing
+    # "[1, 2]" than seeing it removed: it is how they find the source behind a
+    # caution once they open the bible itself.
+    return text.replace("*", "").strip()
+
+
 def closing_clause(result: object) -> str:
     """How a room's inventory should finish when it gets to the bible.
 
