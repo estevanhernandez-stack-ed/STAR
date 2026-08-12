@@ -29,7 +29,8 @@ quoted exactly from the page, each carrying a verdict of `confirmed`, `anachroni
 answered**. The scene comes back marked in place with a citation rail.
 
 **The agent door.** The same department over MCP, so an agent can build a room and check a
-scene without a browser. Four tools, per-user bearer tokens, one shared budget with the
+scene without a browser, ask an existing room a question, or delete one. OAuth 2.1 with
+dynamic client registration, or a per-user bearer token, and one shared budget with the
 browser.
 
 ## The thing this is actually built around
@@ -165,21 +166,42 @@ Tokens are stored as sha256, shown once at issue, never recoverable, and revocab
 can only be issued to an account with a linked identity, because an anonymous account's only
 proof of ownership is a `localStorage` entry.
 
-Four tools and no fifth: `list_rooms`, `get_room`, `build_room`, `check_scene`. `get_room`
-**is** `build_room`'s poll. Every description is written for a reader who cannot see a
-screen, and every refusal names what failed and what to do next.
+The door serves `list_rooms`, `get_room`, `ask_room`, `build_room`, `check_scene` and
+`delete_room`. `get_room` **is** `build_room`'s poll. Every description is written for a
+reader who cannot see a screen, and every refusal names what failed and what to do next.
 
-**Known limitation, and the shape of it measured rather than assumed.** MCP's authorization
-spec expects OAuth 2.1 with protected-resource metadata discovery, and STAR ships none: all
-four `/.well-known/oauth-*` paths answer 404, and the `401` carries a bare
-`WWW-Authenticate: Bearer` with no `resource_metadata` parameter.
+That list is pinned by a test against `star/mcp/tools.py`, and it names them rather than
+counting them. The sentence here was wrong for a day after `ask_room` and `delete_room`
+shipped, because it advertised only the ones that came before — the same defect
+`web/consent.js` shipped when it promised "four calls" on the day a fifth tool landed. A
+number in prose is a second source of truth, and in a file that cannot compute one, a test is
+the only thing that keeps it honest.
 
-Any client configurable with a static bearer header works. A client that *requires* discovery
-and refuses without it will not. The interesting case is the one in between, and it is the
-common one: a client that **attempts** discovery, finds nothing, and falls back to the header
-it was given connects fine. Verified against the live service — `mcp-remote` logs
-"Discovering OAuth server configuration...", gets nothing, and completes `initialize` and
-`tools/list` anyway.
+**Authorization, measured against the live service on 2026-08-12.** OAuth 2.1 discovery
+works. `/.well-known/oauth-protected-resource` and `/.well-known/oauth-authorization-server`
+both answer 200, the authorization server advertises a `registration_endpoint` so dynamic
+client registration needs no pre-provisioned client, PKCE is `S256`, and the three scopes are
+`rooms:read`, `rooms:write` and `rooms:delete`. An unauthenticated call returns 401 with
+`WWW-Authenticate: Bearer resource_metadata="…/.well-known/oauth-protected-resource"`.
+
+A client that speaks the discovery flow connects with no manual configuration:
+
+```sh
+claude mcp add --transport http star https://star.626labs.dev/mcp
+```
+
+A client configurable with a static bearer header also works, using a token issued from
+**Your card**.
+
+**What still 404s**, because a limitation stated is worth more than one implied:
+`/.well-known/openid-configuration` and the path-suffixed
+`/.well-known/oauth-protected-resource/mcp` variant. A client that requires either specific
+path rather than the two above will not discover this server.
+
+The date on that paragraph is load-bearing. The text it replaced said "the shape of it
+measured rather than assumed" and then described a server that answered 404 on every
+discovery path — true when written, false by the time a judge read it, and claiming rigor
+while it was wrong. An undated measurement is how that happens.
 
 ### Connecting a desktop client
 
