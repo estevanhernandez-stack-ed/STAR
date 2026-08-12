@@ -38,7 +38,18 @@ from star import config
 # covers build_room and check_scene, which is the free-versus-spends split
 # every tool description in star/mcp/tools.py already states. A consent screen
 # can then say something true and specific instead of asking for everything.
-SCOPES_SUPPORTED = ("rooms:read", "rooms:write")
+SCOPES_SUPPORTED = ("rooms:read", "rooms:write", "rooms:delete")
+
+# What a client that names no scope at all is registered for, and deliberately
+# NOT everything on offer. `rooms:delete` has to be asked for by name.
+#
+# Registration is not consent — the reader still decides at /authorize — but a
+# client registered for delete requests delete, and the screen then asks a
+# writer to hand over the ability to clear their workspace because a client
+# left a field blank. Defaulting to the two non-destructive scopes means the
+# only clients that ever put that question in front of a reader are the ones
+# that meant to.
+SCOPES_DEFAULT = ("rooms:read", "rooms:write")
 
 # Space-delimited, which is how a scope set travels in every OAuth message.
 SCOPE_SEPARATOR = " "

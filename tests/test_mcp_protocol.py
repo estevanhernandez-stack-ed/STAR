@@ -35,6 +35,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from star import config, server, tokens
+from star.oauth import metadata
 from star.guards import DailyCap, RateLimiter
 from star.mcp import protocol, tools
 from star.models import Citation, ClaimResult, ScriptCheckResult, Verdict
@@ -2173,8 +2174,15 @@ def test_the_consent_screen_states_no_tool_count_it_would_have_to_chase():
     consent = (repo / "web" / "consent.js").read_text(encoding="utf-8")
     # Matched within one literal: the sentence is split across a JS `+`, so a
     # pattern spanning the join fails on formatting rather than on meaning.
-    assert "No call the department" in consent
-    assert "deletes a room, a check, or a scene" in consent
+    #
+    # The claim narrowed when delete shipped. "Nothing at this door removes
+    # anything" was true of the whole surface and stopped being true; what is
+    # true now is scope-shaped — this REQUEST removes nothing, and removing is
+    # asked for separately. A promise that outlives the thing it described is
+    # worse than no promise, which is why the sentence changed rather than the
+    # tool being quietly excused from it.
+    assert "Nothing in this request removes anything" in consent
+    assert "separate permission" in consent
     for stale in ("offers four", "offers five", "four calls", "five calls"):
         assert stale not in consent, (
             f"'{stale}' is a count of a list that lives in star/mcp/tools.py, "
@@ -2309,3 +2317,32 @@ async def test_deleting_a_room_that_is_not_there_says_so_without_a_token():
     )
     assert carried(result)["deleted"] is False
     assert "list_rooms" in said(result), "and points at how to get an id that works"
+
+
+def test_every_tool_is_mapped_to_a_scope():
+    """A tool missing from SCOPE_BY_TOOL is not scope-free, it is unfinished.
+
+    star/mcp/router.py skips the check when `scope_for` returns None, so an
+    unmapped tool is callable by ANY valid token whatever it was granted.
+    `ask_room` shipped that way and nothing noticed until `delete_room` made
+    the same omission dangerous. This is the same completeness assertion the
+    runner map already gets, for the same reason.
+    """
+    from star.oauth import validate
+
+    assert set(validate.SCOPE_BY_TOOL) == {tool["name"] for tool in tools.TOOLS}
+    assert set(validate.SCOPE_BY_TOOL.values()) <= set(metadata.SCOPES_SUPPORTED)
+
+
+def test_deleting_needs_its_own_scope_and_writing_does_not_grant_it():
+    """Building and deleting are opposite risks. A reader who let an agent
+    research for them has said nothing about whether it may clear their
+    workspace, and folding delete into rooms:write would infer the second
+    consent from the first."""
+    from star.oauth import validate
+
+    assert validate.SCOPE_BY_TOOL["delete_room"] == "rooms:delete"
+    assert validate.SCOPE_BY_TOOL["build_room"] == "rooms:write"
+    assert "rooms:delete" not in metadata.SCOPES_DEFAULT, (
+        "and a client that names no scope is not registered for it"
+    )
