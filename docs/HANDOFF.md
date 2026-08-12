@@ -150,27 +150,57 @@ Carried forward as roadmap, not blockers:
    deleted scenes while streaming them, which is undefined against a live
    Firestore cursor.
 
-3. **Error rooms charge budget and explain nothing.** A failed build still
-   spends against the cap, and what comes back does not tell the caller what it
-   spent or why it stopped. Builder's observation, not measured here.
+3. **Error rooms charge budget and explain nothing — done, 2026-08-11.** The
+   observation was right, and measuring it found the defect was worse than
+   silence. `_daily_cap.check()` increments on the allow path and live searches
+   are spent when made, but `_persist` handed `room_to_document` the run's
+   `result`, which is `None` on the failure path — so a room that really spent
+   a dozen searches was **filed with `search_count: 0`**. The department
+   charged and then wrote down that it had done nothing.
 
-4. **Two old damaged bibles still report `complete`, and they are both of the
-   stored rooms.** Measured 2026-08-11, and this upgrades the item from an
-   observation to an identification. Both rooms on this account report
-   `status: "complete"` and carry bibles of **2,608 characters** (The 28 Tram
-   Heist) and **2,877** (Gdansk 1978). `docs/judge-critique-round2-2026-08-11.md`
-   records a healthy bible from the same pipeline after the fix at **16,453
-   characters**, and names the mechanism: `max_output_tokens` on a thinking
-   model bounds thinking *plus* output, so the rooms that researched hardest
-   thought longest and shipped the shortest documents. Its damaged example —
-   "125 sources → 654 tokens of bible" — is The 28 Tram Heist, whose bible
-   measures 652 tokens here.
+   Three surfaces now carry the one fact. `room_to_document` takes the run's
+   own counts, so cost is recorded on every branch and not only the ones that
+   reached a result. `_read_room` carries those counts on a terminal run with
+   no result, which is the window a caller is most likely to ask in and was the
+   only one where nothing could answer; a `running` run still answers `null`,
+   because both doors are written against that contract. And `_room_report`,
+   the progress panel, and the reopen path all name what it spent — the panel
+   from the count it is already keeping, the reopen path from the stored
+   document. Neither number is authored.
 
-   So the correlation runs backwards, which is what proves the cause, and the
-   fix is already in. What is left is the two rooms that were built before it:
-   status is describing the run rather than the artefact, and for these two
-   those diverged. Resynthesize or mark them honestly; do not leave a room
-   claiming `complete` over a bible that is a sixth of the length it should be.
+4. **Damaged bibles — the reporting half is done, the generation half is not.**
+   The item said two rooms. Measured against the whole live store on
+   2026-08-11, it is **seven of fourteen**: `complete` rooms whose bible is
+   missing at least one section, usually stopping mid-word inside section one.
+   The rooms named in the original item (The 28 Tram Heist at 2,579 characters,
+   Gdansk 1978 at 2,855) are the worst two, not the only two.
+
+   **Reporting is fixed.** `star/bible.py` measures which of a room's own filed
+   drawers reached the document, and both doors narrow the claim instead of
+   making it: a short room now reads "a research bible that stops early. It
+   covers 1 of the 4 drawers this room filed and never reaches Objects &
+   Props, Logistics and Forces & Conflicts." No room resynthesized and none
+   marked `partial` — the status describes the run, which is what it has always
+   meant, and the artefact now describes itself.
+
+   **Generation is not fixed.** `config.max_synthesis_thinking_tokens` split a
+   budget that thinking used to eat whole, and it plainly helped — BROWNOUT,
+   117 sources, came back a whole 16,453 characters where 125 sources had
+   produced 654 tokens before it. But three rooms built *after* that was
+   serving still lost sections, the latest by ten hours:
+
+   | built (UTC) | room | sections | bible |
+   | --- | --- | --- | --- |
+   | 08-11 02:40 | Gdansk 1978 | 1 of 4 | 2,855 |
+   | 08-11 04:10 | The 28 Tram Heist | 1 of 4 | 2,579 |
+   | 08-11 12:41 | Glasgow Shipyard Work-In | 3 of 4 | 9,331 |
+
+   So the ceiling is a cause and not the whole cause. Next move is instrument
+   rather than guess: `finish_reason` and the response's own token counts are
+   available at generation and are recorded nowhere, so every diagnosis of this
+   so far has been archaeology on stored text. Capture them, and a room that
+   was truncated can say so from the run rather than be inferred from the
+   document weeks later.
 
 5. **Adoption — `ask_room` first.** The door has no question-shaped tool. An
    agent can read a room or build one, but cannot ask it anything, so the
