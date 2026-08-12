@@ -366,6 +366,14 @@ def _persist(run: dict, run_id: str, status: str) -> None:
                 status,
                 run.get("created_at")
                 or datetime.now(timezone.utc).isoformat(),  # noqa: UP017
+                # What the run cost, taken from the run rather than from a
+                # result it may not have. A build that failed still spent live
+                # searches and a slot of the shared daily budget, and neither
+                # is refunded — so the room has to be able to say so.
+                spent={
+                    "search_count": run.get("search_count") or 0,
+                    "source_count": len(run.get("ledger") or ()),
+                },
             ),
         )
     except Exception:
@@ -969,6 +977,20 @@ async def _read_room(uid: str, run_id: str) -> dict:
         result = run["result"]
         if result is not None:
             result = {**result, "created_at": run.get("created_at") or ""}
+        elif run["status"] != "running" and run.get("search_count"):
+            # A run that died before it built a result still spent live
+            # searches and a slot of the shared daily budget, and neither is
+            # refunded. Answering `null` here means the one window where a
+            # caller is most likely to ask what happened — seconds after the
+            # failure, while the run is still in memory — is the one window
+            # where nothing can tell them what it cost. Terminal statuses
+            # only: a `running` run answers `null` by contract and both
+            # doors are written against that.
+            result = {
+                "created_at": run.get("created_at") or "",
+                "search_count": run.get("search_count") or 0,
+                "source_count": len(run.get("ledger") or ()),
+            }
         return {"status": run["status"], "result": result}
 
     # Off the event loop; see list_rooms above for why.

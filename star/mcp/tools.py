@@ -679,6 +679,33 @@ def _filed_anything(result: object) -> bool:
     return any((doc or {}).get("findings") for doc in categories.values())
 
 
+def _spend_line(result: object) -> str:
+    """What a failed build cost, said in the same breath as the failure.
+
+    A build that fails has already spent live searches and a slot of the shared
+    daily budget, and neither is refunded — correctly, because the money went.
+    What was wrong was not charging for it, it was charging silently: an agent
+    told only "this failed" cannot tell whether to retry, and a caller who
+    retries three times has spent three slots learning that.
+    """
+    if not isinstance(result, dict):
+        return ""
+    searches = result.get("search_count") or 0
+    if not searches:
+        return ""
+    sources = result.get("source_count") or 0
+    found = (
+        f" and returned {sources} source{'' if sources == 1 else 's'}"
+        if sources
+        else ""
+    )
+    return (
+        f" It spent {searches} live search{'' if searches == 1 else 'es'}"
+        f"{found} before it stopped. That is not refunded, and it used one of "
+        "the department's daily builds. Retrying costs the same again."
+    )
+
+
 def _room_report(status: str, result: object) -> str:
     """The line that goes above a room, chosen by what actually came back.
 
@@ -712,13 +739,13 @@ def _room_report(status: str, result: object) -> str:
                 "filed before it failed is below and carries its sources. "
                 "Nothing more will be added, so there is no reason to poll "
                 "this room again. Start another with `build_room` if you need "
-                "the rest."
+                "the rest." + _spend_line(result)
             )
         return (
             "This build failed and filed nothing, so the room below is empty. "
             "Nothing more will be added and polling it again will not change "
             "that. Start another with `build_room`; a shorter, more specific "
-            "treatment usually gets further."
+            "treatment usually gets further." + _spend_line(result)
         )
     if status == "interrupted":
         kept = (
@@ -732,7 +759,7 @@ def _room_report(status: str, result: object) -> str:
             f"{kept} Polling it again will not change that. It is reported as "
             "`interrupted` rather than as an error because the research did "
             "not fail, it was cut off. Start another with `build_room` if you "
-            "still need it."
+            "still need it." + _spend_line(result)
         )
     # A status this file has no sentence for. Say that, rather than picking
     # the nearest one — a wrong description of an unfamiliar state is worse

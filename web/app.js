@@ -538,6 +538,23 @@ function markRunFailed(message) {
   line.textContent = message;
   box.appendChild(line);
 
+  // What it cost, in the same box as the failure.
+  //
+  // A failed build has already spent live searches and one of the department's
+  // daily builds, and neither comes back — correctly, because the money went.
+  // What was wrong was charging silently: a reader who presses Start a new room
+  // three times has spent three days' slots learning that, and the control to
+  // do it is directly below this line.
+  if (searchCount > 0) {
+    const spent = document.createElement("p");
+    spent.className = "progress-failure-spent";
+    spent.textContent =
+      `It spent ${searchCount} live search${searchCount === 1 ? "" : "es"} ` +
+      "before it stopped. Those are not refunded, and it used one of the " +
+      "department's daily builds. Trying again costs the same.";
+    box.appendChild(spent);
+  }
+
   const again = document.createElement("button");
   again.type = "button";
   again.className = "progress-failure-btn";
@@ -989,6 +1006,22 @@ async function showResults(runId) {
     ];
     $("result-title").textContent = copy[0];
     docketBody.innerHTML = `<p class="docket-note">${escapeHtml(copy[1])}</p>`;
+
+    // What it cost, on the reopen path. A room that failed still spent live
+    // searches and a day's build, and the sentences above say only that it
+    // filed nothing — which reads like it cost nothing. The count is the
+    // room's own, from the stored document, so it is the run's real spend and
+    // not a number this file made up.
+    const spentSearches = (result && result.search_count) || 0;
+    if (spentSearches > 0 && status !== "running") {
+      const spent = document.createElement("p");
+      spent.className = "docket-note";
+      spent.textContent =
+        `It spent ${spentSearches} live search${spentSearches === 1 ? "" : "es"} ` +
+        "before it stopped. Those are not refunded, and it used one of the " +
+        "department's daily builds.";
+      docketBody.appendChild(spent);
+    }
     // The one action a reader has on a run they are not watching. Without it
     // the only way to learn a build had finished was to reload the whole page
     // on a hunch — the surface said "check back" and gave nothing to check

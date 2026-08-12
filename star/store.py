@@ -68,9 +68,26 @@ def _default_client():
     return _client
 
 
-def room_to_document(run_id: str, result: dict, status: str, created_at: str) -> dict:
-    """Shape a finished run into its stored document. Pure."""
+def room_to_document(
+    run_id: str,
+    result: dict,
+    status: str,
+    created_at: str,
+    *,
+    spent: dict | None = None,
+) -> dict:
+    """Shape a finished run into its stored document. Pure.
+
+    `spent` carries what the RUN cost, separately from what it produced, and it
+    exists because a failed build has no `result` to read a cost off. Without
+    it a room that spent a dozen live searches and a slot of the shared daily
+    budget was stored with `search_count: 0` — the department charging for
+    work and then filing a document saying it did none. The counts are the
+    run's own, so they are right on every branch rather than only on the ones
+    that reached a result.
+    """
     result = result or {}
+    spent = spent or {}
     profile = result.get("story_profile") or {}
     return {
         "run_id": run_id,
@@ -82,8 +99,8 @@ def room_to_document(run_id: str, result: dict, status: str, created_at: str) ->
         "story_profile": profile,
         "research_plan": result.get("research_plan"),
         "research_bible": result.get("research_bible") or "",
-        "search_count": result.get("search_count") or 0,
-        "source_count": result.get("source_count") or 0,
+        "search_count": spent.get("search_count", result.get("search_count") or 0),
+        "source_count": spent.get("source_count", result.get("source_count") or 0),
         "categories": result.get("categories") or {},
     }
 

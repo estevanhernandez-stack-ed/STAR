@@ -557,6 +557,20 @@ a {
   margin: 0;
 }
 
+/* What a failed build cost, under the reason it failed. Quieter than the
+   failure itself — the reader needs the reason first — but on the same
+   onionskin, at the --ink 0.85 that .progress-failure-line already carries
+   there. No new pair. */
+.progress-failure-spent {
+  margin: 0.5rem 0 0;
+  max-width: 62ch;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--ink);
+  opacity: 0.85;
+}
+
 .rail-deleted-legend {
   margin: 1.4rem 0 0.2rem;
   padding-left: 0.1rem;
