@@ -1,0 +1,32 @@
+{
+  "projectName": "STAR",
+  "projectDescription": "A research department for screenwriters. A writer pastes a treatment; four researcher agents run live web searches across setting, objects and props, logistics, and forces and conflicts, and file cited findings plus a research bible. A second pipeline checks a pasted scene against that room's own research and stamps each claim confirmed, anachronism, or unverifiable with the sources behind it.",
+  "mainPurpose": "web application with a public browser UI and an MCP server as a second door for AI agents",
+  "primaryUsers": "public — screenwriters and other writers, signed in with Google or anonymously; also AI agents connecting over MCP with per-user OAuth tokens. No regulatory regime applies; no PII beyond an account identity and the writer's own research.",
+  "coreFeatures": [
+    "Build a research room from a treatment: intake, planner, four parallel researchers, synthesis into a cited research bible",
+    "Live web search through the Parallel Search API with a per-run and per-day budget, every citation hydrated from what search actually returned",
+    "Script check: extract claims from a pasted scene, verify against the room's own sources first, then fresh search, and stamp each claim",
+    "MCP agent door with six tools (list_rooms, get_room, ask_room, build_room, check_scene, delete_room) behind OAuth 2.1 with dynamic client registration and three scopes",
+    "Room lifecycle: rename, link a room to the room it continues from, soft delete with a 30-day recoverable window and a real purge",
+    "Honesty instrumentation: unsourced citation stamps, a scope note saying what a check did not examine, a derived mark when a research bible is short or was cut off"
+  ],
+  "technologies": [
+    "Python 3.12",
+    "FastAPI",
+    "Google Agent Development Kit (ADK)",
+    "Gemini (gemini-3.6-flash)",
+    "Parallel Search API",
+    "Google Cloud Firestore",
+    "Google Cloud Run",
+    "Firebase Authentication",
+    "Server-Sent Events",
+    "Model Context Protocol (hand-written, no SDK)",
+    "OAuth 2.1 authorization server with PKCE and dynamic client registration",
+    "Vanilla JavaScript and CSS, no build step, no framework",
+    "pytest and node:assert",
+    "Docker"
+  ],
+  "deploymentModel": "Google Cloud Run, single region (us-central1), public and unauthenticated at the edge, one instance pinned with min-instances=1 and max-instances=1 because run state and the abuse guards are per-process module state. Custom domain star.626labs.dev via domain mapping. Secrets from Secret Manager; deploys by script.",
+  "architectureStyle": "monolith with an internal agent pipeline. One FastAPI process serves the browser UI, the JSON API, the SSE stream and the MCP endpoint. Two pipelines inside it: an asynchronous room build polled by the client, and a synchronous scene check answered in the request that asked for it."
+}
