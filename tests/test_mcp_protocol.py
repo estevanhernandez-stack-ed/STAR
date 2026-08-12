@@ -2014,6 +2014,236 @@ async def test_ask_room_says_plainly_when_a_room_does_not_answer():
 
 
 @pytest.mark.asyncio
+async def test_ask_room_refuses_a_question_that_only_shares_the_era_year():
+    """The reach this tool shipped with, and the reason overlap is not bearing.
+
+    Round three, 2026-08-12, live against the Lenin Shipyard room: "what songs
+    would be playing on the radio in 1978" came back with eight findings — ZOMO
+    uniforms, penal code articles, barracks locations — every one of them a
+    single-term match on `1978`, because `1978` is in most facts a 1978 room
+    ever writes. `songs` and `radio` matched nothing at all. The room did not
+    answer, and the tool answered anyway.
+
+    That is the one failure mode this tool exists to not have. Its own
+    description promises it "says so plainly rather than reaching", and the
+    refusal was written and unreachable: a single shared token cleared the old
+    `if not score` and every query found a home.
+    """
+
+    async def _one_year_everywhere(uid, run_id):
+        # Nine findings, written out. Every one carries the era year and
+        # nothing else the question asks for, which is exactly the shape of a
+        # researched room: the year is what the room is ABOUT, so it is the one
+        # word the room says everywhere.
+        facts = [
+            "ZOMO riot units wore lead-grey tunics through 1978.",
+            "Penal code article 282 covered strike agitation in 1978.",
+            "Militia barracks stood on Kartuska street from 1978.",
+            "Ration coupons for meat began circulating in 1978.",
+            "The voivodeship committee met weekly during 1978.",
+            "Coastal rail timetables were revised in early 1978.",
+            "Shipyard wage tables were frozen for most of 1978.",
+            "Party membership drives ran through autumn 1978.",
+            "Censorship office staffing expanded slightly in 1978.",
+        ]
+        return {
+            "status": "complete",
+            "result": {
+                "categories": {
+                    "setting": {
+                        "findings": [
+                            {"fact": f, "citations": [], "unverified_urls": []} for f in facts
+                        ]
+                    }
+                }
+            },
+        }
+
+    result = await invoke(
+        "ask_room",
+        {"run_id": "abc", "question": "what songs would be playing on the radio in 1978"},
+        read_room=_one_year_everywhere,
+    )
+    body = carried(result)
+    text = said(result)
+
+    assert body["matches"] == [], (
+        "every one of these findings shares the token `1978` with the question "
+        "and not one of them bears on what was playing on the radio"
+    )
+    assert body["matched"] == 0
+    assert "does not answer it" in text, "the promise in the description, kept"
+    assert "`build_room`" in text, "and where research that would answer comes from"
+
+
+async def _radio_room(uid, run_id):
+    """A room that knows about radios and operators, and nothing else asked of it.
+
+    Shared by the two coverage tests below so they differ only in the question,
+    which is the variable under test.
+    """
+    facts = [
+        "Shipyard radio sets were issued to the Industrial Guard.",
+        "Radio operators kept a duty log at the gatehouse.",
+        "The operators rotated through three shifts.",
+        "Radio traffic was recorded on reel tape.",
+        "Guard operators reported to the duty officer.",
+    ]
+    return {
+        "status": "complete",
+        "result": {
+            "categories": {
+                "setting": {
+                    "findings": [
+                        {"fact": f, "citations": [], "unverified_urls": []} for f in facts
+                    ]
+                }
+            }
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_ask_room_refuses_when_exactly_half_the_question_lands():
+    """The boundary, pinned, because half is not enough to answer on.
+
+    Four content terms, two of which the room has never heard of. Measured on
+    the stored rooms: "what songs would be playing on the radio in 1977" lands
+    exactly half its terms in the BROWNOUT room and must not answer, so the
+    comparison here is `<=` and this test is what says so. With `<` the same
+    question comes back with findings about anything holding a radio.
+    """
+    result = await invoke(
+        "ask_room",
+        {"run_id": "abc", "question": "what did the radio operators broadcast at midnight"},
+        read_room=_radio_room,
+    )
+    body = carried(result)
+
+    assert body["matched"] == 0, (
+        "`radio` and `operators` are in this room; `broadcast` and `midnight` "
+        "are not, and two of four is not a room that answers this"
+    )
+    assert "does not answer it" in said(result)
+
+
+@pytest.mark.asyncio
+async def test_ask_room_answers_when_most_but_not_all_of_a_question_lands():
+    """The other side of the same boundary, and the reason it is not set high.
+
+    A real question rarely lands every term — "how were workers searched at the
+    shipyard gates" places three of four against the Lenin Shipyard room. A
+    threshold that demanded all of them would refuse nearly every genuine
+    question, which is the failure mode opposite to the one being fixed and
+    just as bad.
+    """
+    result = await invoke(
+        "ask_room",
+        {"run_id": "abc", "question": "which operators kept the radio duty log at midnight"},
+        read_room=_radio_room,
+    )
+    body = carried(result)
+
+    assert body["matched"] >= 1, (
+        "`operators`, `radio` and `duty` all land and only `midnight` does not"
+    )
+    assert body["matches"][0]["fact"].startswith("Radio operators kept a duty log")
+
+
+@pytest.mark.asyncio
+async def test_ask_room_does_not_count_the_words_a_question_is_built_from():
+    """`what` and `were` are not evidence of anything.
+
+    Found while measuring the fix against the stored rooms on 2026-08-12: "what
+    were the tram timetables in Lisbon", asked of the Ruth Kovacs room, matched
+    two findings — on `what` and `were`, the only tokens the question and the
+    room shared. Both clear `_tokenize`'s four-character floor, both appear in
+    ordinary prose, and neither says a thing about trams. A room with no trams
+    in it was answering a question about trams on English grammar alone.
+    """
+
+    async def _no_trams(uid, run_id):
+        facts = [
+            "What guards were posted were noted in the ledger.",
+            "There were what the report called irregular shifts.",
+            "Coal deliveries were logged what the clerk deemed weekly.",
+            "The what-if drills were run every second Tuesday.",
+            "Records were kept of what stock remained.",
+        ]
+        return {
+            "status": "complete",
+            "result": {
+                "categories": {
+                    "setting": {
+                        "findings": [
+                            {"fact": f, "citations": [], "unverified_urls": []} for f in facts
+                        ]
+                    }
+                }
+            },
+        }
+
+    result = await invoke(
+        "ask_room",
+        {"run_id": "abc", "question": "what were the tram timetables in Lisbon"},
+        read_room=_no_trams,
+    )
+    body = carried(result)
+
+    assert body["matches"] == [], (
+        "`what` and `were` are in every one of these findings and in the "
+        "question, and the room still holds nothing about trams"
+    )
+    assert body["matched"] == 0
+    assert "does not answer it" in said(result)
+
+
+@pytest.mark.asyncio
+async def test_ask_room_still_answers_when_the_era_year_is_not_the_only_match():
+    """The other half of the same rule, so the fix cannot be a mute button.
+
+    Same room, same year in every finding, but now the question shares a term
+    that most of the room does NOT carry. That term is the evidence, the year
+    contributes nothing either way, and the finding it points at comes back.
+    """
+
+    async def _one_year_everywhere(uid, run_id):
+        facts = [
+            "ZOMO riot units wore lead-grey tunics through 1978.",
+            "Penal code article 282 covered strike agitation in 1978.",
+            "Militia barracks stood on Kartuska street from 1978.",
+            "Ration coupons for meat began circulating in 1978.",
+            "The voivodeship committee met weekly during 1978.",
+            "Coastal rail timetables were revised in early 1978.",
+            "Shipyard wage tables were frozen for most of 1978.",
+            "Party membership drives ran through autumn 1978.",
+            "Censorship office staffing expanded slightly in 1978.",
+        ]
+        return {
+            "status": "complete",
+            "result": {
+                "categories": {
+                    "setting": {
+                        "findings": [
+                            {"fact": f, "citations": [], "unverified_urls": []} for f in facts
+                        ]
+                    }
+                }
+            },
+        }
+
+    result = await invoke(
+        "ask_room",
+        {"run_id": "abc", "question": "what did the barracks on Kartuska look like in 1978"},
+        read_room=_one_year_everywhere,
+    )
+    body = carried(result)
+
+    assert body["matched"] == 1, "one finding carries `barracks` and `kartuska`"
+    assert body["matches"][0]["fact"].startswith("Militia barracks")
+
+
+@pytest.mark.asyncio
 async def test_ask_room_never_writes_an_answer_of_its_own():
     """Every fact returned is verbatim from the room.
 
@@ -2036,18 +2266,34 @@ async def test_ask_room_never_writes_an_answer_of_its_own():
 
 @pytest.mark.asyncio
 async def test_ask_room_ranks_by_overlap_and_says_when_it_is_showing_a_slice():
-    """Best first, and honest about the cut when more matched than fit."""
+    """Best first, and honest about the cut when more matched than fit.
+
+    The fourteen findings that answer nothing are not padding. Ranking is
+    weighted by how much of the room a term does NOT appear in, so a term every
+    finding shares is room-wide vocabulary and stops being evidence — in a room
+    where all twelve findings said `gate`, `gate` would tell an agent nothing
+    about which twelve to read, and the twelve would correctly stop matching.
+    A real room is mostly things the question did not ask about, and this
+    fixture has to be one for `gate` to still discriminate.
+    """
 
     async def _many(uid, run_id):
         # Twelve, written out, NOT _ASK_LIMIT + 4. Deriving the fixture from
         # the constant makes the assertions below follow the constant, and a
         # mutation that raised the cap to 400 passed this test unchanged.
         findings = [
-            {"fact": f"The gate had {n} guards posted overnight.", "citations": [], "unverified_urls": []}
+            {"fact": f"The shipyard gate had {n} guards posted overnight.", "citations": [], "unverified_urls": []}
             for n in range(12)
         ]
         # One finding overlaps far more of the question than the rest.
         findings[3]["fact"] = "The shipyard gate carried strike decorations overnight."
+        # Fourteen, likewise written out. Twelve of twenty-six is under half,
+        # which is what keeps `gate` discriminating; twelve of twelve would not
+        # be, and the assertions below would be measuring the wrong thing.
+        findings += [
+            {"fact": f"Ration coupons number {n} were issued monthly.", "citations": [], "unverified_urls": []}
+            for n in range(14)
+        ]
         return {"status": "complete", "result": {"categories": {"setting": {"findings": findings}}}}
 
     result = await invoke(

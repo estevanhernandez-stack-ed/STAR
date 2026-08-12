@@ -30,6 +30,7 @@ router instead of the run registry moving to a service module.
 """
 
 import json
+import math
 import secrets
 import time
 from collections.abc import Callable
@@ -412,7 +413,16 @@ TOOLS: tuple[dict, ...] = (
             "here** — an agent can remove a room from their workspace and "
             "cannot put it back.\n\n"
             "Costs nothing and spends no searches. Needs the `rooms:delete` "
-            "scope, which is granted separately from reading and building.\n\n"
+            "scope, which is granted separately from reading and building: a "
+            "token that reads and builds does not delete unless the writer "
+            "said so. **If this call returns 403 the credential lacks that "
+            "scope, and the fix is not retrying — tell the writer to issue a "
+            "token carrying `rooms:delete` from Your card in the web app, or "
+            "to re-authorise this connection and approve deletion.** The "
+            "refusal is an HTTP challenge rather than an error in the reply, "
+            "so a client that cannot act on the challenge may surface it as a "
+            "transport failure with nothing readable in it; this sentence is "
+            "then the only account of what went wrong that reaches you.\n\n"
             "Read the room with `get_room` first if you are deciding rather "
             "than executing — this tool tells you what a room holds in counts, "
             "and `get_room` tells you what is actually in it."
@@ -1026,9 +1036,73 @@ def _shape_note(shape: str, category: str | None) -> str:
 # many matched in total, so an agent knows when it is seeing a slice.
 _ASK_LIMIT = 8
 
+# Words a question is BUILT from rather than words it asks ABOUT. They survive
+# `_tokenize`'s four-character floor and then match nearly any prose, which is
+# how "what were the tram timetables in Lisbon" found two Ruth Kovacs findings
+# on `what` and `were` alone — a room with nothing about trams, answering a
+# question about trams, on the strength of two English function words.
+#
+# Dropped from the QUESTION only. A finding that genuinely says "what" keeps
+# it; there is just never a reason to treat it as evidence of an answer.
+_QUESTION_WORDS = frozenset({
+    "about", "after", "also", "another", "back", "because", "been", "before",
+    "being", "both", "came", "come", "could", "does", "doing", "done", "down",
+    "each", "even", "ever", "every", "from", "gave", "give", "goes", "going",
+    "gone", "have", "here", "into", "just", "kind", "know", "made", "make",
+    "like", "look", "looked", "looks",
+    "many", "might", "more", "most", "much", "must", "need", "onto", "only",
+    "other", "over", "same", "shall", "should", "since", "some", "such",
+    "take", "tell", "than", "that", "their", "them", "then", "there", "these",
+    "they", "thing", "things", "this", "those", "through", "used", "using",
+    "very", "want", "well", "went", "were", "what", "when", "where", "which",
+    "while", "will", "with", "within", "without", "would", "your",
+})
+
+# How much of a question has to find ANY home in the room before the room is
+# allowed to answer it. Measured across the twenty-one stored rooms on
+# 2026-08-12, and the reason this is a question-level rule rather than a
+# per-term one: the first attempt at this fix weighted terms by how much of the
+# room they cover, on the theory that an era year saturates its room. It does
+# not. `1978` is in 8 of 29 Lenin Shipyard findings, `1984` in 26 of 32 of the
+# Colliery Canteen's, `1929` in 3 of 38 of Ruth Kovacs' — 8% to 81%, with real
+# search terms sitting in the same range. No cutoff on document frequency tells
+# an era year apart from a term worth ranking on, and a fix built on one passed
+# every unit test while leaving the reported bug exactly as it was.
+#
+# What does separate them is how much of the QUESTION the room can speak to at
+# all. Against the same rooms: questions that bear found homes for 67%, 75% and
+# 100% of their content terms; questions that reach found 0%, 25%, 50% and 50%.
+# A room that cannot place more than half of what you asked about was not
+# researched for this, and one term that happens to land is a coincidence of
+# vocabulary rather than an answer.
+_QUESTION_COVERAGE = 0.5
+
+# Once a room does answer, how weak a match may still be shown, as a share of
+# the best match in that room. Coverage decides WHETHER the room speaks; this
+# decides which findings are worth putting in front of a reader.
+#
+# The case it exists for: ask a 1978 room about the barracks on Kartuska and
+# the coverage gate opens, correctly — but every finding carrying `1978` also
+# matches, so one real answer arrives with eight findings about riot uniforms
+# and penal code articles behind it. Their evidence is the era year and the era
+# year is worth almost nothing here, which the weighting already knows: the
+# barracks finding outscores them by a factor of forty. Relative rather than
+# absolute, because it asks the only question that generalises across rooms —
+# not "is this term rare" but "is this the same kind of evidence as the best
+# thing we found".
+#
+# A tenth, not a quarter, and the difference is a real finding: asked how the
+# blackout affected the subway, the BROWNOUT room's best match carries `subway`
+# (1 of 28 findings, heavily weighted) while a second carries only `blackout`
+# (19 of 28) — the closure of the transit tunnels for loss of ventilation,
+# which is most of the answer. At a quarter that finding was cut for standing
+# in the shadow of a stronger one. Secondary evidence is still evidence; this
+# bar is for findings that share a word, not for findings that say less.
+_WEAK_EVIDENCE_SHARE = 0.10
+
 
 def _rank_findings(room: dict, question: str, category: str | None) -> tuple[list[dict], int]:
-    """The findings whose text overlaps the question, best first.
+    """The findings whose text bears on the question, best first.
 
     Token overlap, using star/findings.py's own `_tokenize` rather than a
     second one — the same scoring `_best_excerpt` already uses to pick which
@@ -1040,9 +1114,42 @@ def _rank_findings(room: dict, question: str, category: str | None) -> tuple[lis
     the source it rests on is titled "Gate No. 2 of the Gdansk Shipyard". The
     citation urls are deliberately NOT scored: a url matches on domain noise
     and would rank every wikipedia source above a real answer.
+
+    OVERLAP ALONE IS NOT BEARING, WHICH IS WHAT THIS FUNCTION USED TO ASSUME.
+    Counting shared tokens made every term worth the same, and the term a room
+    shares with itself is worth nothing: ask a room whose era is 1978 "what
+    songs would be playing on the radio in 1978" and the old scoring returned
+    eight findings — ZOMO uniforms, penal code articles, barracks locations —
+    each riding on the single token `1978`, because `1978` is in most facts a
+    1978 room ever wrote. Nothing bore on the question and the tool answered
+    anyway, which is the one failure this tool exists to not have: the
+    description at the top of this module promises it "says so plainly rather
+    than reaching," and `songs` and `radio` matched nothing at all.
+
+    So bearing is decided BEFORE ranking, and at the level of the question
+    rather than the finding: strip the words a question is built from
+    (`_QUESTION_WORDS`), then ask how many of the content terms left find any
+    home in this room at all. Below `_QUESTION_COVERAGE` the room cannot speak
+    to what was asked, nothing is returned, and the caller's refusal path says
+    so plainly. Above it, findings are ranked by inverse document frequency —
+    a term in one finding of forty is stronger evidence than a term in twenty,
+    and the ordering follows.
+
+    The consequence worth stating, because it looks like a bug and is not: a
+    room can hold a finding that mentions your subject and still refuse, when
+    the rest of the question lands nowhere. "What music was on the radio",
+    asked of a room with one passing mention of a radio, is not a question that
+    room researched. The refusal copy already points at `get_room` for a reader
+    who wants to judge that themselves, and at `build_room` for research that
+    would actually answer.
     """
-    wanted = _tokenize(question)
-    scored: list[tuple[int, dict]] = []
+    wanted = _tokenize(question) - _QUESTION_WORDS
+    if not wanted:
+        return [], 0
+
+    # Two passes, because a term's weight is a fact about the room and cannot
+    # be known while still walking it.
+    corpus: list[tuple[str, dict, set[str]]] = []
     for name, doc in (room.get("categories") or {}).items():
         if category and name != category:
             continue
@@ -1052,24 +1159,60 @@ def _rank_findings(room: dict, question: str, category: str | None) -> tuple[lis
                 [str(finding.get("fact") or "")]
                 + [str((c or {}).get("title") or "") for c in finding.get("citations") or []]
             )
-            score = len(wanted & _tokenize(text))
-            if not score:
-                continue
-            scored.append((score, {
-                "category": name,
-                "fact": finding.get("fact") or "",
-                "matched_terms": score,
-                # url and title only, for the reason get_room's `findings`
-                # shape drops excerpts: they are 72% of a room and every one
-                # of them is fetchable at the url beside it.
-                "citations": [
-                    {"url": (c or {}).get("url") or "", "title": (c or {}).get("title") or ""}
-                    for c in finding.get("citations") or []
-                ],
-                "unverified_urls": finding.get("unverified_urls") or [],
-            }))
-    scored.sort(key=lambda pair: pair[0], reverse=True)
-    return [item for _, item in scored[:_ASK_LIMIT]], len(scored)
+            corpus.append((name, finding, _tokenize(text)))
+
+    total_findings = len(corpus)
+    if not total_findings:
+        return [], 0
+
+    # Document frequency for the question's terms only. Nothing else is ever
+    # weighed, so nothing else is ever counted.
+    frequency = {
+        term: sum(1 for _, _, tokens in corpus if term in tokens) for term in wanted
+    }
+
+    # Does the room speak to this question at all? Decided once, over the whole
+    # question, before any finding is looked at — a per-finding rule cannot see
+    # that `songs`, `playing` and `radio` all landed nowhere.
+    placed = sum(1 for count in frequency.values() if count)
+    if placed / len(wanted) <= _QUESTION_COVERAGE:
+        return [], 0
+
+    scored: list[tuple[float, int, dict]] = []
+    for name, finding, tokens in corpus:
+        matched = wanted & tokens
+        if not matched:
+            continue
+        # Smoothed so it stays positive at every corpus size: the ordering is
+        # wanted even in a room too small for frequency to mean much.
+        weight = sum(
+            math.log((total_findings + 1) / frequency[term]) for term in matched
+        )
+        scored.append((weight, len(matched), {
+            "category": name,
+            "fact": finding.get("fact") or "",
+            # The raw count, not the weight. It is what a reader can verify
+            # against the fact in front of them, and a float nobody can check
+            # would be a worse thing to publish than a number they can.
+            "matched_terms": len(matched),
+            # url and title only, for the reason get_room's `findings`
+            # shape drops excerpts: they are 72% of a room and every one
+            # of them is fetchable at the url beside it.
+            "citations": [
+                {"url": (c or {}).get("url") or "", "title": (c or {}).get("title") or ""}
+                for c in finding.get("citations") or []
+            ],
+            "unverified_urls": finding.get("unverified_urls") or [],
+        }))
+    scored.sort(key=lambda triple: (triple[0], triple[1]), reverse=True)
+    if not scored:
+        return [], 0
+
+    # Everything standing far below the best evidence in the room is not a
+    # weaker answer, it is a different question's finding that shares a word.
+    floor = scored[0][0] * _WEAK_EVIDENCE_SHARE
+    kept = [triple for triple in scored if triple[0] >= floor]
+    return [item for _, _, item in kept[:_ASK_LIMIT]], len(kept)
 
 
 def _searched_count(room: dict, category: str | None) -> int:
