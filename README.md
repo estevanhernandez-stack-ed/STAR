@@ -70,7 +70,8 @@ Pipeline B · Script Check  (SequentialAgent)
 
 The agent door
   star/mcp/     Streamable HTTP, hand-written against the transport spec.
-                list_rooms · get_room · build_room · check_scene
+                free:   list_rooms · get_room · ask_room · delete_room
+                spends: build_room · check_scene · research_question
 ```
 
 Both doors call the **same** function objects for admission and for running a build, so
@@ -166,8 +167,11 @@ Tokens are stored as sha256, shown once at issue, never recoverable, and revocab
 can only be issued to an account with a linked identity, because an anonymous account's only
 proof of ownership is a `localStorage` entry.
 
-The door serves `list_rooms`, `get_room`, `ask_room`, `build_room`, `check_scene` and
-`delete_room`. `get_room` **is** `build_room`'s poll. Every description is written for a
+The door serves `list_rooms`, `get_room`, `ask_room`, `build_room`, `check_scene`,
+`delete_room` and `research_question`. `get_room` **is** `build_room`'s poll, and
+`research_question` is what `ask_room` points at when a room does not answer: it researches
+that one question and files the result into the room the writer already has, rather than
+charging them a whole second room to learn one thing. Every description is written for a
 reader who cannot see a screen, and every refusal names what failed and what to do next.
 
 That list is pinned by a test against `star/mcp/tools.py`, and it names them rather than

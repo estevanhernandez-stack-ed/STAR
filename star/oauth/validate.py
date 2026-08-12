@@ -42,6 +42,14 @@ SCOPE_BY_TOOL = {
     "ask_room": "rooms:read",
     "build_room": "rooms:write",
     "check_scene": "rooms:write",
+    # rooms:write and not rooms:read, though it reads like a question. What
+    # separates the two scopes on this door is spending, not reading: this one
+    # sends a researcher to the field, spends live searches against the
+    # writer's hourly window, and changes what a room contains. `ask_room` is
+    # the free half of the same gesture and stays on rooms:read, which is what
+    # lets a reader hand an agent a read token and know the worst it can do is
+    # read.
+    "research_question": "rooms:write",
     # Its own scope, not folded into rooms:write. Building and deleting are
     # opposite risks — one spends money to make something, the other destroys
     # something already paid for — and a reader handing an agent the ability to

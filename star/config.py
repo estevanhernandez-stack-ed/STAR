@@ -72,6 +72,36 @@ def max_searches_per_check() -> int:
     return int(os.environ.get("STAR_MAX_SEARCHES_PER_CHECK", "8"))
 
 
+def max_question_chars() -> int:
+    """Ceiling on one requisitioned question.
+
+    Far below the scene and treatment caps because this is a question, not a
+    document. 300 characters is a long question and a short paragraph, and the
+    ceiling is here to keep a treatment from being pasted into the field a
+    researcher answers one question from — which would spend the budget of a
+    requisition on work a build is shaped for.
+    """
+    return int(os.environ.get("STAR_MAX_QUESTION_CHARS", "300"))
+
+
+def max_searches_per_question() -> int:
+    """Per-requisition search budget, seeded into ADK session state.
+
+    One question, one trip to the field. A build gets 30 for four categories
+    from nothing and a check gets 8 for a whole scene; this answers a single
+    question a writer asked because the room could not, and the researcher
+    batches its queries into one `parallel_search` call anyway.
+
+    Two, not one, and the second is for the case that makes this feature worth
+    having rather than for headroom. A researcher that gets nothing usable back
+    from its first call currently has no second move, and a requisition that
+    files an empty answer costs the writer a slot of their hourly window and
+    teaches them the department cannot help. One retry against a rephrased
+    query is the difference between "not found" and "not looked for twice".
+    """
+    return int(os.environ.get("STAR_MAX_SEARCHES_PER_QUESTION", "2"))
+
+
 def check_timeout_seconds() -> int:
     """Wall-clock ceiling on one script check.
 

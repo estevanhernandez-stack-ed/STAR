@@ -123,7 +123,7 @@ INSTRUCTIONS = (
 
 @dataclass(frozen=True)
 class Calls:
-    """The five things a tool is allowed to do, injected by star/server.py.
+    """The six things a tool is allowed to do, injected by star/server.py.
 
     Frozen because the router holds one of these for the life of the process
     and nothing should be able to swap a callable out from under an in-flight
@@ -137,6 +137,7 @@ class Calls:
     list_rooms_for: Callable[..., Any]
     run_check: Callable[..., Any]
     delete_room: Callable[..., Any]
+    run_requisition: Callable[..., Any]
 
 
 # --- The strings a refusal is made of ---------------------------------------
@@ -551,6 +552,66 @@ TOOLS: tuple[dict, ...] = (
                 },
             },
             "required": ["run_id", "scene"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "research_question",
+        "description": (
+            "Send one question back to the field and file the answer into a "
+            "room that already exists.\n\n"
+            "**This is what to reach for when `ask_room` says the room does "
+            "not answer.** A room is a snapshot of the treatment it was built "
+            "from, and a writer keeps working after it is filed. The old move "
+            "was `build_room` — a whole second room, several minutes and a "
+            "dozen searches, to answer one question. This researches the one "
+            "question and files it into the room the writer already has, so "
+            "the room grows with the story instead of freezing at intake.\n\n"
+            f"Needs `run_id`, {_ROOM_ID}, `question` — one plain, factual, "
+            "answerable question — and `category`, the drawer it belongs in. "
+            "The drawer is not guessed: it is how a writer finds the fact "
+            "again and what `get_room`'s own `category` filter narrows on, so "
+            "a finding filed in the wrong one is filed where nobody looks.\n\n"
+            "The answer comes back as an ordinary finding, cited to the same "
+            "standard as the rest of the room: the researcher runs a live "
+            "search and every url is hydrated from what that search actually "
+            "returned, so a url the researcher named that no search result "
+            "carried is reported as unsourced rather than printed as a "
+            "source. The finding carries the question that requisitioned it, "
+            "so a reader can always tell what the build filed from what was "
+            "asked for later.\n\n"
+            "If the researcher comes back without a citable answer, nothing "
+            "is filed and the reply says so with what it spent. A room that "
+            "grew a blank entry every time a question missed would be worse "
+            "than one that stood still.\n\n"
+            "**SPENDS. This is the half of asking that costs money** — live "
+            "searches against the account's hourly window, unlike `ask_room`, "
+            "which reads what is already filed and is free. It needs the "
+            "`rooms:write` scope for that reason: a token granted only "
+            "`rooms:read` can ask a room what it holds and cannot spend a "
+            "writer's budget finding out what it does not."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "run_id": {"type": "string", "description": _ROOM_ID},
+                "question": {
+                    "type": "string",
+                    "description": (
+                        "one plain, factual, answerable question about the "
+                        "story's world"
+                    ),
+                },
+                "category": {
+                    "type": "string",
+                    "enum": [c.value for c in Category],
+                    "description": (
+                        "the drawer to file the answer in: `setting`, "
+                        "`objects_props`, `logistics` or `forces_conflicts`"
+                    ),
+                },
+            },
+            "required": ["run_id", "question", "category"],
             "additionalProperties": False,
         },
     },
@@ -1266,9 +1327,14 @@ async def _ask_room(arguments: dict, calls: Calls, identity) -> dict:
             f"department researched {searched} findings here and none of them "
             "share wording with what you asked, so this room does not answer "
             "it — that is a fact about the research, not a failure of the "
-            "search. Read the room with `get_room` if you want to judge that "
-            "yourself, or `build_room` a new room from a treatment that asks "
-            "for this."
+            "search.\n\n"
+            "**`research_question` sends this one question back to the field "
+            "and files the answer into this room.** That is the move here: it "
+            "spends a live search or two and the room grows to cover what was "
+            "asked, rather than the writer paying for a whole second room to "
+            "learn one thing. Read the room with `get_room` first if you want "
+            "to judge the gap yourself; `build_room` is for a different story, "
+            "not for a hole in this one."
         )
     else:
         more = (
@@ -1635,6 +1701,62 @@ async def _check_scene(arguments: dict, calls: Calls, identity) -> dict:
     return _payload("\n\n".join(lines), result)
 
 
+async def _research_question(arguments: dict, calls: Calls, identity) -> dict:
+    values = _arguments(_TOOLS_BY_NAME["research_question"], arguments)
+    question = values["question"]
+
+    # Ahead of the call, for the reason check_scene's cap is: the browser's cap
+    # lives at star/server.py's endpoint rather than inside the runner, so this
+    # door carries its own, and refusing here means nothing was spent and the
+    # message can say so.
+    cap = config.max_question_chars()
+    if len(question) > cap:
+        raise _BadArguments(
+            f"That question is {len(question)} characters and the ceiling is "
+            f"{cap}. Ask one thing rather than pasting a treatment — "
+            "`build_room` is the tool that takes a document."
+        )
+
+    result = _jsonable(
+        await calls.run_requisition(
+            identity.uid, values["run_id"], question, values["category"]
+        )
+    )
+    findings = result.get("findings") or []
+    unsourced = sum(len((f or {}).get("unverified_urls") or []) for f in findings)
+    sourced = sum(len((f or {}).get("citations") or []) for f in findings)
+
+    lines = [
+        (
+            f"Filed {len(findings)} finding"
+            f"{'' if len(findings) == 1 else 's'} into the "
+            f"`{result.get('category')}` drawer of room {values['run_id']}, "
+            f"answering: {question}"
+        )
+    ]
+    lines.append(
+        f"{sourced} source{'' if sourced == 1 else 's'} behind "
+        f"{'it' if len(findings) == 1 else 'them'}, every one hydrated from "
+        "what the search actually returned. This room now stands at "
+        f"{result.get('search_count')} live searches and "
+        f"{result.get('source_count')} sources."
+    )
+    if unsourced:
+        lines.append(
+            f"{unsourced} url{'' if unsourced == 1 else 's'} the researcher "
+            "named never appeared in a search result, and "
+            f"{'is' if unsourced == 1 else 'are'} stamped unsourced rather "
+            "than presented as a source. The department will not present a "
+            "source it cannot find in a ledger."
+        )
+    lines.append(
+        "Each finding carries the question that requisitioned it, so a later "
+        "reader can tell what the build filed from what was asked for after. "
+        "`get_room` returns them alongside the rest of the drawer."
+    )
+    return _payload("\n\n".join(lines), result)
+
+
 # Name to implementation, kept OUT of `TOOLS` rather than as a key inside each
 # entry. `TOOLS` is serialised straight onto the wire, and a callable sitting
 # in it would either fail to serialise or have to be stripped on the way out —
@@ -1646,6 +1768,7 @@ _RUNNERS: dict[str, Callable[[dict, "Calls", Any], Any]] = {
     "build_room": _build_room,
     "check_scene": _check_scene,
     "ask_room": _ask_room,
+    "research_question": _research_question,
     "delete_room": _delete_room,
 }
 

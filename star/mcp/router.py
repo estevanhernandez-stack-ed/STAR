@@ -130,9 +130,10 @@ def build_mcp_router(
     list_rooms_for: Callable[..., Any],
     run_check: Callable[..., Any],
     delete_room: Callable[..., Any],
+    run_requisition: Callable[..., Any],
     resolve_token: Callable[..., Any],
 ) -> APIRouter:
-    """Wire the agent door onto five server functions and one token resolver.
+    """Wire the agent door onto six server functions and one token resolver.
 
     Called from star/server.py BEFORE `app.mount("/")`. The StaticFiles mount
     matches every path under `/`, so a router included after it never sees a
@@ -146,6 +147,7 @@ def build_mcp_router(
         list_rooms_for=list_rooms_for,
         run_check=run_check,
         delete_room=delete_room,
+        run_requisition=run_requisition,
     )
 
     async def _dispatch(message: protocol.Call, identity: TokenIdentity) -> dict:

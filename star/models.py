@@ -72,6 +72,14 @@ class Finding(BaseModel):
         description="URLs the researcher cited that never appeared in a search "
         "result. Rendered as a warning, never as a source.",
     )
+    requisition: str = Field(
+        default="",
+        description="The question a writer asked to put this finding in the "
+        "room, empty for the findings the original build filed. The question "
+        "rather than a flag: a reader who can see a fact was added later is "
+        "owed the reason it was, and 'added later' on its own invites the "
+        "guess that the department missed it the first time.",
+    )
 
 
 class ResearchDoc(BaseModel):

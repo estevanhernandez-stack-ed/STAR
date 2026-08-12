@@ -1004,6 +1004,9 @@ def calls_for(**handlers) -> tools.Calls:
         ),
         run_check=handlers.get("run_check") or _unreachable("run_check"),
         delete_room=handlers.get("delete_room") or _unreachable("delete_room"),
+        run_requisition=(
+            handlers.get("run_requisition") or _unreachable("run_requisition")
+        ),
     )
 
 
@@ -1049,6 +1052,17 @@ def test_no_tool_is_a_second_name_for_another_tools_answer():
     one, and `ask_room` selects the findings that overlap a question. No two of
     them answer the same question with different words, which is the property
     the count was standing in for.
+
+    `research_question` is the closest call this rule has had, because it takes
+    the same two arguments as `ask_room` and reads like the same gesture. It is
+    not a second name for that answer: `ask_room` selects from what is filed
+    and `research_question` puts something there that was not. One is free and
+    one spends, which is why they carry different scopes — and an agent that
+    confused them would learn the difference from the bill.
+
+    The order is free-first, and it is load-bearing rather than decorative: a
+    model reading this list top-down meets everything that costs nothing before
+    anything that costs money.
     """
     assert [tool["name"] for tool in tools.TOOLS] == [
         "list_rooms",
@@ -1057,6 +1071,7 @@ def test_no_tool_is_a_second_name_for_another_tools_answer():
         "delete_room",
         "build_room",
         "check_scene",
+        "research_question",
     ]
     assert set(tools._RUNNERS) == {tool["name"] for tool in tools.TOOLS}
 
@@ -1153,6 +1168,7 @@ async def test_tools_list_puts_them_all_on_the_wire_with_their_descriptions():
         "delete_room",
         "build_room",
         "check_scene",
+        "research_question",
     ]
     for tool in listed:
         assert tool["description"].strip()
@@ -1372,6 +1388,152 @@ async def test_a_thin_check_carries_the_departments_own_cover_note():
     assert "Each claim below" not in said(result)
     # The retention disclosure still stands, because the scene was still kept.
     assert "now stored with this room" in said(result)
+
+
+# -- research_question -------------------------------------------------------
+#
+# The other half of asking. `ask_room` reads what is filed and spends nothing;
+# this researches one question and files the answer into the room that already
+# exists. The pair is the point: a writer whose room does not cover something
+# used to choose between paying for a whole second room and going elsewhere.
+
+
+def _filed(**overrides) -> dict:
+    """What `_run_requisition` hands back, as the server encodes it."""
+    return {
+        "run_id": "abc",
+        "category": "logistics",
+        "question": "how long did arraignment take during the blackout",
+        "findings": [
+            {
+                "fact": "Arraignments ran 48 to 72 hours behind.",
+                "citations": [{"url": "https://example.org/court", "title": "Courts"}],
+                "unverified_urls": [],
+                "requisition": "how long did arraignment take during the blackout",
+            }
+        ],
+        "search_count": 19,
+        "source_count": 58,
+        **overrides,
+    }
+
+
+@pytest.mark.asyncio
+async def test_research_question_says_what_it_filed_and_what_the_room_now_holds():
+    async def _run(uid, run_id, question, category):
+        assert category == "logistics", "the drawer the caller named, not a guess"
+        return _filed()
+
+    result = await invoke(
+        "research_question",
+        {
+            "run_id": "abc",
+            "question": "how long did arraignment take during the blackout",
+            "category": "logistics",
+        },
+        run_requisition=_run,
+    )
+    text = said(result)
+
+    assert result["isError"] is False
+    assert "Filed 1 finding" in text
+    assert "`logistics` drawer" in text, "where it went, so it can be found again"
+    assert "19 live searches" in text or "19" in text, "what the room now stands at"
+    assert "58 sources" in text
+    assert "requisitioned it" in text, (
+        "a reader has to be able to tell what the build filed from what was "
+        "asked for afterwards, and the reply is where an agent learns that"
+    )
+
+
+@pytest.mark.asyncio
+async def test_research_question_stamps_a_url_no_search_returned_as_unsourced():
+    """The room's own rule, applied to a finding that arrived after the build.
+
+    A requisitioned finding is hydrated out of the same ledger a built one is,
+    so a url the researcher named that no search result carried is not a source
+    here either — and the reply says so rather than letting the count of
+    sources absorb it.
+    """
+
+    async def _run(uid, run_id, question, category):
+        return _filed(
+            findings=[
+                {
+                    "fact": "Night court sat until dawn.",
+                    "citations": [],
+                    "unverified_urls": ["https://example.org/never-returned"],
+                    "requisition": "how late did night court sit",
+                }
+            ]
+        )
+
+    result = await invoke(
+        "research_question",
+        {"run_id": "abc", "question": "how late did night court sit", "category": "logistics"},
+        run_requisition=_run,
+    )
+    text = said(result)
+
+    assert "1 url" in text
+    assert "stamped unsourced" in text
+    assert "will not present a source it cannot find in a ledger" in text
+
+
+@pytest.mark.asyncio
+async def test_research_question_refuses_a_treatment_before_it_spends_anything():
+    """The cap is checked at this door, ahead of the call.
+
+    star/server.py holds the browser's cap at its endpoint rather than inside
+    the runner, so this door carries its own — and refusing here means nothing
+    was spent, which is what lets the message say to ask one thing instead.
+    """
+    cap = config.max_question_chars()
+    result = await invoke(
+        "research_question",
+        {"run_id": "abc", "question": "x" * (cap + 1), "category": "setting"},
+    )
+
+    assert result["isError"] is True
+    text = said(result)
+    assert str(cap) in text
+    assert "`build_room`" in text, "and which tool does take a document"
+
+
+@pytest.mark.asyncio
+async def test_research_question_needs_a_drawer_and_will_not_pick_one():
+    """`category` is required, and the schema is what enforces it.
+
+    Inferring the drawer would need a model call to do badly what the caller
+    already knows, and a finding in the wrong drawer is filed where nobody
+    looks — `get_room`'s own `category` filter narrows on it.
+    """
+    result = await invoke(
+        "research_question", {"run_id": "abc", "question": "how were the gates guarded"}
+    )
+
+    assert result["isError"] is True
+    assert "category" in said(result)
+
+
+@pytest.mark.asyncio
+async def test_ask_room_points_a_dry_question_at_the_tool_that_can_answer_it():
+    """The two halves, joined where a writer actually hits the gap.
+
+    A room that does not answer used to offer `build_room` — a whole second
+    room, several minutes and a dozen searches, to cover one question. The
+    refusal is the one place an agent is already looking when it needs this.
+    """
+    result = await invoke(
+        "ask_room",
+        {"run_id": "abc", "question": "what were the tram timetables in Lisbon"},
+        read_room=_read_full,
+    )
+    text = said(result)
+
+    assert "`research_question`" in text, "the tool that fills the hole it just named"
+    assert "files the answer into this room" in text
+    assert "spends" in text, "and that it is not the free half"
 
 
 # -- the eleven refusals -----------------------------------------------------
@@ -2615,6 +2777,40 @@ def test_deleting_needs_its_own_scope_and_writing_does_not_grant_it():
     assert "rooms:delete" not in metadata.SCOPES_DEFAULT, (
         "and a client that names no scope is not registered for it"
     )
+
+
+def test_what_separates_the_two_scopes_is_spending_not_reading():
+    """`research_question` reads like a question and costs like a build.
+
+    It takes the same two arguments as `ask_room` and sits next to it in the
+    prose, which is exactly why the scope has to be pinned rather than left to
+    look obvious: whoever adds the next tool that reads like a reader will be
+    reading this map, not the descriptions. `ask_room` selects from what is
+    already filed and spends nothing; this sends a researcher to the field,
+    spends live searches against the writer's hourly window, and changes what
+    the room contains.
+
+    Held here rather than left to the completeness test above, which only
+    proves every tool HAS a scope. A tool mapped to the wrong one is covered
+    by that assertion and wide open in production — the failure `ask_room`
+    shipped, one square over.
+    """
+    from star.oauth import validate
+
+    assert validate.SCOPE_BY_TOOL["research_question"] == "rooms:write", (
+        "a token granted only rooms:read must not be able to spend a writer's "
+        "search budget"
+    )
+    assert validate.SCOPE_BY_TOOL["ask_room"] == "rooms:read", (
+        "and the free half stays free, or handing an agent a read token stops "
+        "meaning what it says"
+    )
+    spends = {"build_room", "check_scene", "research_question"}
+    for name in spends:
+        assert validate.SCOPE_BY_TOOL[name] != "rooms:read", name
+    for name, scope in validate.SCOPE_BY_TOOL.items():
+        if scope == "rooms:read":
+            assert name not in spends, f"{name} spends and must not read-scope"
 
 
 # --- Rooms that follow other rooms -------------------------------------------

@@ -44,6 +44,7 @@ from star import bible, config  # noqa: E402
 config.validate_env()
 
 from star import tokens  # noqa: E402
+from star.agents import requisition  # noqa: E402
 from star.agents.pipelines import build_room, check_scene  # noqa: E402
 from star.agents.script_check import check_state  # noqa: E402
 from star.auth import linked_provider, verify_claims, verify_token  # noqa: E402
@@ -1426,6 +1427,217 @@ async def _run_check(uid: str, run_id: str, scene: str) -> ScriptCheckResult:
     return result
 
 
+def _file_findings(
+    document: dict, category: Category, filed: list, spent: int
+) -> dict:
+    """Append findings to a stored room's drawer and move its counts. Pure.
+
+    The drawer may not exist. A build files all four, but a room recovered
+    from a failed run keeps only what `_salvage` could reach, and a
+    requisition is exactly the tool a writer reaches for on a thin room —
+    so the missing-drawer case is the normal one here, not the edge.
+
+    `search_count` moves by the requisition's OWN spend rather than by the
+    session's, and the two differ: the researcher may spend two searches and
+    file one finding, or spend one and file three. The room's count is what
+    the room cost, and the requisition cost what it spent, so the caller
+    passes the spend and this adds it.
+
+    `source_count` is the room's, from the room's own drawers, recounted
+    rather than incremented. Adding this run's ledger size would double-count
+    every source the room already held that the requisition also found — the
+    ledger is per-run and knows nothing about what is already filed.
+    """
+    document = dict(document)
+    categories = dict(document.get("categories") or {})
+    drawer = dict(categories.get(category.value) or {})
+    drawer["findings"] = list(drawer.get("findings") or []) + jsonable_encoder(filed)
+    categories[category.value] = drawer
+    document["categories"] = categories
+    document["search_count"] = (document.get("search_count") or 0) + spent
+    document["source_count"] = sum(
+        len((finding or {}).get("citations") or [])
+        for entry in categories.values()
+        for finding in (entry or {}).get("findings") or []
+    )
+    return document
+
+
+async def _question_events(
+    category: Category, session_id: str, run_ledger: SourceLedger
+) -> dict:
+    """Run one requisition to its end and hand back the session state.
+
+    The ledger is fed here, by the server, out of `event.get_function_responses()`
+    — the same path `_run_pipeline` and `_check_events` use. That is what gives
+    a citation hydrated by a requisition the identical trust property as one
+    hydrated by a build: it is in the ledger only because parallel_search
+    returned it, and nothing the researcher writes can put a source there.
+    """
+    runner = requisition.RUNNERS[category]
+    message = types.Content(role="user", parts=[types.Part(text=requisition.TURN)])
+
+    async for event in runner.run_async(
+        user_id=requisition.USER, session_id=session_id, new_message=message
+    ):
+        for response in event.get_function_responses() or []:
+            run_ledger.record(
+                getattr(event, "author", None) or "researcher",
+                getattr(response, "response", None),
+            )
+
+    session = await runner.session_service.get_session(
+        app_name=requisition.APP, user_id=requisition.USER, session_id=session_id
+    )
+    return session.state if session else {}
+
+
+async def _forget_question_session(category: Category, session_id: str) -> None:
+    """Drop the ADK session a finished requisition ran on.
+
+    Same leak `_forget_check_session` closes, and the same posture: never
+    raises, because the answer was already decided and losing the cleanup must
+    not change it. A requisition is admitted on the hourly limiter rather than
+    the daily cap, so nothing bounds these across a day either.
+    """
+    try:
+        await requisition.RUNNERS[category].session_service.delete_session(
+            app_name=requisition.APP, user_id=requisition.USER, session_id=session_id
+        )
+    except Exception:
+        logger.exception("Failed to drop the session for a requisition on %s", session_id)
+
+
+async def _run_requisition(
+    uid: str, run_id: str, question: str, category: Category
+) -> dict:
+    """Research one question and file it into a room that already exists.
+
+    Transport-free for the reason `_run_check` is: the endpoint below and the
+    MCP `research_question` tool call this same function object, so "one
+    department, two doors" stays mechanical rather than asserted.
+
+    Cross-uid isolation holds the same way too — the room is read through
+    `_store.get(uid, run_id)`, whose path is rooted at `users/{uid}`, so
+    another caller's room is not found and refused, it is simply not found.
+
+    Returns the filed finding and the room's new counts. Raises HTTPException
+    on every refusal, because both doors want a status and a message.
+    """
+    document = await asyncio.to_thread(_store.get, uid, run_id)
+    if document is None:
+        raise HTTPException(404, "Unknown run")
+
+    # A room still being built has not finished filing, and a requisition into
+    # it would race the build's own terminal write: `_persist` calls `.set()`,
+    # which replaces the whole document, so a finding filed here in the seconds
+    # before that write would be silently overwritten by a room assembled from
+    # session state that never knew about it. The reader would be told their
+    # question was researched and filed, and it would be gone. Same in-memory
+    # status read as `_run_check`, for the same reason it is not the stored one.
+    live = _runs.get(run_id)
+    if live is not None and live.get("uid") == uid and live.get("status") == "running":
+        raise HTTPException(
+            409,
+            "This room is still being built. Wait for the department to finish "
+            "filing, then ask — a question filed into a room mid-build would be "
+            "overwritten when the build lands.",
+        )
+
+    # The same limiter builds and checks use, in a third namespace. One
+    # requisition spends real searches, and until this line the only thing
+    # standing between an agent holding a valid token and an unbounded spend
+    # was that the endpoint did not exist yet. Namespaced so the three windows
+    # are independent: questions do not cost a writer their builds.
+    if not _uid_limiter.check(f"question:{uid}"):
+        raise HTTPException(
+            429,
+            f"Questions filed into a room are capped at "
+            f"{config.max_rooms_per_ip_per_hour()} an hour per account, and "
+            "this account has reached that. The window is a rolling hour. "
+            "Reading a room and asking what it already holds costs nothing "
+            "and is not limited.",
+        )
+
+    run_ledger = SourceLedger()
+    timeout = config.check_timeout_seconds()
+    runner = requisition.RUNNERS[category]
+    session = await runner.session_service.create_session(
+        app_name=requisition.APP,
+        user_id=requisition.USER,
+        state=requisition.question_state(question, category),
+    )
+    try:
+        try:
+            state = await asyncio.wait_for(
+                _question_events(category, session.id, run_ledger), timeout=timeout
+            )
+        except TimeoutError:
+            logger.warning(
+                "Requisition on room %s exceeded its %ss ceiling", run_id, timeout
+            )
+            raise HTTPException(
+                504,
+                f"The researcher ran past its {timeout}-second limit and was "
+                "stopped. Nothing was filed. Try a narrower question.",
+            ) from None
+        except Exception:
+            logger.exception("Requisition on room %s failed", run_id)
+            raise HTTPException(
+                502,
+                "The department hit an unexpected problem and could not "
+                "finish. Nothing was filed. The details are in the server log.",
+            ) from None
+    finally:
+        await _forget_question_session(category, session.id)
+
+    # Parsed by the same function a build's findings go through, against the
+    # ledger this run just filled. A requisitioned finding is therefore cited
+    # to the same standard or it is not cited at all.
+    doc = parse_findings(state.get(f"findings_{category.value}"), category, run_ledger)
+    filed = [
+        finding.model_copy(update={"requisition": question}) for finding in doc.findings
+    ]
+    spent = int(state.get("search_count") or 0)
+    if not filed:
+        # The researcher came back with nothing a parser could read as a
+        # finding. Said plainly rather than filed as an empty answer: a room
+        # that grows a blank entry every time a question misses is worse than
+        # one that stayed still, and the writer has spent their searches either
+        # way, which is why the count comes back with the refusal.
+        raise HTTPException(
+            502,
+            "The researcher came back without a citable answer to that "
+            f"question, so nothing was filed. It spent {spent} live "
+            f"search{'' if spent == 1 else 'es'} trying. A narrower, more "
+            "factual question usually lands.",
+        )
+
+    document = _file_findings(document, category, filed, spent)
+    try:
+        await asyncio.to_thread(_store.save, uid, run_id, document)
+    except Exception:
+        # Named rather than hidden, and fatal here unlike in `_run_check`. A
+        # check that fails to persist still hands its caller the answer; a
+        # requisition whose whole product IS the write has nothing to return
+        # but a claim that the room grew, which would be false.
+        logger.exception("Failed to file a requisition on room %s", run_id)
+        raise HTTPException(
+            502,
+            "The research came back but could not be filed into the room. "
+            "Nothing was added. Try again.",
+        ) from None
+
+    return {
+        "run_id": run_id,
+        "category": category.value,
+        "question": question,
+        "findings": jsonable_encoder(filed),
+        "search_count": document.get("search_count") or 0,
+        "source_count": document.get("source_count") or 0,
+    }
+
+
 class SceneRequest(BaseModel):
     scene: str
 
@@ -1456,6 +1668,46 @@ async def create_scene(
     # two that have to be kept in step. See the comment against
     # `_uid_limiter.check` there for the ceiling and why it sits where it does.
     return jsonable_encoder(await _run_check(uid, run_id, scene))
+
+
+class QuestionRequest(BaseModel):
+    question: str
+    category: str
+
+
+@app.post("/api/rooms/{run_id}/questions")
+async def create_question(
+    run_id: str, req: QuestionRequest, authorization: str | None = Header(None)
+) -> dict:
+    """Send one question back to the field and file the answer into this room."""
+    uid = _require_uid(authorization)
+    question = req.question.strip()
+    if not question:
+        raise HTTPException(400, "Ask the department a question.")
+    if len(question) > config.max_question_chars():
+        raise HTTPException(
+            400,
+            f"Questions are capped at {config.max_question_chars()} characters "
+            "— ask the department one thing, not a treatment.",
+        )
+    # Named by the caller rather than inferred, and refused rather than
+    # defaulted. A wrong drawer is not a cosmetic error: the drawer is how a
+    # writer finds a fact again, and `get_room` with a `category` narrows on
+    # it, so a finding filed under the wrong one is filed where nobody will
+    # look. Guessing would need a model call to do badly what the caller
+    # already knows.
+    try:
+        category = Category(req.category)
+    except ValueError:
+        raise HTTPException(
+            400,
+            f"`{req.category}` is not a drawer in this department. The four "
+            f"are: {', '.join(c.value for c in Category)}.",
+        ) from None
+    # No limiter here, for the reason create_scene has none: it lives inside
+    # `_run_requisition`, keyed on the account, so the browser and the agent
+    # door are bounded by one object rather than two kept in step.
+    return await _run_requisition(uid, run_id, question, category)
 
 
 @app.get("/api/rooms/{run_id}/scenes")
@@ -1834,6 +2086,20 @@ async def _mcp_delete_room(uid: str, run_id: str) -> dict | None:
     return {**document, "deleted_at": document.get("deleted_at") or when}
 
 
+async def _mcp_run_requisition(
+    uid: str, run_id: str, question: str, category: str
+) -> dict:
+    """The agent door's requisition, on the same runner the browser door uses.
+
+    The category arrives as a string off the wire and is turned into a Category
+    here rather than inside `_run_requisition`, which takes the enum: the
+    schema's own `enum` already refused anything else before this ran, so the
+    conversion cannot fail and a second refusal below it would be dead code
+    pretending to be a guard.
+    """
+    return await _run_requisition(uid, run_id, question, Category(category))
+
+
 app.include_router(
     build_mcp_router(
         start_build=_mcp_start_build,
@@ -1841,6 +2107,7 @@ app.include_router(
         list_rooms_for=_list_rooms_for,
         run_check=_run_check,
         delete_room=_mcp_delete_room,
+        run_requisition=_mcp_run_requisition,
         resolve_token=_resolve_mcp_token,
     )
 )

@@ -6,12 +6,13 @@ import re
 from unittest import mock
 
 import pytest
+from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
 from fastapi.testclient import TestClient
 
 from star import config, server
 from star.ledger import SourceLedger
-from star.models import Category
+from star.models import Category, Citation, Finding
 
 AUTH = {"Authorization": "Bearer good.token.here"}
 
@@ -551,6 +552,103 @@ async def test_an_overrun_with_nothing_filed_is_still_an_error():
     del server._runs["empty"]
 
 
+def test_a_requisition_appends_to_a_drawer_without_disturbing_the_rest():
+    """The append is pure, so it can be asserted without a model or a network.
+
+    The drawer it targets may not exist. A build files all four, but a room
+    recovered by `_salvage` keeps only what survived — and a thin room is
+    exactly the one a writer asks a question about, so the missing-drawer case
+    is the normal path here rather than the edge.
+    """
+    document = {
+        "search_count": 17,
+        "categories": {
+            "setting": {"findings": [{"fact": "A gate.", "citations": [{"url": "u"}]}]}
+        },
+    }
+    filed = [Finding(fact="A curfew.", citations=[Citation(url="v", title="T", excerpt="e")])]
+
+    out = server._file_findings(document, Category.LOGISTICS, filed, 2)
+
+    assert [f["fact"] for f in out["categories"]["logistics"]["findings"]] == ["A curfew."]
+    assert out["categories"]["setting"]["findings"][0]["fact"] == "A gate.", (
+        "the drawer that was already there is untouched"
+    )
+    assert out["search_count"] == 19, "the room's cost grows by what this spent"
+    assert out["source_count"] == 2, (
+        "recounted from the room's own drawers, not incremented by a per-run "
+        "ledger that knows nothing about what was already filed"
+    )
+    assert document["search_count"] == 17, "and the input document is not mutated"
+
+
+def test_a_requisition_into_an_existing_drawer_keeps_what_was_there():
+    document = {
+        "categories": {"logistics": {"findings": [{"fact": "First.", "citations": []}]}}
+    }
+    filed = [Finding(fact="Second.", citations=[])]
+
+    out = server._file_findings(document, Category.LOGISTICS, filed, 1)
+
+    assert [f["fact"] for f in out["categories"]["logistics"]["findings"]] == [
+        "First.",
+        "Second.",
+    ], "appended, and after — a room reads in the order it was researched"
+
+
+@pytest.mark.asyncio
+async def test_a_requisition_is_refused_into_a_room_still_being_built():
+    """Not tidiness: `_persist` calls `.set()`, which replaces the document.
+
+    A finding filed in the seconds before a build's terminal write would be
+    overwritten by a room assembled from session state that never knew about
+    it — and the writer would have been told their question was researched and
+    filed. The refusal is the only thing standing between them and a fact that
+    silently is not there.
+    """
+    server._runs["live"] = {"uid": "uid-one", "status": "running"}
+    store = mock.Mock()
+    store.get.return_value = {"run_id": "live", "status": "running"}
+
+    try:
+        with (
+            mock.patch("star.server._store", store),
+            pytest.raises(HTTPException) as raised,
+        ):
+            await server._run_requisition(
+                "uid-one", "live", "how were the gates guarded", Category.SETTING
+            )
+    finally:
+        del server._runs["live"]
+
+    assert raised.value.status_code == 409
+    assert "still being built" in raised.value.detail
+    assert "overwritten" in raised.value.detail, "and why waiting is not politeness"
+
+
+@pytest.mark.asyncio
+async def test_a_requisition_into_another_accounts_room_is_simply_not_found():
+    """Isolation by construction, not by a check anyone has to remember.
+
+    `_store.get` is rooted at `users/{uid}`, so another caller's room is not
+    found and refused — it is not found, which is the answer a room that never
+    existed gets, down to the string.
+    """
+    store = mock.Mock()
+    store.get.return_value = None
+
+    with (
+        mock.patch("star.server._store", store),
+        pytest.raises(HTTPException) as raised,
+    ):
+        await server._run_requisition(
+            "uid-two", "someone-elses", "how were the gates guarded", Category.SETTING
+        )
+
+    assert raised.value.status_code == 404
+    assert raised.value.detail == "Unknown run"
+
+
 @pytest.mark.asyncio
 async def test_a_failed_run_files_its_own_account_of_why_it_stopped():
     """The explanation has to outlive the stream that carried it.
@@ -811,7 +909,18 @@ def test_every_api_route_requires_auth_except_the_explicitly_open_sse_stream():
             # validation with a 422 before _require_uid ever runs, so it would
             # read here as "did not require auth" and the fix would be a new
             # key in this dict, not an exemption.
-            return {"json": {"treatment": "x" * 60, "scene": "x" * 60}}
+            # `category` carries a real drawer name rather than filler: the
+            # question route validates it against the Category enum, and a
+            # bogus value 422s before _require_uid runs, which this test would
+            # read as a route that does not require auth.
+            return {
+                "json": {
+                    "treatment": "x" * 60,
+                    "scene": "x" * 60,
+                    "question": "x" * 20,
+                    "category": "setting",
+                }
+            }
         return {}
 
     checked = []
