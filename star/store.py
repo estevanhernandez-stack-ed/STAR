@@ -23,11 +23,28 @@ concurrent write.
 """
 
 import os
+from datetime import datetime, timedelta, timezone
 
 from google.api_core.exceptions import NotFound
 from google.cloud.firestore_v1 import FieldFilter
 
 _UNTITLED = "Untitled room"
+
+
+def _retention_cutoff() -> str:
+    """The ISO instant a deleted room stops being recoverable.
+
+    Compared as a STRING against `deleted_at`, which is safe only because every
+    timestamp this project writes is `datetime.now(timezone.utc).isoformat()` —
+    same length, same offset, so lexical order is chronological order. Anything
+    that starts writing a different format breaks the comparison silently, which
+    is why this reads from the same clock rather than parsing what it finds.
+    """
+    from star import config
+
+    days = config.room_retention_days()
+    return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()  # noqa: UP017
+
 
 _client = None
 
@@ -223,9 +240,107 @@ class RoomStore:
         return snapshot.to_dict() if snapshot.exists else None
 
     def list_rooms(self, uid: str) -> list[dict]:
+        """Every room this writer can still see, and the moment expired ones go.
+
+        A deleted room leaves this list immediately — that is the whole point of
+        the delete, and a workspace that still shows what you removed has not
+        removed it. The document survives for `config.room_retention_days()` so
+        the delete can be taken back, and is destroyed here once it cannot.
+
+        The purge is lazy, on the read, rather than scheduled. It follows the
+        precedent star/server.py's `_evict_old_runs` already sets for the same
+        reason: this app deploys to Cloud Run at `--min-instances=1` with no
+        scheduler, and a sweep that only runs when someone looks is one less
+        moving part than a cron that has to be deployed, monitored and paid for.
+
+        The honest cost of that choice, stated rather than buried: **a writer
+        who never lists their rooms never purges them.** Their deleted rooms sit
+        in Firestore past the window. Nothing about that is visible to them or
+        chargeable to anyone else, and the alternative is infrastructure this
+        project does not otherwise need — but it is a real difference between
+        "gone in thirty days" and "gone the next time you look after thirty
+        days", and the copy must not promise the first.
+        """
         docs = [s.to_dict() for s in self._rooms(uid).stream() if s.exists]
-        docs.sort(key=lambda d: d.get("created_at") or "", reverse=True)
-        return [room_summary(d) for d in docs]
+
+        cutoff = _retention_cutoff()
+        live = []
+        for doc in docs:
+            deleted_at = doc.get("deleted_at") or ""
+            if not deleted_at:
+                live.append(doc)
+            elif deleted_at < cutoff:
+                self.purge_room(uid, doc.get("run_id") or "")
+
+        live.sort(key=lambda d: d.get("created_at") or "", reverse=True)
+        return [room_summary(d) for d in live]
+
+    def soft_delete_room(self, uid: str, run_id: str, when: str) -> bool:
+        """Take a room out of sight, keeping it recoverable.
+
+        Returns False when there was nothing there, for the reason
+        `delete_scene` reads before it deletes: the endpoint turns False into a
+        404, and a delete that always reported success would tell a writer their
+        research was gone on a run_id that was never theirs.
+
+        Marking twice is not an error and does not move the clock. A second
+        delete of an already-deleted room would otherwise extend its life by
+        another full window every time an agent retried, which is the opposite
+        of what a retry should do.
+        """
+        document = self._rooms(uid).document(run_id)
+        snapshot = document.get()
+        if not snapshot.exists:
+            return False
+        if (snapshot.to_dict() or {}).get("deleted_at"):
+            return True
+        document.update({"deleted_at": when})
+        return True
+
+    def restore_room(self, uid: str, run_id: str) -> bool:
+        """Put a deleted room back, if the window has not closed on it.
+
+        False when there is no such room, when it was not deleted, or when it is
+        past the cutoff — three different reasons the caller reports apart,
+        because "you cannot restore this" and "there is nothing here" are
+        different answers and a writer is owed the real one.
+        """
+        snapshot = self._rooms(uid).document(run_id).get()
+        if not snapshot.exists:
+            return False
+        deleted_at = (snapshot.to_dict() or {}).get("deleted_at") or ""
+        if not deleted_at or deleted_at < _retention_cutoff():
+            return False
+        self._rooms(uid).document(run_id).update({"deleted_at": ""})
+        return True
+
+    def purge_room(self, uid: str, run_id: str) -> bool:
+        """Destroy a room for good, and the checks filed against it with it.
+
+        The scenes go first and the room second. A room deleted ahead of its
+        subcollection would strand every scene under a path nothing lists,
+        because Firestore does not cascade — deleting a document leaves its
+        subcollections addressable and invisible, which is the worst of both:
+        the writer's own pages, kept forever, reachable by nobody.
+
+        Only ever called on a room already past its window, so there is no
+        confirmation here. The gate is upstream.
+        """
+        if not run_id:
+            return False
+        # Collected before anything is deleted, not deleted as they stream.
+        # `stream()` is a live cursor and removing rows out from under one is
+        # undefined against Firestore and raises outright against the in-memory
+        # double — which is how this was written the first time, and what the
+        # purge test caught before it could reach a real database.
+        scenes = [snapshot.reference for snapshot in self._scenes(uid, run_id).stream()]
+        for reference in scenes:
+            reference.delete()
+        document = self._rooms(uid).document(run_id)
+        if not document.get().exists:
+            return False
+        document.delete()
+        return True
 
     def mark_interrupted(self, uid: str, run_id: str) -> bool:
         """A run left 'running' with no live task did not survive a restart.

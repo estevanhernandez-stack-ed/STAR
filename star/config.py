@@ -122,6 +122,18 @@ def mcp_allowed_origins() -> tuple[str, ...]:
     return origins or _DEFAULT_MCP_ORIGINS
 
 
+def room_retention_days() -> int:
+    """How long a deleted room stays recoverable before it is destroyed.
+
+    Thirty days: long enough that a delete regretted the next morning, or the
+    next week, is still a mistake and not a loss; short enough that "deleted"
+    means something and a workspace actually empties. The window is disclosed to
+    the reader at the moment they delete and on the consent screen, so changing
+    it here changes what the app promises — it is not a tuning knob.
+    """
+    return int(os.environ.get("STAR_ROOM_RETENTION_DAYS", "30"))
+
+
 def max_rooms_per_ip_per_hour() -> int:
     """Per-caller ceiling on a public endpoint that spends money to answer."""
     return int(os.environ.get("STAR_MAX_ROOMS_PER_IP_PER_HOUR", "5"))
