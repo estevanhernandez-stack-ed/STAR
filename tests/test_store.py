@@ -189,9 +189,56 @@ def test_room_summary_is_small_enough_for_a_rail():
         # the same test the exclusions below fail: the alternative is reading
         # twenty rooms whole to draw a list of twenty.
         "continues": "",
+        # Empty here, and that is the point of it being cheap: a note only
+        # exists on a room that ended badly, so the rail carries one sentence
+        # for the one room in twenty that failed and nothing for the rest. It
+        # earns its place on the other side of the same trade as `continues` —
+        # without it a rail can say a room failed and cannot say why, which
+        # sends the reader into the room to find out and puts the explanation
+        # behind the click it was written to save.
+        "note": "",
     }
     assert "research_bible" not in summary
     assert "categories" not in summary
+
+
+def test_a_note_survives_the_document_and_reaches_the_rail():
+    """Both shapes carry it, because both are places a reader learns a room failed.
+
+    The rail is the one that matters most: it is where a writer sees a room is
+    flagged, and a rail that can say a room stopped without saying why has put
+    the explanation behind a click it exists to save.
+    """
+    note = "The department ran past its 10-minute limit and was stopped."
+    doc = room_to_document("abc123", {}, "error", "2026-08-09T12:00:00Z", note=note)
+
+    assert doc["note"] == note
+    assert document_to_room(doc)["note"] == note
+    assert room_summary(doc)["note"] == note
+
+
+def test_a_room_that_finished_carries_no_note():
+    """An empty string, not a missing key, and not a sentence.
+
+    A note on a complete room would be a label on an open door — and the
+    default has to be falsy rather than absent so every reader can ask the
+    same question of every room without checking whether the field is there.
+    """
+    doc = room_to_document("abc123", RESULT, "complete", "2026-08-09T12:00:00Z")
+
+    assert doc["note"] == ""
+    assert room_summary(doc)["note"] == ""
+
+
+def test_an_older_document_written_before_notes_existed_reads_as_having_none():
+    """The twenty-three rooms already in Firestore have no `note` field at all.
+
+    They were written before it existed, and `.get()` on a missing key has to
+    land on the same empty string a finished room writes — otherwise the first
+    reader of an old failed room gets a None into copy that expects a string.
+    """
+    assert document_to_room({"run_id": "old"})["note"] == ""
+    assert room_summary({"run_id": "old"})["note"] == ""
 
 
 def test_save_and_get_round_trip_per_user():

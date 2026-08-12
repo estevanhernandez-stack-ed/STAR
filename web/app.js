@@ -1139,7 +1139,20 @@ async function showResults(runId) {
       "This room has no research to show.",
     ];
     $("result-title").textContent = copy[0];
-    docketBody.innerHTML = `<p class="docket-note">${escapeHtml(copy[1])}</p>`;
+    // The room's own account of itself, when it has one, in place of the
+    // generic sentence above. The copy in `copy[1]` names the CLASS of failure
+    // — this run hit an error — because until star/store.py started keeping a
+    // `note` that was the most any reopened room could say: the specific
+    // explanation was pushed down the SSE stream while the run died and went
+    // with the tab that was watching. A writer coming back the next morning
+    // got "hit an error" for a run that had actually run past its time limit,
+    // and no way to tell the two apart or to know a shorter treatment would
+    // work. Both sentences say the same thing when there is no note; when
+    // there is one, the stored sentence is the more specific of the two and
+    // printing both would say it twice.
+    const filedNote = (result && result.note) || "";
+    docketBody.innerHTML =
+      `<p class="docket-note">${escapeHtml(filedNote || copy[1])}</p>`;
 
     // What it cost, on the reopen path. A room that failed still spent live
     // searches and a day's build, and the sentences above say only that it

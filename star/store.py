@@ -75,6 +75,7 @@ def room_to_document(
     created_at: str,
     *,
     spent: dict | None = None,
+    note: str = "",
 ) -> dict:
     """Shape a finished run into its stored document. Pure.
 
@@ -85,6 +86,21 @@ def room_to_document(
     work and then filing a document saying it did none. The counts are the
     run's own, so they are right on every branch rather than only on the ones
     that reached a result.
+
+    `note` is the same argument applied to the account rather than the cost. A
+    run that ends badly already explains itself in plain language — the
+    timeout branch names the ceiling, the failure branch says the details are
+    in the server log — but it explains itself down the SSE stream, which is
+    gone the moment the tab is. What persisted was `status: "error"` and
+    nothing else, so a writer returning to the rail the next morning, or any
+    agent calling `get_room`, found a room that had failed and would not say
+    why. The department charging for work and then declining to account for
+    it is the same failure `spent` was added to fix, one field over.
+
+    Only the language already written for a stranger goes in here. The
+    exception type and the stack vocabulary stay in the server log where
+    star/server.py's error branches deliberately put them: this string is read
+    by a browser and by an agent, and it was public copy before it was stored.
     """
     result = result or {}
     spent = spent or {}
@@ -112,6 +128,10 @@ def room_to_document(
         # when its writer says so, not when the department guesses from two
         # treatments sharing a decade.
         "continues": "",
+        # Why this room ended the way it did, when that needs saying. Empty on
+        # a room that finished: a complete build's account of itself is the
+        # research, and a note there would be a label on a door that is open.
+        "note": note or "",
     }
 
 
@@ -143,6 +163,7 @@ def document_to_room(doc: dict) -> dict:
         "bible_finish_reason": doc.get("bible_finish_reason") or "",
         "bible_tokens": doc.get("bible_tokens") or {},
         "continues": doc.get("continues") or "",
+        "note": doc.get("note") or "",
     }
 
 
@@ -164,6 +185,10 @@ def room_summary(doc: dict) -> dict:
         # Reading twenty rooms whole to draw a list of twenty is the exact cost
         # this shape exists to avoid.
         "continues": doc.get("continues") or "",
+        # For the same reason, one layer along: a rail that shows a room as
+        # failed and makes the reader open it to learn why has moved the
+        # explanation somewhere they have to go looking for it.
+        "note": doc.get("note") or "",
     }
 
 

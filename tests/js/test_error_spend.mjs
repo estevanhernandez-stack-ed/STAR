@@ -97,6 +97,43 @@ assert.match(
   "a room still being built has not stopped, and must not be told it has"
 );
 
+/* 2b — and it says WHY, from the room's own stored account. -------------- */
+//
+// The spend told a reader what a failed run cost. It could not tell them what
+// happened: the specific explanation — ran past its time limit, hit an
+// unexpected problem — was pushed down the SSE stream as the run died, and the
+// stream is gone with the tab that was watching it. What persisted was
+// `status: "error"`, so every failed room reopened to the same generic
+// sentence, and a timeout was indistinguishable from a crash to the one person
+// who needed to know a shorter treatment would work.
+//
+// star/store.py now keeps that sentence on the document as `note`. This holds
+// the browser to reading it rather than printing its own.
+
+assert.match(
+  reopen,
+  /result && result\.note/,
+  "the reopen path should read the room's own account of why it stopped, for " +
+    "the same reason it reads the spend: it is the only place either fact " +
+    "still exists once the run is out of memory"
+);
+
+const docketWrite = reopen.match(/docketBody\.innerHTML =([\s\S]*?);\n/);
+assert.ok(docketWrite, "the reopen path should still write the docket body");
+assert.match(
+  docketWrite[1],
+  /filedNote \|\| copy\[1\]/,
+  "the stored note should REPLACE the generic sentence rather than join it — " +
+    "both say the run failed, and printing the pair says it twice"
+);
+assert.doesNotMatch(
+  docketWrite[1],
+  /ran past|unexpected problem|time limit/,
+  "and no failure copy is authored here: the sentence a reader sees is the " +
+    "one the server already wrote for them, not a second version of it that " +
+    "can drift from the first"
+);
+
 /* 3 — both sentences carry the two facts worth printing. ---------------- */
 
 for (const [name, block] of [["failure panel", failure], ["reopen path", reopen]]) {

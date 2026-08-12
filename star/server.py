@@ -336,7 +336,7 @@ def _maybe_warn_empty_ledger(run: dict) -> None:
         )
 
 
-def _persist(run: dict, run_id: str, status: str) -> None:
+def _persist(run: dict, run_id: str, status: str, note: str = "") -> None:
     """Best-effort persistence. Must never affect the in-memory run state:
     the outcome was already decided by the caller before this runs, and a
     Firestore hiccup here should cost only durability, never correctness.
@@ -374,6 +374,9 @@ def _persist(run: dict, run_id: str, status: str) -> None:
                     "search_count": run.get("search_count") or 0,
                     "source_count": len(run.get("ledger") or ()),
                 },
+                # The same sentence the run pushed down the stream, kept for
+                # the reader who was not watching it.
+                note=note,
             ),
         )
     except Exception:
@@ -651,28 +654,23 @@ async def _execute(run_id: str, treatment: str) -> None:
         salvaged = await _salvage(run, run_id)
         if salvaged:
             run["status"] = "partial"
-            _persist(run, run_id, "partial")
-            _push(
-                run,
-                "partial",
-                search_count=run["search_count"],
-                message=_partial_message(
-                    "The editor ran past the time limit before it could finish "
-                    "writing the bible."
-                ),
+            # One string, pushed and stored. Written twice it would drift, and
+            # the copy that drifts is the stored one nobody is watching.
+            message = _partial_message(
+                "The editor ran past the time limit before it could finish "
+                "writing the bible."
             )
+            _persist(run, run_id, "partial", note=message)
+            _push(run, "partial", search_count=run["search_count"], message=message)
         else:
             run["status"] = "error"
-            _persist(run, run_id, "error")
-            _push(
-                run,
-                "error",
-                message=(
-                    f"The department ran past its {timeout // 60}-minute limit and "
-                    "was stopped before anything could be filed. Try again — a "
-                    "shorter treatment usually finishes faster."
-                ),
+            message = (
+                f"The department ran past its {timeout // 60}-minute limit and "
+                "was stopped before anything could be filed. Try again — a "
+                "shorter treatment usually finishes faster."
             )
+            _persist(run, run_id, "error", note=message)
+            _push(run, "error", message=message)
     except Exception:  # nothing about this reaches the client; see below
         # A Gemini 5xx (or any other mid-pipeline failure) during synthesis
         # used to discard the same filed research the timeout path goes out
@@ -688,31 +686,28 @@ async def _execute(run_id: str, treatment: str) -> None:
         salvaged = await _salvage(run, run_id)
         if salvaged:
             run["status"] = "partial"
-            _persist(run, run_id, "partial")
-            _push(
-                run,
-                "partial",
-                search_count=run["search_count"],
-                # No exception class name here either. It is a thinner leak
-                # than a full message, but it is still our vocabulary in a
-                # stranger's browser, and it reads worse to a human than
-                # plain language does. The type is in the log line above.
-                message=_partial_message(
-                    "The editor hit a problem before it could finish writing "
-                    "the bible."
-                ),
+            # No exception class name here either. It is a thinner leak
+            # than a full message, but it is still our vocabulary in a
+            # stranger's browser, and it reads worse to a human than
+            # plain language does. The type is in the log line above.
+            #
+            # That it is safe for a browser is also what makes it safe to
+            # store: this string was written for a stranger before it was
+            # written for the database.
+            message = _partial_message(
+                "The editor hit a problem before it could finish writing "
+                "the bible."
             )
+            _persist(run, run_id, "partial", note=message)
+            _push(run, "partial", search_count=run["search_count"], message=message)
         else:
             run["status"] = "error"
-            _persist(run, run_id, "error")
-            _push(
-                run,
-                "error",
-                message=(
-                    "The department hit an unexpected problem and stopped. "
-                    "The details are in the server log."
-                ),
+            message = (
+                "The department hit an unexpected problem and stopped. "
+                "The details are in the server log."
             )
+            _persist(run, run_id, "error", note=message)
+            _push(run, "error", message=message)
 
     # Every branch above lands on a terminal status; this is the one place
     # in the run's lifecycle where eviction can never orphan a live build.

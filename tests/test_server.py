@@ -552,6 +552,59 @@ async def test_an_overrun_with_nothing_filed_is_still_an_error():
 
 
 @pytest.mark.asyncio
+async def test_a_failed_run_files_its_own_account_of_why_it_stopped():
+    """The explanation has to outlive the stream that carried it.
+
+    A run that fails already says why, in plain language, down the SSE
+    connection. That connection dies with the run, so what a writer found the
+    next morning — and what every `get_room` call has ever returned — was
+    `status: "error"` and nothing else: a room that had failed and would not
+    say what happened. A timeout and a crash read identically, though only one
+    of them means a shorter treatment would work.
+
+    The sentence stored is the SAME OBJECT pushed to the stream, not a second
+    copy written for the database. Two versions of one explanation is how the
+    stored one drifts, and the stored one is the copy nobody is watching.
+    """
+    run = _seed_run("accounted")
+
+    async def _never_finishes(run_id, treatment):
+        await asyncio.sleep(5)
+
+    async def _get_session(**kwargs):
+        return _FakeSession({})
+
+    store = mock.Mock()
+    with (
+        mock.patch("star.server._run_pipeline", _never_finishes),
+        mock.patch("star.server.config.run_timeout_seconds", return_value=1),
+        mock.patch("star.server._store", store),
+        mock.patch.object(server._runner.session_service, "get_session", _get_session),
+    ):
+        await server._execute("accounted", "a treatment")
+
+    assert run["status"] == "error"
+
+    stored = store.save.call_args.args[2]
+    assert stored["status"] == "error"
+    note = stored["note"]
+    assert note, "a room that failed has to be able to say why it failed"
+    assert "minute limit" in note, (
+        "and specifically why THIS one did — the timeout branch names the "
+        "ceiling it ran past, which is the half a crash cannot claim"
+    )
+
+    pushed = [e for e in run["events"] if e["type"] == "error"]
+    assert pushed, "the stream still gets its message"
+    assert pushed[0]["message"] == note, (
+        "one sentence, pushed and stored. Written twice they drift, and the "
+        "copy that drifts is the one no reader was watching being written"
+    )
+
+    del server._runs["accounted"]
+
+
+@pytest.mark.asyncio
 async def test_salvage_gives_up_quietly_when_the_session_cannot_be_read():
     run = _seed_run("unreadable")
 

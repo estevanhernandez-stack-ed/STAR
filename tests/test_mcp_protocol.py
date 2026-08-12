@@ -1825,7 +1825,19 @@ def _full_room() -> dict:
                             {
                                 "url": "https://example.org/gate",
                                 "title": "Gate No. 2",
-                                "excerpt": "A very long quoted passage. " * 40,
+                                # Sixty, not forty. The docstring above says
+                                # the proportions are what matter and the
+                                # header measures real rooms at 72.3% quoted
+                                # excerpt; at forty this fixture was 46%, so
+                                # it modelled a saving smaller than the one
+                                # the `findings` shape actually makes. The
+                                # thinness showed when a single field was
+                                # added to both shapes and the measured
+                                # assertion below missed by three characters
+                                # — on a one-finding room a fixed overhead is
+                                # most of the margin, which is true of the
+                                # fixture and of no real room.
+                                "excerpt": "A very long quoted passage. " * 60,
                             }
                         ],
                         "unverified_urls": ["https://example.org/never-returned"],

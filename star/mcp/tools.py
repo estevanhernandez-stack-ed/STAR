@@ -251,6 +251,11 @@ _LIGHT_KEYS = (
     # Travels with every shape that carries counts, because a caller who asked
     # for less should not thereby be told less about what the room holds.
     "bible_coverage",
+    # And for the same reason one step further: what a room holds is sometimes
+    # an account of why it holds nothing. A `summary` that dropped the note
+    # would answer a question about a failed room by omitting the only part of
+    # it that says anything.
+    "note",
 )
 
 
@@ -263,9 +268,16 @@ TOOLS: tuple[dict, ...] = (
             "Takes no arguments. Returns one entry per room: `run_id`, which "
             "is the id every other tool takes, plus `title`, `era`, `status`, "
             "`created_at`, `search_count`, the number of live web searches "
-            "that room cost to build, and `continues`, the `run_id` of the "
-            "room this one follows. It does not return the research itself; "
-            "call `get_room` with a `run_id` for that.\n\n"
+            "that room cost to build, `continues`, the `run_id` of the "
+            "room this one follows, and `note`. It does not return the "
+            "research itself; call `get_room` with a `run_id` for that.\n\n"
+            "A `status` of `error` or `partial` means the build did not "
+            "finish, and `note` is that room's account of why, in the words "
+            "the writer was given at the time. A failed room still cost the "
+            "searches it spent before it stopped, which is why it stays in "
+            "the list rather than disappearing: `search_count` says what it "
+            "cost and `note` says what happened. Rooms that finished carry "
+            "an empty `note` and need none.\n\n"
             "A writer's rooms are not always a flat list. One story can span "
             "several eras, and a room that continues from another belongs "
             "under it — reading a chain from its first room forward is "
