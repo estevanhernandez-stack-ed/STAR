@@ -938,7 +938,11 @@ async def test_every_firestore_call_the_card_makes_happens_off_the_event_loop():
 
     with carded(store, shape_b_claims()):
         body = await server.create_token(
-            server.TokenRequest(label="agent"), AUTH["Authorization"]
+            # The claim set rather than a header: `_claims` is a dependency
+            # now (see server._uid for the ordering it buys), and calling a
+            # handler directly runs none.
+            server.TokenRequest(label="agent"),
+            claims=shape_b_claims(),
         )
         await server.list_tokens(AUTH["Authorization"])
         await server.revoke_token(body["token_id"], AUTH["Authorization"])

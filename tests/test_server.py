@@ -1042,7 +1042,9 @@ async def test_create_room_persists_a_running_placeholder_before_the_task_starts
         response = await server.create_room(
             server.RoomRequest(treatment="x" * 60),
             request=_FakeRequest(),
-            authorization=AUTH["Authorization"],
+            # `uid` rather than a header: auth is a dependency now (see
+            # server._uid), and calling a handler directly runs none.
+            uid="uid-one",
         )
     run_id = response["run_id"]
 
@@ -1083,7 +1085,9 @@ async def test_a_run_that_recycles_mid_build_recovers_as_interrupted_end_to_end(
         response = await server.create_room(
             server.RoomRequest(treatment="x" * 60),
             request=_FakeRequest(),
-            authorization=AUTH["Authorization"],
+            # `uid` rather than a header: auth is a dependency now (see
+            # server._uid), and calling a handler directly runs none.
+            uid="uid-one",
         )
         run_id = response["run_id"]
 

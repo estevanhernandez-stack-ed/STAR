@@ -716,7 +716,9 @@ async def test_both_doors_decrement_one_daily_cap():
         await server.create_room(
             server.RoomRequest(treatment=TREATMENT),
             request=_FakeRequest(),
-            authorization=BROWSER_AUTH["Authorization"],
+            # `uid` rather than a header: auth is a dependency now (see
+            # server._uid), and calling a handler directly runs none.
+            uid=UID,
         )
         await server._mcp_start_build(UID, TREATMENT)
 
@@ -734,7 +736,9 @@ async def test_the_daily_cap_the_browser_spent_refuses_the_agent_door():
         await server.create_room(
             server.RoomRequest(treatment=TREATMENT),
             request=_FakeRequest(),
-            authorization=BROWSER_AUTH["Authorization"],
+            # `uid` rather than a header: auth is a dependency now (see
+            # server._uid), and calling a handler directly runs none.
+            uid=UID,
         )
         with pytest.raises(server.HTTPException) as refused:
             await server._mcp_start_build(UID, TREATMENT)
@@ -1177,7 +1181,19 @@ def test_the_instructions_explain_the_department_rather_than_padding_the_handsha
     assert "several minutes" in instructions
     assert "live web search actually returned" in instructions
     assert "stored with its room" in instructions
-    assert "six tools" in instructions
+    # EVERY TOOL, BY NAME, and no count anywhere. This asserted the literal
+    # "six tools" while the door served fourteen — so the stale sentence could
+    # not be corrected without this line failing, and the test was what made
+    # the staleness durable. Naming them cannot go stale: a tool added without
+    # a mention here fails right below.
+    for tool in tools.TOOLS:
+        assert f"`{tool['name']}`" in instructions, (
+            f"{tool['name']} is served and the handshake never mentions it"
+        )
+    for counted in ("six tools", "seven tools", "eight tools", "fourteen tools"):
+        assert counted not in instructions, (
+            f"'{counted}' is a second source of truth that only drifts one way"
+        )
     # The cheapest way in is named in the handshake, because an agent that
     # only reads INSTRUCTIONS should not have to discover it from tools/list.
     assert "ask_room" in instructions

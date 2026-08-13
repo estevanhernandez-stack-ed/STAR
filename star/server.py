@@ -20,13 +20,21 @@ import uuid
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Annotated
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import FastAPI, Header, HTTPException, Query, Request  # noqa: E402
+from fastapi import (  # noqa: E402
+    Depends,
+    FastAPI,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+)
 from fastapi.encoders import jsonable_encoder  # noqa: E402
 from fastapi.responses import (  # noqa: E402
     JSONResponse,
@@ -214,6 +222,43 @@ def _require_uid(authorization: str | None) -> str:
     if uid is None:
         raise HTTPException(401, "Sign-in required.")
     return uid
+
+
+async def _uid(authorization: str | None = Header(None)) -> str:
+    """`_require_uid` as a dependency, for the routes that take a body.
+
+    THE ORDER IS THE WHOLE REASON THIS EXISTS. A route that reads its header
+    inside the handler is a route FastAPI has already validated the body of:
+    the handler never runs when a body is malformed, so an anonymous caller
+    sending `{}` got a 422 naming the field it was missing. Six write routes
+    answered that way — `create_room`, `create_sweep`, `import_rooms`,
+    `create_question`, `create_scene` and `annotate_sweep` — handing a stranger
+    a schema for surfaces that spend a writer's money.
+
+    Nothing executed and nothing leaked but the shape of a request body, so the
+    severity is low and the class is not: `docs/smoke-2026-08-12.md` claimed
+    "every new route answers 401 unauthenticated" on the strength of a suite
+    that only ever tested GETs. It was the third passing test over an
+    unasserted outcome in this build, and the other two are confessed in that
+    same file.
+
+    A dependency that raises is solved BEFORE the dependant's own body params
+    are validated, so this short-circuits to 401. Measured rather than trusted
+    — see `test_no_api_route_answers_a_stranger_with_its_schema`, which walks
+    every declared route rather than a list somebody maintains.
+    """
+    return _require_uid(authorization)
+
+
+async def _claims(authorization: str | None = Header(None)) -> dict:
+    """`_require_claims` as a dependency. See `_uid` for the ordering it buys.
+
+    `POST /api/tokens` takes a body whose fields are all optional, so `{}`
+    parsed and reached the handler and answered 401 — while an unparseable body
+    was refused with a 422 first. One route, two answers to the same stranger,
+    depending on how badly they guessed the shape.
+    """
+    return _require_claims(authorization)
 
 
 def _require_claims(authorization: str | None) -> dict:
@@ -877,10 +922,15 @@ async def _start_build(
 
 @app.post("/api/rooms")
 async def create_room(
-    req: RoomRequest, request: Request, authorization: str | None = Header(None)
+    req: RoomRequest, request: Request, uid: Annotated[str, Depends(_uid)]
 ) -> dict:
-    """The browser door onto a build. Auth, then the shared admission path."""
-    uid = _require_uid(authorization)
+    """The browser door onto a build. Auth, then the shared admission path.
+
+    `uid` arrives as a DEPENDENCY rather than being read off a header inside
+    this function, and that is not style: a body param is validated before a
+    handler runs, so the header check could only ever happen after `{}` had
+    already been refused with a 422 naming `treatment`. See `_uid`.
+    """
     return await _start_build(uid, req.treatment, gate=_ip_gate(request))
 
 
@@ -1297,7 +1347,7 @@ async def _sweep_draft(uid: str, run_id: str, scenes: list[dict]) -> dict:
 
 @app.post("/api/rooms/import")
 async def import_rooms(
-    req: RoomImport, authorization: str | None = Header(None)
+    req: RoomImport, uid: Annotated[str, Depends(_uid)]
 ) -> dict:
     """Somebody else's research, filed into this account.
 
@@ -1322,7 +1372,6 @@ async def import_rooms(
     no searches, no model calls. The bible is where the spend is, and it is a
     separate press on `/api/rooms/{run_id}/bible`.
     """
-    uid = _require_uid(authorization)
     return await _import_rooms(uid, req.csv, req.apply)
 
 
@@ -2572,7 +2621,7 @@ async def annotate_sweep(
     run_id: str,
     sweep_id: str,
     req: AnnotationRequest,
-    authorization: str | None = Header(None),
+    uid: Annotated[str, Depends(_uid)],
 ) -> dict:
     """Bring a writer's own marks back from a spreadsheet.
 
@@ -2581,7 +2630,6 @@ async def annotate_sweep(
     impossible is a room reading as better-sourced than its research made it.
     A row that edited one has that column ignored and is named in the report.
     """
-    uid = _require_uid(authorization)
     if len(req.csv) > config.max_annotation_chars():
         raise HTTPException(
             400,
@@ -2653,9 +2701,8 @@ class SceneRequest(BaseModel):
 
 @app.post("/api/rooms/{run_id}/scenes")
 async def create_scene(
-    run_id: str, req: SceneRequest, authorization: str | None = Header(None)
+    run_id: str, req: SceneRequest, uid: Annotated[str, Depends(_uid)]
 ) -> dict:
-    uid = _require_uid(authorization)
     scene = req.scene.strip()
     # An empty scene is refused here because it cannot be refused upstream.
     # claim_extractor's `{scene}` carries no `?`, so a scene the server never
@@ -2697,10 +2744,9 @@ class SweepRequest(BaseModel):
 
 @app.post("/api/rooms/{run_id}/sweep")
 async def create_sweep(
-    run_id: str, req: SweepRequest, authorization: str | None = Header(None)
+    run_id: str, req: SweepRequest, uid: Annotated[str, Depends(_uid)]
 ) -> dict:
     """Every claim a whole draft makes, checked against this room in one pass."""
-    uid = _require_uid(authorization)
 
     # The BROWSER splits the draft (web/fountain.js) and sends the scenes. No
     # Fountain parser lives on this side, deliberately: a second one would be a
@@ -2762,10 +2808,9 @@ class QuestionRequest(BaseModel):
 
 @app.post("/api/rooms/{run_id}/questions")
 async def create_question(
-    run_id: str, req: QuestionRequest, authorization: str | None = Header(None)
+    run_id: str, req: QuestionRequest, uid: Annotated[str, Depends(_uid)]
 ) -> dict:
     """Send one question back to the field and file the answer into this room."""
-    uid = _require_uid(authorization)
     question = req.question.strip()
     if not question:
         raise HTTPException(400, "Ask the department a question.")
@@ -2894,8 +2939,8 @@ def _chain_would_close(rooms: list[dict], run_id: str, parent_id: str) -> bool:
 @app.patch("/api/rooms/{run_id}")
 async def update_room(
     run_id: str,
+    uid: Annotated[str, Depends(_uid)],
     body: dict | None = None,
-    authorization: str | None = Header(None),
 ) -> dict:
     """Rename a room, or say which room it follows. Both, or either.
 
@@ -2909,14 +2954,17 @@ async def update_room(
     with defaults — a default cannot tell "not mentioned" from "set to empty",
     and both edits here need to.
 
-    The body is OPTIONAL so that authorization is the first gate. Declared
-    required, FastAPI validates it before this function runs, and an
-    unauthenticated caller with no body gets 422 instead of 401 — which both
-    answers a stranger who should have been turned away and tells them the
-    route exists. Caught by the route audit in tests/test_server.py, which
-    sweeps every registered route rather than the ones someone remembered.
+    The body was declared OPTIONAL to make authorization the first gate,
+    which worked for an absent body and not for an unparseable one: `[1,2,3]`
+    still 422'd before this function ran. The gate is a dependency now, solved
+    before any body param is validated, so the optional default is ordinary
+    convenience again rather than a load-bearing workaround. See `_uid`.
+
+    tests/test_server.py's route audit caught the first version of this and
+    could not see the second: it sends one body that satisfies every route at
+    once, so it proves auth is REQUIRED and never that it runs FIRST.
+    tests/test_api_auth_posture.py asks the other question.
     """
-    uid = _require_uid(authorization)
     body = body or {}
 
     if "title" in body:
@@ -2988,7 +3036,7 @@ class TokenRequest(BaseModel):
 
 @app.post("/api/tokens")
 async def create_token(
-    req: TokenRequest, authorization: str | None = Header(None)
+    req: TokenRequest, claims: Annotated[dict, Depends(_claims)]
 ) -> dict:
     """Issue one MCP token. The only moment its plaintext exists on the wire.
 
@@ -3006,7 +3054,6 @@ async def create_token(
     that field reads after a link, and if it keeps describing how the SESSION
     began then that check refuses exactly the accounts it exists to admit.
     """
-    claims = _require_claims(authorization)
     if linked_provider(claims) is None:
         raise HTTPException(
             403,
