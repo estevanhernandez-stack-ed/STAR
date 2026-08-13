@@ -275,6 +275,11 @@
                    writer asking for their research has not necessarily swept
                    anything and should not have to. -->
               <button id="room-csv-btn" class="docket-btn" type="button">Research as CSV</button>
+              <!-- The same file widened to the rooms this one follows. Hidden
+                   unless this room actually follows a room the reader still
+                   has, because on a room that starts a story it would hand
+                   back a byte-identical file under a name promising more. -->
+              <button id="chain-csv-btn" class="docket-btn hidden" type="button">The story as CSV</button>
               <!-- Two presses, the same arming web/scriptcheck.js's buildFoot
                    uses for a check. A room costs real money and several
                    minutes, so the first press says exactly what goes and the

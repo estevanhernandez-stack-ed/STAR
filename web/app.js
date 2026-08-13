@@ -81,6 +81,7 @@ const bibleBtn = $("bible-btn");
 const checkSurface = $("check-panel");
 const checkBtn = $("check-btn");
 const roomCsvBtn = $("room-csv-btn");
+const chainCsvBtn = $("chain-csv-btn");
 
 /* What each toggle says when its surface is CLOSED, read off the markup once
  * rather than written here a second time.
@@ -508,7 +509,7 @@ function pad2(n) {
   return String(n).padStart(2, "0");
 }
 
-/** The open room's research, downloaded as a spreadsheet.
+/** A CSV off the API, saved to disk.
  *
  *  FETCHED, NOT LINKED. Everything under /api needs a bearer token that only
  *  `authedFetch` attaches; a plain <a href> is a browser navigation carrying
@@ -516,13 +517,20 @@ function pad2(n) {
  *  reader to sign in. The sweep's CSV shipped exactly that bug — this is the
  *  same mistake already paid for once.
  *
+ *  ONE FUNCTION FOR BOTH BUTTONS on purpose. The room file and the story file
+ *  differ only in a query parameter, and a second copy of this is how one of
+ *  them regresses to a link while the other stays fetched.
+ *
  *  The filename comes back from the server's own disposition rather than being
  *  rebuilt here, so there is one source for what lands in a downloads folder. */
-async function downloadRoomCsv() {
+async function downloadCsv(button, query, fallbackName) {
   if (!openRoomId) return;
-  roomCsvBtn.disabled = true;
+  const label = button.textContent;
+  button.disabled = true;
   try {
-    const res = await authedFetch(`/api/rooms/${encodeURIComponent(openRoomId)}.csv`);
+    const res = await authedFetch(
+      `/api/rooms/${encodeURIComponent(openRoomId)}.csv${query}`
+    );
     if (!res.ok) throw new Error(`The department could not build that file (${res.status}).`);
     const blob = await res.blob();
     const disposition = res.headers.get("content-disposition") || "";
@@ -530,23 +538,44 @@ async function downloadRoomCsv() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", named ? named[1] : "research.csv");
+    link.setAttribute("download", named ? named[1] : fallbackName);
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 0);
   } catch (err) {
     // The room view has no error region of its own, and a failed download must
     // not be silent — a reader who pressed a button and saw nothing has no way
-    // to tell a slow network from a broken one.
-    roomCsvBtn.textContent = "Could not build the file";
+    // to tell a slow network from a broken one. The label is read back off the
+    // button rather than written here, so restoring it cannot disagree with
+    // what the markup says.
+    button.textContent = "Could not build the file";
     setTimeout(() => {
-      roomCsvBtn.textContent = "Research as CSV";
+      button.textContent = label;
     }, 4000);
   } finally {
-    roomCsvBtn.disabled = false;
+    button.disabled = false;
   }
 }
 
-roomCsvBtn.addEventListener("click", downloadRoomCsv);
+/** Whether this room has a story to export, and not just itself.
+ *
+ *  Offered only when the room follows a room STILL IN THE RAIL. `?chain=true`
+ *  walks upward until it runs out of rooms this account can read, so a
+ *  `continues` pointing at something deleted returns exactly this room — a
+ *  second button handing back a byte-identical file under a name promising
+ *  more than it holds. Same source of truth as fillRoomEdit's parent list,
+ *  which already has to answer this question to draw the select. */
+function showChainCsv(result) {
+  const parent = (result && result.continues) || "";
+  const reachable = parent && knownRooms().some((room) => room.run_id === parent);
+  chainCsvBtn.classList.toggle("hidden", !reachable);
+}
+
+roomCsvBtn.addEventListener("click", () =>
+  downloadCsv(roomCsvBtn, "", "research.csv")
+);
+chainCsvBtn.addEventListener("click", () =>
+  downloadCsv(chainCsvBtn, "?chain=true", "story.csv")
+);
 
 /*  stampDate — DD MON YYYY, matching the stamp's slug-face convention in
  *  docs/design/visual-directions.md's own mockup ("RET 09 AUG 2026") — now
@@ -1158,6 +1187,10 @@ async function showResults(runId) {
 
   showRoom();
   $("build-btn").disabled = false;
+  // Above the no-profile branch, which returns before fillRoomEdit ever runs.
+  // Leaving it to the good path would strand the control visible on a room
+  // that filed nothing, offering a story export for a room with no research.
+  showChainCsv(result);
 
   // A room can be listed in the rail before it has anything to show: still
   // running, or interrupted/errored before intake ever finished. Say so

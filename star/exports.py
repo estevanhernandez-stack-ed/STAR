@@ -335,6 +335,32 @@ def room_to_csv(result: dict, run_id: str = "") -> str:
     return buffer.getvalue()
 
 
+def chain_to_csv(rooms) -> str:
+    """A whole story's research as one CSV. Pure.
+
+    `rooms` is an iterable of `(run_id, result)`, nearest first — the order a
+    check reads them in, so the room a writer opened is at the top of the file.
+
+    THE `room` COLUMN IS WHAT MAKES THIS SAFE TO OFFER. Merging two rooms into
+    one file is only useful if a reader can still tell them apart, and the whole
+    reason `room_to_csv` stays narrow is that a writer's own research should not
+    become indistinguishable from the room it follows. Every row already carries
+    `room`, `era` and `run_id`, so this widens the reach without spending that:
+    sort by `room` and the single-room file is back.
+
+    Nothing is deduplicated across rooms. Two rooms citing one page is a fact
+    about the research — it says a source is doing double duty — and collapsing
+    the second row would hide it.
+    """
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=ROOM_COLUMNS, lineterminator="\r\n")
+    writer.writeheader()
+    for run_id, result in rooms or ():
+        for row in room_rows(result, run_id):
+            writer.writerow({key: safe_cell(row.get(key)) for key in ROOM_COLUMNS})
+    return buffer.getvalue()
+
+
 def csv_filename(room_title: str, created_at: str, kind: str = "sweep") -> str:
     """A filename a writer can find again in a downloads folder.
 

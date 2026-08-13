@@ -26,7 +26,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import FastAPI, Header, HTTPException, Request  # noqa: E402
+from fastapi import FastAPI, Header, HTTPException, Query, Request  # noqa: E402
 from fastapi.encoders import jsonable_encoder  # noqa: E402
 from fastapi.responses import (  # noqa: E402
     JSONResponse,
@@ -1091,7 +1091,14 @@ async def _read_room(uid: str, run_id: str) -> dict:
 
 
 @app.get("/api/rooms/{run_id}.csv")
-async def get_room_csv(run_id: str, authorization: str | None = Header(None)) -> Response:
+async def get_room_csv(
+    run_id: str,
+    # Aliased rather than named `chain`, because `chain` in this module is the
+    # imported star/chain.py and a parameter of that name shadows it inside the
+    # one function that most wants to call it.
+    whole_chain: bool = Query(False, alias="chain"),
+    authorization: str | None = Header(None),
+) -> Response:
     """A whole room's research as a spreadsheet.
 
     A different question from a sweep's CSV: that one says what a draft claimed
@@ -1104,9 +1111,14 @@ async def get_room_csv(run_id: str, authorization: str | None = Header(None)) ->
     a room whose id has no dot in it. The sweep CSV shipped with exactly that
     bug and a comment claiming it had been avoided.
 
-    This room only, not its chain. A chain is a reading convenience and this is
-    a record of what one build produced; merging two rooms into one file would
-    make a writer's own research indistinguishable from the room it follows.
+    This room only by default; `?chain=true` widens it to every room this one
+    follows. Two files for two questions — "my research" against "this story's
+    research" — and the `room` column keeps them apart either way, so the wide
+    file sorts back down into the narrow one.
+
+    Narrow is the default because wide is the surprising answer. A writer's own
+    research becoming indistinguishable from the room it follows is the outcome
+    worth asking for rather than being handed.
     """
     uid = _require_uid(authorization)
     document = await asyncio.to_thread(_store.get, uid, run_id)
@@ -1115,11 +1127,26 @@ async def get_room_csv(run_id: str, authorization: str | None = Header(None)) ->
 
     result = document_to_room(document)
     profile = result.get("story_profile") or {}
+
+    if whole_chain:
+        # `document` passed in so the room already read is not read twice, the
+        # same reason _chain_documents takes `first` for a check.
+        documents = await _chain_documents(uid, run_id, document)
+        content = exports.chain_to_csv(
+            [(rid, document_to_room(doc)) for rid, doc in documents]
+        )
+        # A chain of one is a room. Naming that file `story` would promise a
+        # reader rooms that are not in it.
+        kind = "story" if len(documents) > 1 else "research"
+    else:
+        content = exports.room_to_csv(result, run_id)
+        kind = "research"
+
     filename = exports.csv_filename(
-        profile.get("title") or "room", result.get("created_at"), kind="research"
+        profile.get("title") or "room", result.get("created_at"), kind=kind
     )
     return Response(
-        content=exports.room_to_csv(result, run_id),
+        content=content,
         media_type="text/csv; charset=utf-8",
         headers={
             "Content-Disposition": f'attachment; filename="{filename}"',

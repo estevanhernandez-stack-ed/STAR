@@ -15,13 +15,14 @@ from star import server
 from star.exports import (
     COLUMNS,
     ROOM_COLUMNS,
+    chain_to_csv,
     csv_filename,
     room_to_csv,
     safe_cell,
     sweep_rows,
     sweep_to_csv,
 )
-from star.store import sweep_to_document
+from star.store import room_to_document, sweep_to_document
 from tests.test_scenes import AUTH, UID, a_store, filed_room
 from tests.test_scenes import ROOM as ROOM_ID
 
@@ -333,3 +334,189 @@ def test_another_accounts_room_has_no_csv():
         response = TestClient(server.app).get(f"/api/rooms/{ROOM_ID}.csv", headers=AUTH)
 
     assert response.status_code == 404
+
+
+# -- the CHAIN, which is the same file widened -------------------------------
+
+
+HAMBURG = {
+    "created_at": "2026-08-11T00:00:00Z",
+    "story_profile": {"title": "Hamburg", "era": "1960-1962"},
+    "categories": {
+        "setting": {
+            "findings": [
+                {
+                    "fact": "The Kaiserkeller opened in 1959.",
+                    "citations": [{"url": "https://k.example", "title": "K", "excerpt": "1959."}],
+                }
+            ]
+        }
+    },
+}
+
+
+def test_a_chain_is_every_rooms_research_in_one_file():
+    rows = parsed(chain_to_csv([("hamburg-1", HAMBURG), ("room-1", ROOM)]))
+
+    assert len(rows) == 1 + 4, "Hamburg's one finding, then Liverpool's four rows"
+    assert rows[0]["room"] == "Hamburg", "nearest first — the room the reader opened"
+    assert rows[0]["run_id"] == "hamburg-1"
+    assert {r["room"] for r in rows[1:]} == {"Doctor Who Special: Liverpool"}
+
+
+def test_the_wide_file_sorts_back_down_into_the_narrow_one():
+    """THE WHOLE ARGUMENT FOR OFFERING THIS AT ALL.
+
+    Merging rooms is only safe if a reader can still tell whose research is
+    whose — a writer's own findings becoming indistinguishable from the room
+    they follow is the thing room_to_csv stays narrow to prevent. Filtering the
+    chain file on one room has to give back that room's file exactly.
+    """
+    chained = parsed(chain_to_csv([("hamburg-1", HAMBURG), ("room-1", ROOM)]))
+    alone = parsed(room_to_csv(ROOM, "room-1"))
+
+    assert [r for r in chained if r["run_id"] == "room-1"] == alone
+
+
+def test_two_rooms_citing_one_page_are_two_rows():
+    """Not deduplicated. A source doing double duty across a chain is a fact
+    about the research, and collapsing the second row hides it."""
+    shared = {
+        "story_profile": {"title": "Second room"},
+        "categories": {
+            "setting": {
+                "findings": [
+                    {
+                        "fact": "Also the Kaiserkeller.",
+                        "citations": [
+                            {"url": "https://k.example", "title": "K", "excerpt": "1959."}
+                        ],
+                    }
+                ]
+            }
+        },
+    }
+    rows = parsed(chain_to_csv([("a", HAMBURG), ("b", shared)]))
+    same = [r for r in rows if r["source_url"] == "https://k.example"]
+
+    assert len(same) == 2
+    assert {r["room"] for r in same} == {"Hamburg", "Second room"}
+
+
+def test_an_empty_chain_is_still_a_readable_file():
+    assert parsed(chain_to_csv([])) == []
+    assert chain_to_csv([]).startswith("drawer,"), "a header, not an empty file"
+    assert chain_to_csv(None).startswith("drawer,")
+
+
+def test_a_chain_export_is_not_a_program_either():
+    hostile = {
+        "story_profile": {"title": "X"},
+        "categories": {"setting": {"findings": [{"fact": "=1+1", "citations": []}]}},
+    }
+    assert parsed(chain_to_csv([("x", hostile)]))[0]["fact"].startswith("'=")
+
+
+def a_chain_store():
+    """Liverpool following Hamburg, both filed to one account."""
+    store, _ = a_store()
+    near = filed_room()
+    near["continues"] = "far-1"
+    store.save(UID, ROOM_ID, near)
+    far = room_to_document(
+        "far-1",
+        {
+            "story_profile": {"title": "Hamburg", "era": "1960-1962"},
+            "categories": {
+                "setting": {
+                    "findings": [
+                        {
+                            "fact": "The Kaiserkeller opened in 1959.",
+                            "citations": [
+                                {"url": "https://k.example", "title": "K", "excerpt": "1959."}
+                            ],
+                        }
+                    ]
+                }
+            },
+        },
+        "complete",
+        "2026-08-09T00:00:00+00:00",
+    )
+    store.save(UID, "far-1", far)
+    return store
+
+
+def test_the_flag_widens_the_download_to_the_rooms_it_follows():
+    store = a_chain_store()
+
+    with mock.patch("star.server.verify_token", return_value=UID), \
+            mock.patch("star.server._store", store):
+        client = TestClient(server.app)
+        narrow = client.get(f"/api/rooms/{ROOM_ID}.csv", headers=AUTH)
+        wide = client.get(f"/api/rooms/{ROOM_ID}.csv?chain=true", headers=AUTH)
+
+    assert narrow.status_code == wide.status_code == 200
+    assert "Impala" in narrow.text and "Kaiserkeller" not in narrow.text, (
+        "the default is still this room only — widening is asked for, not handed over"
+    )
+    assert "Impala" in wide.text and "Kaiserkeller" in wide.text
+    assert "story" in wide.headers["content-disposition"], (
+        "and it is named as a different file, so two downloads do not collide"
+    )
+    assert "research" in narrow.headers["content-disposition"]
+
+
+def test_a_room_that_starts_a_story_asks_for_a_chain_and_gets_itself():
+    """Named `research`, not `story`. A chain of one is a room, and a file
+    called story-... promising rooms it does not hold is worse than the flag
+    quietly doing nothing."""
+    store, _ = a_store()
+    store.save(UID, ROOM_ID, filed_room())
+
+    with mock.patch("star.server.verify_token", return_value=UID), \
+            mock.patch("star.server._store", store):
+        response = TestClient(server.app).get(
+            f"/api/rooms/{ROOM_ID}.csv?chain=true", headers=AUTH
+        )
+
+    assert response.status_code == 200
+    assert "research" in response.headers["content-disposition"]
+    assert "story" not in response.headers["content-disposition"]
+
+
+def test_a_chain_download_reaches_no_room_this_account_cannot_see():
+    """A `continues` pointing at SOMEBODY ELSE'S room ends the walk instead of
+    crossing into their research.
+
+    The room ids are a writer's own field, so this is reachable by typing one:
+    point a room at a run id belonging to another account and ask for the
+    chain. The reads are uid-scoped by path, so the far room is simply not
+    there — and the file that comes back holds one room and is named for one.
+    """
+    store, _ = a_store()
+    near = filed_room()
+    near["continues"] = "far-1"
+    store.save(UID, ROOM_ID, near)
+    store.save("somebody-else", "far-1", room_to_document(
+        "far-1",
+        {
+            "story_profile": {"title": "Hamburg"},
+            "categories": {
+                "setting": {"findings": [{"fact": "The Kaiserkeller.", "citations": []}]}
+            },
+        },
+        "complete",
+        "2026-08-09T00:00:00+00:00",
+    ))
+
+    with mock.patch("star.server.verify_token", return_value=UID), \
+            mock.patch("star.server._store", store):
+        response = TestClient(server.app).get(
+            f"/api/rooms/{ROOM_ID}.csv?chain=true", headers=AUTH
+        )
+
+    assert response.status_code == 200
+    assert "Impala" in response.text
+    assert "Kaiserkeller" not in response.text, "the other account's room is not in the file"
+    assert "research" in response.headers["content-disposition"]
