@@ -225,6 +225,51 @@ def test_the_filename_is_something_a_writer_can_find_again():
     assert "/" not in csv_filename("A/B: C", "2026-08-12")
 
 
+def test_two_sweeps_of_one_room_on_one_day_do_not_share_a_filename():
+    """THE THIRD SWEEP IS THE ORDINARY CASE, not the edge. A writer sweeping a
+    draft, fixing three lines and sweeping again has two files, and this used to
+    hand both the same name — leaving the browser to disambiguate them as `(1)`
+    and `(2)`, which orders by download time and says nothing about what is
+    inside. Measured 2026-08-13: three same-named downloads, and the writer
+    imported one into the wrong sweep.
+
+    The id goes LAST so the name still sorts and reads by room and day."""
+    first = csv_filename("Doctor Who", "2026-08-13T11:41:00Z", unique="f1d31518e372")
+    second = csv_filename("Doctor Who", "2026-08-13T13:35:00Z", unique="26881297a20d")
+
+    assert first == "doctor-who-sweep-2026-08-13-f1d31518e372.csv"
+    assert first != second
+    assert second.startswith("doctor-who-sweep-2026-08-13-")
+
+
+def test_the_same_sweep_twice_is_the_same_file():
+    """A collision that SHOULD happen. Two exports of one sweep are the same
+    bytes, and a writer downloading twice wants one file, not a numbered pair."""
+    args = ("Doctor Who", "2026-08-13T13:35:00Z")
+
+    assert csv_filename(*args, unique="26881297a20d") == csv_filename(
+        *args, unique="26881297a20d"
+    )
+
+
+def test_an_id_cannot_escape_the_filename():
+    """This reaches a Content-Disposition header and a filesystem. An id is
+    only alphanumeric by convention, and nothing upstream promises it."""
+    nasty = csv_filename("Room", "2026-08-13", unique='../../etc/passwd"; drop')
+
+    assert "/" not in nasty and ".." not in nasty and '"' not in nasty
+    assert nasty.endswith(".csv")
+
+
+def test_a_room_export_still_has_no_id_in_its_name():
+    """Rooms do not collide the same way — a room exported twice on one day is
+    the same room and the two files agree. Passing nothing must change nothing,
+    or every research download in the wild gets a new name for no reason."""
+    assert csv_filename("Liverpool", "2026-08-13T00:00:00Z", kind="research") == (
+        "liverpool-research-2026-08-13.csv"
+    )
+
+
 def test_rows_are_pure_and_do_not_touch_the_document():
     document = a_sweep()
     before = str(document)

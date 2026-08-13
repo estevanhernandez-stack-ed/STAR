@@ -722,13 +722,34 @@ def bible_markdown(result: dict, run_id: str = "") -> str:
 
 
 def csv_filename(
-    room_title: str, created_at: str, kind: str = "sweep", ext: str = "csv"
+    room_title: str,
+    created_at: str,
+    kind: str = "sweep",
+    ext: str = "csv",
+    unique: str = "",
 ) -> str:
     """A filename a writer can find again in a downloads folder.
 
-    Built from the room and the date rather than the sweep id, because a reader
-    looking for last Tuesday's sweep of the Doctor Who room is not looking for
-    `sw_9f2c1a`. Reduced to characters every filesystem accepts.
+    Room and date first, because a reader looking for last Tuesday's sweep of
+    the Doctor Who room is not looking for `sw_9f2c1a`. Reduced to characters
+    every filesystem accepts.
+
+    `unique` IS THE SWEEP ID, and it is here because the argument above is only
+    true until the second sweep of the day. Measured 2026-08-13: three sweeps of
+    one room, three downloads all named
+    `doctor-who-liverpool-and-hamburg-special-sweep-2026-08-13.csv`, and a
+    browser disambiguating them as `(1)` and `(2)` — which orders them by
+    download time and says nothing about which sweep is inside. The writer
+    imported one into the wrong sweep and got a screen of true, useless
+    complaints about it.
+
+    So it goes LAST, after the human part: the name still sorts and reads by
+    room and day, and the id is only doing the job the `(1)` was doing badly.
+    Two exports of the SAME sweep still collide, which is correct — they are
+    the same file.
+
+    Empty for a room export, where the collision does not arise the same way: a
+    room exported twice on one day is the same room, and the two files agree.
 
     `ext` because the bible leaves as markdown and everything else as CSV, and
     two functions doing this would be two answers to what a room is called.
@@ -738,6 +759,8 @@ def csv_filename(
     )
     stem = "-".join(stem.split()).strip("-").lower()
     day = str(created_at or "")[:10] or "undated"
-    # No stem means no room title, and `sweep-sweep-undated.csv` is what a
-    # default stem of "sweep" produces. The word appears once.
-    return f"{stem}-{kind}-{day}.{ext}" if stem else f"{kind}-{day}.{ext}"
+    # Same reduction as the stem: this reaches a Content-Disposition header and
+    # a filesystem, and an id is only alphanumeric by convention.
+    tail = "".join(char for char in str(unique or "") if char.isalnum())[:12]
+    parts = [part for part in (stem, kind, day, tail) if part]
+    return f"{'-'.join(parts)}.{ext}"

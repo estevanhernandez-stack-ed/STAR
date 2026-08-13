@@ -1161,7 +1161,9 @@ async def _export(uid: str, run_id: str, kind: str, sweep_id: str = "") -> dict:
             raise HTTPException(404, "Unknown sweep")
         return {
             "filename": exports.csv_filename(
-                (swept.get("room") or {}).get("title") or "sweep", swept.get("created_at")
+                (swept.get("room") or {}).get("title") or "sweep",
+                swept.get("created_at"),
+                unique=swept.get("sweep_id") or sweep_id,
             ),
             "media_type": "text/csv; charset=utf-8",
             "text": exports.sweep_to_csv(swept),
@@ -2583,7 +2585,12 @@ async def get_sweep_csv(
         raise HTTPException(404, "Unknown sweep")
 
     room = (document.get("room") or {}).get("title") or "sweep"
-    filename = exports.csv_filename(room, document.get("created_at"))
+    # The id in the name, because the import refuses a file from another sweep
+    # by id and a reader holding three same-named downloads cannot tell which
+    # one it is asking for.
+    filename = exports.csv_filename(
+        room, document.get("created_at"), unique=sweep_id
+    )
     return Response(
         content=exports.sweep_to_csv(document),
         media_type="text/csv; charset=utf-8",
