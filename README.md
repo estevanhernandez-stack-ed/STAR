@@ -72,7 +72,8 @@ The agent door
   star/mcp/     Streamable HTTP, hand-written against the transport spec.
                 free:   list_rooms · get_room · ask_room · defend_claim
                         get_sweep · export_room
-                writes: link_room · import_rooms · delete_room
+                writes: link_room · import_rooms · import_notes
+                        delete_room
                 spends: build_room · check_scene · research_question
                         sweep_draft · write_bible
 ```
@@ -171,7 +172,8 @@ can only be issued to an account with a linked identity, because an anonymous ac
 proof of ownership is a `localStorage` entry.
 
 The door serves `list_rooms`, `get_room`, `ask_room`, `defend_claim`, `get_sweep`,
-`export_room`, `link_room`, `import_rooms`, `delete_room`, `build_room`, `check_scene`,
+`export_room`, `link_room`, `import_rooms`, `import_notes`, `delete_room`, `build_room`,
+`check_scene`,
 `research_question`, `sweep_draft` and `write_bible` — in that order, which is free first,
 then writes that spend nothing, then everything that costs money. `get_room` **is**
 `build_room`'s poll.
@@ -191,8 +193,11 @@ the browser downloads — defaulting to the file's SHAPE rather than its text, b
 research export runs to hundreds of kilobytes and reading one into a model's context costs
 more than everything else on this door put together. `import_rooms` files somebody else's
 export as rooms, armed like `delete_room` and marked as imported in a way that does not come
-off. `write_bible` writes the document an imported room arrives without, from the findings it
-actually holds. Every one of them is the same transport-free function the browser's own route
+off. `import_notes` brings a writer's own marks back off a marked-up sweep export — the two
+columns they typed, never a verdict or a source — armed the same way, and its first call
+lists every claim that would change and the words any note replaces, because a count is not
+a preview and a stale copy of the file overwrites notes typed since. `write_bible` writes the
+document an imported room arrives without, from the findings it actually holds. Every one of them is the same transport-free function the browser's own route
 calls, so the two doors cannot end up disagreeing about what an imported room is.
 
 ## The draft, rather than the scene

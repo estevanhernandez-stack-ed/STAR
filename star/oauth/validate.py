@@ -79,6 +79,11 @@ SCOPE_BY_TOOL = {
     # token was promising themselves that the worst it could do is read. A
     # workspace filling with rooms nobody asked for is not that.
     "import_rooms": "rooms:write",
+    # Same band and the same argument. It spends nothing, and it writes
+    # into a record the writer already paid for — a reader who handed an
+    # agent a read token was promising themselves the worst it could do is
+    # read, and notes appearing on their sweep is not that.
+    "import_notes": "rooms:write",
     # Spends a model call over research the room already holds, and writes the
     # document into it. No searches, but a write either way.
     "write_bible": "rooms:write",

@@ -136,6 +136,7 @@ def build_mcp_router(
     read_sweep: Callable[..., Any],
     export_room: Callable[..., Any],
     import_rooms: Callable[..., Any],
+    file_notes: Callable[..., Any],
     write_bible: Callable[..., Any],
     link_room: Callable[..., Any],
     resolve_token: Callable[..., Any],
@@ -160,6 +161,7 @@ def build_mcp_router(
         read_sweep=read_sweep,
         export_room=export_room,
         import_rooms=import_rooms,
+        file_notes=file_notes,
         write_bible=write_bible,
         link_room=link_room,
     )

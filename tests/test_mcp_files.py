@@ -410,13 +410,24 @@ def test_every_new_tool_is_reachable_and_scoped():
 
 
 @pytest.mark.asyncio
-async def test_an_unknown_tool_now_names_all_fourteen():
+async def test_an_unknown_tool_names_every_tool_that_does_exist():
+    """DERIVED, both the count and the names.
+
+    This asserted the literal "14" and carried the word `fourteen` in its own
+    name, so shipping a fifteenth tool failed a test whose title was the thing
+    that had gone stale. That is the `six tools` defect this repo already fixed
+    once in INSTRUCTIONS, reappearing one directory over: a count written down
+    beside the list it counts only ever drifts one way.
+    """
+    from star.mcp import tools as mcp_tools
+
     result = await invoke("export_the_room")
+    text = said(result)
 
     assert result["isError"] is True
-    assert "14" in said(result)
-    for name in ("sweep_draft", "import_rooms", "write_bible"):
-        assert name in said(result)
+    assert str(len(mcp_tools.TOOLS)) in text, text
+    for tool in mcp_tools.TOOLS:
+        assert tool["name"] in text, f"{tool['name']} is served and the refusal hides it"
 
 
 def test_identity_is_the_one_this_file_asserts_against():

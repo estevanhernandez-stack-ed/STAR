@@ -2689,11 +2689,29 @@ async def annotate_sweep(
     department's, hydrated out of a ledger; the one thing that must stay
     impossible is a room reading as better-sourced than its research made it.
     A row that edited one has that column ignored and is named in the report.
+
+    A shell over `_file_notes`, which the agent door calls too. The work moved
+    down there the day this stopped being reachable from a desktop agent — the
+    same reason every other pair on this file shares one function.
     """
-    if len(req.csv) > config.max_annotation_chars():
+    return await _file_notes(uid, run_id, sweep_id, req.csv, bool(req.apply))
+
+
+async def _file_notes(
+    uid: str, run_id: str, sweep_id: str, csv_text: str, apply: bool
+) -> dict:
+    """Read a marked-up sweep export and, if asked, file its notes. Shared.
+
+    Transport-free so the browser's route and the agent door's `import_notes`
+    cannot drift. The browser had this to itself for a week, and everything it
+    learned in that week — the origin refusal, the changes preview, the
+    complaint that names a column rather than crying wolf — is here rather than
+    in the route, so an agent gets the same answers a writer does.
+    """
+    if len(csv_text) > config.max_annotation_chars():
         raise HTTPException(
             400,
-            f"That file is {len(req.csv)} characters and the ceiling is "
+            f"That file is {len(csv_text)} characters and the ceiling is "
             f"{config.max_annotation_chars()}. Import the sweep's own export.",
         )
 
@@ -2709,11 +2727,11 @@ async def annotate_sweep(
     # one thing that was wrong. Refused rather than reported, because the
     # alternative is filing half a file's notes onto a sweep the writer was not
     # looking at.
-    origin = exports.annotation_origin(req.csv)
+    origin = exports.annotation_origin(csv_text)
     if origin and origin != sweep_id:
         raise HTTPException(400, await _wrong_sweep(uid, run_id, origin))
 
-    annotations, complaints = exports.read_annotations(req.csv)
+    annotations, complaints = exports.read_annotations(csv_text)
     # Both lists, in the order they are raised: what the FILE was wrong about
     # (unreadable rows, no claim named), then what it tried to change. The
     # second can only be decided against the stored sweep, which is why it
@@ -2722,7 +2740,7 @@ async def annotate_sweep(
     complaints = complaints + edits
     matched = len(annotations) - len(unmatched)
 
-    if req.apply and matched:
+    if apply and matched:
         try:
             await asyncio.to_thread(_store.save_sweep, uid, run_id, sweep_id, updated)
         except Exception:
@@ -2734,7 +2752,7 @@ async def annotate_sweep(
             ) from None
 
     return {
-        "applied": bool(req.apply and matched),
+        "applied": bool(apply and matched),
         "matched": matched,
         # Named rather than counted. Silence here would let a writer annotate
         # twenty claims, import, find nineteen, and have no way to learn which
@@ -3371,6 +3389,7 @@ app.include_router(
         read_sweep=_mcp_read_sweep,
         export_room=_export,
         import_rooms=_import_rooms,
+        file_notes=_file_notes,
         write_bible=_write_bible,
         link_room=_link_room,
         resolve_token=_resolve_mcp_token,

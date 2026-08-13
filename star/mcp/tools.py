@@ -102,7 +102,8 @@ INSTRUCTIONS = (
     "The tools, in the order `tools/list` serves them. These read and cost "
     "nothing: `list_rooms`, `get_room`, `ask_room`, `defend_claim`, "
     "`get_sweep`, `export_room`. These change what this account holds and "
-    "still spend nothing: `link_room`, `import_rooms`, `delete_room`. These "
+    "still spend nothing: `link_room`, `import_rooms`, `import_notes`, "
+    "`delete_room`. These "
     "spend live searches or a model call against an hourly window: "
     "`build_room`, `check_scene`, `research_question`, `sweep_draft`, "
     "`write_bible`.\n\n"
@@ -111,6 +112,12 @@ INSTRUCTIONS = (
     "token, the second spends it. A deleted room is recoverable in the web app "
     "for a window, and only there — an agent can remove a room from a writer's "
     "workspace and cannot put it back.\n\n"
+    "`import_notes` is how a writer's own marks come back. Export a sweep, "
+    "add `writer_note` and `dismissed` columns in a spreadsheet, send the "
+    "file back. It takes two calls like `delete_room` does, and the first "
+    "one lists every claim that would change and the words any note "
+    "replaces — read that before confirming, because a stale copy of the "
+    "file overwrites notes typed since.\n\n"
     "`ask_room` is the cheapest way in: give it a question and it returns the "
     "findings that bear on it, with their sources, out of a room that already "
     "exists. It searches what was filed and never writes an answer of its "
@@ -137,7 +144,11 @@ INSTRUCTIONS = (
 
 @dataclass(frozen=True)
 class Calls:
-    """The six things a tool is allowed to do, injected by star/server.py.
+    """What a tool is allowed to do, injected by star/server.py.
+
+    Counted "six" in this sentence until the fourteenth was added under it. A
+    number in prose is a second copy of a fact the field list already carries,
+    and the list is the one that gets edited.
 
     Frozen because the router holds one of these for the life of the process
     and nothing should be able to swap a callable out from under an in-flight
@@ -164,6 +175,7 @@ class Calls:
     import_rooms: Callable[..., Any]
     write_bible: Callable[..., Any]
     link_room: Callable[..., Any]
+    file_notes: Callable[..., Any]
 
 
 # --- The strings a refusal is made of ---------------------------------------
@@ -857,6 +869,71 @@ TOOLS: tuple[dict, ...] = (
         },
     },
     {
+        "name": "import_notes",
+        "description": (
+            "File a writer's own marks from a marked-up sweep export.\n\n"
+            "Export a sweep with `export_room` and `kind: sweep`, open it in a "
+            "spreadsheet, add a **`writer_note`** column and type in it, add "
+            "**`dismissed`** and put `yes` on any row to strike. Send the "
+            "whole file back as `csv` with the `run_id` and `sweep_id` it came "
+            "from.\n\n"
+            "**Those two columns are the only ones that come back.** A verdict, "
+            "a source and an excerpt are the department's, hydrated out of a "
+            "ledger. A row that edited one has that column ignored and is "
+            "named in the reply, so nothing is dropped in silence. What must "
+            "stay impossible is a sweep reading as better-sourced than the "
+            "research that paid for it.\n\n"
+            "**Two calls, and the first one writes nothing.** Leave `confirm` "
+            "out to see, claim by claim, exactly what would change: the note "
+            "each takes, whether it is struck or un-struck, and the words any "
+            "note replaces. That reply hands back a one-time token; send it as "
+            "`confirm` to file. **Read the changes before confirming** — a "
+            "stale copy of the file silently overwrites notes typed since, and "
+            "a blank `dismissed` cell restores a line struck on purpose.\n\n"
+            "Rows match on the `claim` column, not on row order, so a file "
+            "sorted in the spreadsheet still lands correctly. A claim named in "
+            "the file that this sweep does not hold is named back rather than "
+            "dropped. **A file exported from a different sweep is refused** — "
+            "it carries its own `sweep_id` and this checks it.\n\n"
+            "Costs nothing and spends no searches."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "run_id": {
+                    "type": "string",
+                    "description": (
+                        "the room this sweep is filed on — the same id the "
+                        "export came from, which `list_rooms` returns"
+                    ),
+                },
+                "sweep_id": {
+                    "type": "string",
+                    "description": (
+                        "the sweep to write into — the one the file was "
+                        "exported from. `get_sweep` lists them"
+                    ),
+                },
+                "csv": {
+                    "type": "string",
+                    "description": (
+                        "the full text of the marked-up sweep export, header "
+                        "row included"
+                    ),
+                },
+                "confirm": {
+                    "type": "string",
+                    "description": (
+                        "the one-time token the first call handed back. Leave "
+                        "it out to see what would change and get one"
+                    ),
+                },
+            },
+            "required": ["run_id", "sweep_id", "csv"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "write_bible",
         "description": (
             "Write the research bible for a room that has none.\n\n"
@@ -988,6 +1065,11 @@ _ORDER = (
     "export_room",
     "link_room",
     "import_rooms",
+    # Writes into a filed record and spends nothing, so it sits with the other
+    # two that do. Below them because it is the narrowest: `link_room` rewires
+    # a story and `import_rooms` mints rooms, while this writes two columns
+    # onto claims that already exist.
+    "import_notes",
     "delete_room",
     "build_room",
     "check_scene",
@@ -2570,6 +2652,127 @@ async def _sweep_draft(arguments: dict, calls: Calls, identity) -> dict:
     return _payload("\n\n".join(lines), result)
 
 
+def _a_change_line(change: dict) -> str:
+    """One claim, and what is about to happen to it.
+
+    The whole reason this tool arms rather than files. The browser learned this
+    the hard way: its preview said "25 claims in this sweep would take a note"
+    and a reader could not tell from that where the notes landed, that a line
+    they struck was about to come back, or that a note they typed a fortnight
+    ago was about to be overwritten out of a stale file. An agent reading a
+    count is in exactly that position and cannot even scroll.
+    """
+    claim = str(change.get("claim") or "")
+    parts = []
+    if change.get("dismissed"):
+        parts.append("struck")
+    elif change.get("was_dismissed"):
+        parts.append("NO LONGER STRUCK")
+    note = str(change.get("writer_note") or "")
+    if note:
+        parts.append(f"note “{note}”")
+    elif change.get("was_note"):
+        parts.append("note removed")
+    if change.get("was_note"):
+        parts.append(f"REPLACING “{change['was_note']}”")
+    return f"“{claim}” — {'; '.join(parts) or 'unchanged'}"
+
+
+async def _import_notes_tool(arguments: dict, calls: Calls, identity) -> dict:
+    values = _arguments(_TOOLS_BY_NAME["import_notes"], arguments)
+    run_id = values["run_id"]
+    sweep_id = values["sweep_id"]
+    text = values["csv"]
+    offered = values.get("confirm")
+    # Keyed on the sweep AS WELL AS the file. A token minted for one sweep must
+    # not file the same marks into another: the two ids are arguments a model
+    # chooses, and `import_rooms` already learned that a confirmation has to
+    # name everything the write depends on.
+    key = (identity.uid, f"{sweep_id}:{_import_digest(text)}")
+
+    applying = False
+    if offered:
+        held = _PENDING_IMPORTS.pop(key, None)
+        if held and time.monotonic() - held[1] <= _CONFIRM_TTL_SECONDS:
+            applying = secrets.compare_digest(held[0], offered)
+        if not applying:
+            raise _BadArguments(
+                "That confirmation is not one this file and sweep are holding. "
+                "A token is minted per file per sweep, used once, and expires "
+                f"after {_CONFIRM_TTL_SECONDS} seconds. Call `import_notes` "
+                "again with the same `csv` and no `confirm` for a fresh one. "
+                "Nothing was filed."
+            )
+
+    result = _jsonable(await calls.file_notes(identity.uid, run_id, sweep_id, text, applying))
+    matched = int(result.get("matched") or 0)
+    unmatched = result.get("unmatched") or []
+    complaints = result.get("complaints") or []
+    changes = result.get("changes") or []
+
+    # The claims are the sweep's whole marked-up self and run to hundreds of
+    # kilobytes on a whole-draft sweep. `changes` says everything this call
+    # did; the claims say everything the sweep holds, which nobody asked for.
+    result = {k: v for k, v in result.items() if k != "claims"}
+
+    if not matched:
+        return _payload(
+            "Nothing in that file matched a claim in this sweep, so there is "
+            "nothing to file. Rows are matched on the `claim` column, copied "
+            "character for character from the export — a rewritten claim "
+            "cannot be matched back. Nothing was changed.",
+            result,
+        )
+
+    lines: list[str] = []
+    if applying:
+        lines.append(
+            f"Filed {matched} note{'' if matched == 1 else 's'} against sweep "
+            f"{sweep_id}. Verdicts, sources and excerpts are untouched."
+        )
+    else:
+        token = secrets.token_urlsafe(9)
+        _PENDING_IMPORTS[key] = (token, time.monotonic())
+        result = {**result, "confirm": token}
+        lines.append(
+            f"{matched} claim{'' if matched == 1 else 's'} would take a mark. "
+            "**Nothing has been changed.**"
+        )
+
+    if changes:
+        lines.append(
+            "What was written, claim by claim:" if applying
+             else "What would change, claim by claim — read this before confirming:"
+        )
+        lines.extend(f"- {_a_change_line(change)}" for change in changes)
+    elif applying is False:
+        # Matched, and moves nothing. A file re-sent unaltered says exactly
+        # this rather than arming a write with no effect.
+        lines.append(
+            "None of them would actually move: every mark in that file is "
+            "already on the sweep. There is nothing to confirm."
+        )
+
+    if unmatched:
+        lines.append(
+            f"{len(unmatched)} claim{'' if len(unmatched) == 1 else 's'} named "
+            f"in the file {'is' if len(unmatched) == 1 else 'are'} not in this "
+            f"sweep and {'was' if len(unmatched) == 1 else 'were'} skipped: "
+            + ", ".join(f"“{claim}”" for claim in unmatched)
+        )
+
+    if complaints:
+        lines.append("What the department kept for itself: " + " ".join(complaints))
+
+    if not applying and changes:
+        lines.append(
+            f"Send `confirm: {result['confirm']}` with the same `csv`, "
+            "`run_id` and `sweep_id` to file them."
+        )
+
+    return _payload("\n\n".join(lines), result)
+
+
 # Name to implementation, kept OUT of `TOOLS` rather than as a key inside each
 # entry. `TOOLS` is serialised straight onto the wire, and a callable sitting
 # in it would either fail to serialise or have to be stripped on the way out —
@@ -2587,6 +2790,7 @@ _RUNNERS: dict[str, Callable[[dict, "Calls", Any], Any]] = {
     "get_sweep": _get_sweep,
     "export_room": _export_room,
     "import_rooms": _import_rooms_tool,
+    "import_notes": _import_notes_tool,
     "write_bible": _write_bible,
     "link_room": _link_room,
     "sweep_draft": _sweep_draft,

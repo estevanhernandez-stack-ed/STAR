@@ -4,11 +4,19 @@
 > extension) **with the STAR connector attached**. It is written for the agent,
 > not for you.
 >
-> **Before you paste it:** the connector has to be authorized in an interactive
-> session first. STAR's discovery advertises `rooms:read`, `rooms:write` and
-> `rooms:delete`; the consent screen defaults to **read and write only** —
-> `rooms:delete` has to be asked for by name. That is deliberate, and step 7
-> below is the one place it matters.
+> **Before you paste it: restart the desktop app.** The connector is already
+> authorized and has been used against STAR before — what it will not have is
+> the tools shipped since it last started. A client caches the tool list from
+> its handshake, so an agent that never restarted will walk this list looking
+> for `export_room` and `import_rooms` and report them missing. That would be a
+> false defect, and it would look exactly like a real one.
+>
+> **Scope, which matters at step 7.** STAR's discovery advertises `rooms:read`,
+> `rooms:write` and `rooms:delete`; the consent screen defaults to **read and
+> write only** — `rooms:delete` has to be asked for by name. Whatever was
+> granted on the original authorization is what the agent still holds. If
+> delete was not among it, step 7 tests the refusal instead, which is the more
+> useful answer anyway.
 >
 > **This walk spends money in exactly two places, both marked.** Everything
 > else is free. Total: one editor call and one sweep, or one editor call alone
@@ -60,11 +68,15 @@ no, even when nothing is broken.
 
 List STAR's tools.
 
-**Expect:** fourteen, arriving in three bands — reads, then writes that spend
+**Expect:** fifteen, arriving in three bands — reads, then writes that spend
 nothing, then the ones that spend. The names are `list_rooms`, `get_room`,
 `ask_room`, `defend_claim`, `get_sweep`, `export_room`, `link_room`,
-`import_rooms`, `delete_room`, `build_room`, `check_scene`,
+`import_rooms`, `import_notes`, `delete_room`, `build_room`, `check_scene`,
 `research_question`, `sweep_draft`, `write_bible`.
+
+**If you were served fourteen and `import_notes` is missing, stop and say so
+before going further** — it means this client never picked up the newest tool
+and step 10 cannot run. Restarting the app is the fix, not a bug report.
 
 **Report:** any name you were served that is not on that list, any on the list
 you were not served, and whether the descriptions alone are enough to know
@@ -173,14 +185,33 @@ nearest first.
 **Report:** whether anything told you the link took, or whether you had to
 export to find out.
 
-## A gap I already know about, so do not hunt for it
+### 10. The loop closes — `import_notes`
 
-**There is no annotation import on this door.** In the browser you can export a
-sweep, mark it up in a spreadsheet, and file the notes back. None of that is
-reachable from the fourteen tools — an agent can `get_sweep` and `export_room`,
-but nothing brings a marked-up file back. Note whether that absence is
-discoverable from the tool descriptions, or whether an agent would only find
-out by looking for a tool that is not there.
+This one shipped after the rest of this walk was written, and **nothing has
+ever called it**, from a browser or otherwise. Treat it as the least-trusted
+tool on the door.
+
+Export a sweep with `export_room` and `kind: sweep`. Add a `writer_note` column
+to two or three rows and a `dismissed` column with `yes` on one. Send the whole
+file back with the `run_id` and `sweep_id` it came from.
+
+**Expect: two calls, like `import_rooms`.** The first files nothing and lists,
+**claim by claim**, what would change — the note each takes, whether it is
+struck, and the words any note replaces. The second files them.
+
+**Report:**
+
+- Whether the first call's list was enough to confirm from without opening the
+  file again. That list is the whole reason this tool arms rather than files,
+  so if it is not enough, say exactly what was missing.
+- What happened when you sent the token twice.
+- What happened when you sent a **different** file with the first file's token.
+  Nothing should be filed.
+- Now export a **different** sweep of the same room and send that file with the
+  first sweep's `sweep_id`. It should be refused. Say whether the refusal told
+  you which sweep to use in terms you could act on, or handed you a bare id.
+- Whether a verdict, a source or an excerpt could be changed through it. They
+  should not be. Try, and report what came back.
 
 ## What to report back
 

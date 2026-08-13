@@ -24,6 +24,7 @@ shortfall next to one.
 """
 
 import contextlib
+import dataclasses
 import json
 import re
 import tomllib
@@ -999,25 +1000,23 @@ def _unreachable(name):
 
 
 def calls_for(**handlers) -> tools.Calls:
-    """A `Calls` with only the callable under test wired up."""
+    """A `Calls` with only the callable under test wired up.
+
+    DERIVED FROM THE DATACLASS, never listed. This hand-listed all thirteen
+    fields until a fourteenth was added, and then every test in four files
+    failed at construction with a TypeError — noise that says nothing about the
+    change and has to be cleared by hand before the real result is visible.
+    A `Calls` grows every time the agent door does; this now grows with it, and
+    an unwired callable still refuses loudly the moment it is reached.
+    """
+    unknown = set(handlers) - {field.name for field in dataclasses.fields(tools.Calls)}
+    assert not unknown, f"calls_for was handed something Calls has no field for: {unknown}"
+
     return tools.Calls(
-        start_build=handlers.get("start_build") or _unreachable("start_build"),
-        read_room=handlers.get("read_room") or _unreachable("read_room"),
-        list_rooms_for=(
-            handlers.get("list_rooms_for") or _unreachable("list_rooms_for")
-        ),
-        run_check=handlers.get("run_check") or _unreachable("run_check"),
-        delete_room=handlers.get("delete_room") or _unreachable("delete_room"),
-        run_requisition=(
-            handlers.get("run_requisition") or _unreachable("run_requisition")
-        ),
-        run_sweep=handlers.get("run_sweep") or _unreachable("run_sweep"),
-        read_sweeps=handlers.get("read_sweeps") or _unreachable("read_sweeps"),
-        read_sweep=handlers.get("read_sweep") or _unreachable("read_sweep"),
-        export_room=handlers.get("export_room") or _unreachable("export_room"),
-        import_rooms=handlers.get("import_rooms") or _unreachable("import_rooms"),
-        write_bible=handlers.get("write_bible") or _unreachable("write_bible"),
-        link_room=handlers.get("link_room") or _unreachable("link_room"),
+        **{
+            field.name: handlers.get(field.name) or _unreachable(field.name)
+            for field in dataclasses.fields(tools.Calls)
+        }
     )
 
 
@@ -1099,7 +1098,12 @@ def test_the_order_is_free_first_in_three_bands():
 
     assert set(order[: len(reads)]) == reads, "every read comes first"
     assert set(order[-len(spends) :]) == spends, "and everything that spends comes last"
-    assert set(order[len(reads) : -len(spends)]) == {"link_room", "import_rooms", "delete_room"}, (
+    assert set(order[len(reads) : -len(spends)]) == {
+        "link_room",
+        "import_rooms",
+        "import_notes",
+        "delete_room",
+    }, (
         "leaving the band that changes an account without charging it"
     )
 
@@ -1219,6 +1223,7 @@ async def test_tools_list_puts_them_all_on_the_wire_with_their_descriptions():
         # Writes that spend nothing.
         "link_room",
         "import_rooms",
+        "import_notes",
         "delete_room",
         # Spends.
         "build_room",
