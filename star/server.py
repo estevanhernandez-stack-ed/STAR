@@ -39,7 +39,7 @@ from google.adk.runners import InMemoryRunner  # noqa: E402
 from google.genai import types  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
-from star import bible, config, defence, sweep  # noqa: E402
+from star import bible, config, defence, exports, sweep  # noqa: E402
 
 config.validate_env()
 
@@ -1916,6 +1916,39 @@ async def list_sweeps(run_id: str, authorization: str | None = Header(None)) -> 
     # that could tell the two apart.
     uid = _require_uid(authorization)
     return {"sweeps": await asyncio.to_thread(_store.list_sweeps, uid, run_id)}
+
+
+@app.get("/api/rooms/{run_id}/sweeps/{sweep_id}.csv")
+async def get_sweep_csv(
+    run_id: str, sweep_id: str, authorization: str | None = Header(None)
+) -> Response:
+    """One filed sweep as a spreadsheet.
+
+    Registered ABOVE the `{sweep_id}` route it looks like, because Starlette
+    matches in declaration order and `sweep_id` would otherwise swallow
+    `abc.csv` and 404 on a sweep whose id has no dot in it.
+
+    `text/csv` with an attachment disposition, never `text/html`: this is a
+    file a browser downloads, and a content type it might render is a content
+    type it might execute.
+    """
+    uid = _require_uid(authorization)
+    document = await asyncio.to_thread(_store.get_sweep, uid, run_id, sweep_id)
+    if document is None:
+        raise HTTPException(404, "Unknown sweep")
+
+    room = (document.get("room") or {}).get("title") or "sweep"
+    filename = exports.csv_filename(room, document.get("created_at"))
+    return Response(
+        content=exports.sweep_to_csv(document),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            # Belt and braces on a download whose cells are a writer's own text
+            # and pages off the open web.
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @app.get("/api/rooms/{run_id}/sweeps/{sweep_id}")

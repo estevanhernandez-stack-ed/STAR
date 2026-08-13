@@ -1137,6 +1137,18 @@ function renderSweep(payload) {
     link.setAttribute("target", "_blank");
     link.setAttribute("rel", "noopener");
     out.appendChild(link);
+    // And the spreadsheet. Same row, because they are two ways out of the same
+    // filed sweep and a reader deciding between them is deciding what they
+    // want to DO — hand it to somebody, or sort it.
+    const csv = el("a", "sweep-report-link", "Download as CSV");
+    csv.setAttribute(
+      "href",
+      `/api/rooms/${encodeURIComponent(roomId)}/sweeps/${encodeURIComponent(payload.sweep_id)}.csv`
+    );
+    // No `target`: this is a download, not a page, and the server answers it
+    // with an attachment disposition. Opening a tab for a file that never
+    // renders leaves a blank window behind.
+    out.appendChild(csv);
     body.appendChild(out);
   }
 

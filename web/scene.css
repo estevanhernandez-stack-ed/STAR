@@ -1146,3 +1146,11 @@
   font-size: var(--label-sm);
   color: color-mix(in srgb, var(--aniline) 85%, var(--ink));
 }
+
+/* Two ways out of one filed sweep, side by side: a page to hand somebody and
+ * a file to sort. */
+.sweep-report {
+  display: flex;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+}
