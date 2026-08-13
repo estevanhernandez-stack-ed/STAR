@@ -84,6 +84,7 @@ const checkBtn = $("check-btn");
 const roomCsvBtn = $("room-csv-btn");
 const chainCsvBtn = $("chain-csv-btn");
 const bibleMdBtn = $("bible-md-btn");
+const writeBibleBtn = $("write-bible-btn");
 const importInput = $("import-input");
 const importBtn = $("import-btn");
 const importResult = $("import-result");
@@ -577,7 +578,64 @@ function showChainCsv(result) {
   // that only ever fails is worse than no control.
   const hasBible = Boolean(result && String(result.research_bible || "").trim());
   bibleMdBtn.classList.toggle("hidden", !hasBible);
+
+  // And its opposite. A room with findings and no bible is an imported room or
+  // a build whose editor never landed, and both can have one written from what
+  // they already hold. A room with a bible never offers this: rewriting one is
+  // destructive on a document a build was paid for, and the server refuses it
+  // too rather than trusting a hidden button.
+  const findings = Object.values((result && result.categories) || {}).some(
+    (drawer) => ((drawer || {}).findings || []).length
+  );
+  writeBibleBtn.classList.toggle("hidden", hasBible || !findings);
+  writeBibleBtn.disabled = false;
+  writeBibleBtn.textContent = "Write the bible";
 }
+
+/** One editor pass over research the room already holds.
+ *
+ *  NO SEARCHES, and that is why it can be offered on a room somebody was
+ *  handed: the expensive half — the live searches and the hydration behind
+ *  every citation — travelled in the file. A bible written from the findings
+ *  THIS room holds is also the only kind that cannot end up describing research
+ *  that did not survive the file, which is why the import does not carry one. */
+async function writeBible() {
+  if (!openRoomId) return;
+  const id = openRoomId;
+  writeBibleBtn.disabled = true;
+  writeBibleBtn.textContent = "The editor is reading the drawers…";
+  try {
+    const res = await authedFetch(`/api/rooms/${encodeURIComponent(id)}/bible`, {
+      method: "POST",
+    });
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        detail = (await res.json()).detail || detail;
+      } catch {
+        /* body wasn't JSON; fall back to statusText */
+      }
+      throw new Error(detail);
+    }
+    await res.json();
+  } catch (err) {
+    writeBibleBtn.disabled = false;
+    writeBibleBtn.textContent = "Could not write it";
+    // The room view has no error region of its own, so the button says it and
+    // then goes back to offering the thing. Four seconds is the same beat the
+    // CSV downloads use for the same reason.
+    setTimeout(() => {
+      writeBibleBtn.textContent = "Write the bible";
+    }, 4000);
+    return;
+  }
+  // Re-read rather than patching the open room from the reply. showResults is
+  // the one path that paints a room, and a second one here would be a second
+  // answer to what a filed room looks like.
+  if (id === openRoomId) showResults(id);
+}
+
+writeBibleBtn.addEventListener("click", writeBible);
 
 roomCsvBtn.addEventListener("click", () =>
   downloadCsv(roomCsvBtn, ".csv", "research.csv")

@@ -48,6 +48,7 @@ from star.agents import requisition  # noqa: E402
 from star.agents import sweep as agent_sweep  # noqa: E402
 from star.agents.pipelines import build_room, check_scene  # noqa: E402
 from star.agents.script_check import check_state  # noqa: E402
+from star.agents.synthesis import synthesis_agent  # noqa: E402
 from star.auth import linked_provider, verify_claims, verify_token  # noqa: E402
 from star.findings import parse_findings  # noqa: E402
 from star.guards import DailyCap, RateLimiter  # noqa: E402
@@ -881,6 +882,178 @@ async def create_room(
     """The browser door onto a build. Auth, then the shared admission path."""
     uid = _require_uid(authorization)
     return await _start_build(uid, req.treatment, gate=_ip_gate(request))
+
+
+# --- Writing a bible for a room that has none -------------------------------
+#
+# A THIRD RUNNER, for the reason the check has a second one: it runs a
+# different root agent, and its own InMemorySessionService means nothing this
+# puts in state can be read by _salvage, which looks its sessions up through
+# _runner.
+_BIBLE_APP = "star-bible"
+_BIBLE_USER = "bible"
+_bible_runner = InMemoryRunner(agent=synthesis_agent, app_name=_BIBLE_APP)
+# The user turn, and deliberately not the findings. They travel in session
+# state so they always render inside synthesis_agent's own <findings_*>
+# markers; research posted as the user turn would arrive in instruction
+# position, which is the one thing those delimiters exist to prevent.
+_BIBLE_TURN = "Write the research bible for the room on file."
+
+
+def _bible_state(result: dict) -> dict:
+    """A room's stored findings, in the state shape synthesis reads.
+
+    The build seeds these from the researchers as they run. This seeds them
+    from what was FILED, which is what makes the editor runnable a second time
+    — over a room that arrived in a file and never had researchers at all.
+
+    `findings_{category}` prefers the researcher's own markdown where the room
+    kept it, and falls back to the facts themselves. An imported room has no
+    markdown by construction, and a list of its facts is the same information
+    the markdown carried.
+
+    `sources_{category}` is rebuilt in parallel_search's exact format, `- title
+    :: url`, and capped by the same knob. That cap is not tidiness: every title
+    fed in is a title synthesis may enumerate back out, and an uncapped list
+    drove a nine-minute runaway generation once already.
+    """
+    result = result or {}
+    categories = result.get("categories") or {}
+    state: dict = {"story_profile": result.get("story_profile") or {}}
+    cap = config.max_sources_per_category()
+
+    for category in Category:
+        drawer = categories.get(category.value) or {}
+        findings = drawer.get("findings") or []
+        markdown = str(drawer.get("markdown") or "").strip()
+        if not markdown:
+            markdown = "\n".join(
+                f"- {finding.get('fact') or ''}" for finding in findings if finding
+            )
+        state[f"findings_{category.value}"] = markdown
+
+        seen: list[str] = []
+        lines = ""
+        for finding in findings:
+            for citation in (finding or {}).get("citations") or []:
+                url = str((citation or {}).get("url") or "").strip()
+                if not url or url in seen or len(seen) >= cap:
+                    continue
+                seen.append(url)
+                title = " ".join(str((citation or {}).get("title") or "").split())[:120]
+                lines += f"- {title or url} :: {url}\n"
+        state[f"sources_{category.value}"] = lines
+
+    return state
+
+
+async def _write_bible(uid: str, run_id: str) -> dict:
+    """One editor pass over a room's filed research. Transport-free.
+
+    NO SEARCHES. This is the whole reason it can be offered on a room somebody
+    was handed: the expensive half of research — the live searches and the
+    hydration that stands behind every citation — travelled in the file. What
+    is left is the editor, one model call, over findings the room already
+    holds. A bible written from the findings this room actually has is also
+    the only kind that cannot describe research that did not survive the file.
+
+    Refuses a room that already has one. Rewriting a bible is a destructive act
+    on a document a build was paid for, and it is not what this is; a room
+    whose bible came back truncated is a different problem with its own
+    coverage warning already on the page.
+    """
+    document = await asyncio.to_thread(_store.get, uid, run_id)
+    if document is None:
+        raise HTTPException(404, "Unknown run")
+    if str(document.get("status") or "") == "running":
+        raise HTTPException(
+            409, "This room is still being built. Its bible is on the way."
+        )
+
+    result = document_to_room(document)
+    if str(result.get("research_bible") or "").strip():
+        raise HTTPException(
+            409,
+            "This room already has a bible. Writing a second one over it would "
+            "discard the document its build paid for.",
+        )
+    if not any(
+        (drawer or {}).get("findings") for drawer in (result.get("categories") or {}).values()
+    ):
+        raise HTTPException(
+            400,
+            "This room has no findings to write a bible from. Nothing was spent.",
+        )
+
+    # After both refusals and before the model call, for the reason the check's
+    # own limiter sits where it does: RateLimiter.check() records on the allow
+    # path, so charging an account's window for a room that cannot be written
+    # would ration the wrong thing. Its own key space — an editor pass is not a
+    # build and not a check, and none of the three should eat another's slots.
+    if not _uid_limiter.check(f"bible:{uid}"):
+        raise HTTPException(
+            429,
+            f"Writing a bible is capped at {config.max_rooms_per_ip_per_hour()} "
+            "an hour per account, and this account has reached that. The window "
+            "is a rolling hour.",
+        )
+
+    session = await _bible_runner.session_service.create_session(
+        app_name=_BIBLE_APP, user_id=_BIBLE_USER, state=_bible_state(result)
+    )
+    message = types.Content(role="user", parts=[types.Part(text=_BIBLE_TURN)])
+    try:
+        async for _ in _bible_runner.run_async(
+            user_id=_BIBLE_USER, session_id=session.id, new_message=message
+        ):
+            pass
+        state = await _bible_runner.session_service.get_session(
+            app_name=_BIBLE_APP, user_id=_BIBLE_USER, session_id=session.id
+        )
+        written = str((state.state if state else {}).get("research_bible") or "").strip()
+    except Exception:
+        logger.exception("The editor failed writing a bible for room %s", run_id)
+        raise HTTPException(
+            502,
+            "The editor could not finish. Nothing was changed, and the "
+            "research in the drawers is untouched.",
+        ) from None
+    finally:
+        try:
+            await _bible_runner.session_service.delete_session(
+                app_name=_BIBLE_APP, user_id=_BIBLE_USER, session_id=session.id
+            )
+        except Exception:
+            logger.exception("Failed to drop a bible-writing session")
+
+    if not written:
+        raise HTTPException(
+            502,
+            "The editor came back with nothing. Nothing was changed, and the "
+            "research in the drawers is untouched.",
+        )
+
+    # Written straight onto the stored document rather than through
+    # room_to_document, which rebuilds the whole room from a result — and the
+    # result this has is a READ shape, not the one a build produces. Two
+    # fields, on a document already correct in every other respect.
+    document["research_bible"] = written
+    document["bible_written_at"] = datetime.now(timezone.utc).isoformat()  # noqa: UP017
+    await asyncio.to_thread(_store.save, uid, run_id, document)
+    return {"run_id": run_id, "research_bible": written}
+
+
+@app.post("/api/rooms/{run_id}/bible")
+async def write_bible(run_id: str, authorization: str | None = Header(None)) -> dict:
+    """Write a bible for a room that has none.
+
+    The half of the import that is not free. Everything else about an imported
+    room arrived in the file; the bible is a document ABOUT those findings and
+    is written here, from the findings this room actually holds, so the two can
+    never disagree. One model call, no searches.
+    """
+    uid = _require_uid(authorization)
+    return await _write_bible(uid, run_id)
 
 
 class RoomImport(BaseModel):

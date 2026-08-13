@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 from star import server
 from star.exports import chain_to_csv, read_room, room_to_csv
 from star.store import room_to_document
-from tests.test_scenes import AUTH, UID, a_store
+from tests.test_scenes import AUTH, UID, _FakeCheckRunner, a_store
 
 LIVERPOOL = {
     "created_at": "2026-08-13T11:51:03Z",
@@ -337,6 +337,161 @@ def test_more_rooms_than_one_import_files_is_refused_by_count():
 def test_an_import_needs_an_account():
     response = TestClient(server.app).post("/api/rooms/import", json={"csv": "x"})
     assert response.status_code == 401
+
+
+# -- the bible, which is the half of an import that is not free ---------------
+
+
+BIBLE = "## 1. Setting & Atmosphere\n\nA cellar in West Derby [1].\n"
+
+
+def a_bible_runner(**kwargs):
+    return _FakeCheckRunner(produces={"research_bible": BIBLE}, **kwargs)
+
+
+def writing(store, runner=None):
+    runner = runner or a_bible_runner()
+    return runner, (
+        mock.patch("star.server.verify_token", return_value=UID),
+        mock.patch("star.server._store", store),
+        mock.patch("star.server._bible_runner", runner),
+    )
+
+
+def an_imported_room():
+    """A room in the shape the import files: findings, sources, no bible."""
+    rooms, _ = read_room(room_to_csv(LIVERPOOL, "liverpool-1"))
+    result = {**rooms[0][1], "imported_at": "2026-08-13T12:00:00Z", "search_count": 0}
+    return room_to_document("r1", result, "complete", "2026-08-13T12:00:00Z")
+
+
+def test_an_imported_room_can_be_given_a_bible_written_from_what_it_holds():
+    store, data = a_store()
+    store.save(UID, "r1", an_imported_room())
+    _, patches = writing(store)
+
+    with patches[0], patches[1], patches[2]:
+        body = TestClient(server.app).post("/api/rooms/r1/bible", headers=AUTH).json()
+
+    assert body["research_bible"] == BIBLE.strip(), "trimmed, the way an empty one is detected"
+    assert data.data[f"users/{UID}/rooms/r1"]["research_bible"] == BIBLE.strip(), "and filed"
+    assert data.data[f"users/{UID}/rooms/r1"]["imported_at"], (
+        "writing a bible does not launder the room into a researched one"
+    )
+    assert data.data[f"users/{UID}/rooms/r1"]["search_count"] == 0, "and spends no searches"
+
+
+def test_the_editor_is_handed_the_rooms_own_findings_and_sources():
+    """THE STATE SEAM. A build seeds these from researchers as they run; this
+    seeds them from what was filed, which is what makes the editor runnable a
+    second time over a room that never had researchers at all."""
+    store, _ = a_store()
+    store.save(UID, "r1", an_imported_room())
+    runner, patches = writing(store)
+
+    with patches[0], patches[1], patches[2]:
+        TestClient(server.app).post("/api/rooms/r1/bible", headers=AUTH)
+
+    state = runner.session_service.seeded[0]
+    assert "Mona Best opened the Casbah" in state["findings_setting"]
+    assert "Night trams" in state["findings_logistics"]
+    assert "- The Casbah :: https://casbah.example\n" in state["sources_setting"], (
+        "in parallel_search's own format, because that is the format the "
+        "editor's prompt was written against"
+    )
+    assert state["sources_logistics"] == "", "a drawer whose findings cite nothing"
+    assert state["story_profile"]["title"] == "Doctor Who Special: Liverpool"
+    assert runner.session_service.deleted == [runner.session_service.seeded and "check-0"], (
+        "and the session is dropped either way"
+    )
+
+
+def test_a_room_that_already_has_a_bible_is_refused_rather_than_overwritten():
+    """Rewriting is destructive on a document a build was paid for, and it is
+    not what this is."""
+    store, data = a_store()
+    document = an_imported_room()
+    document["research_bible"] = "## The one the build wrote\n"
+    store.save(UID, "r1", document)
+    runner, patches = writing(store)
+
+    with patches[0], patches[1], patches[2]:
+        response = TestClient(server.app).post("/api/rooms/r1/bible", headers=AUTH)
+
+    assert response.status_code == 409
+    assert "already has a bible" in response.json()["detail"]
+    assert data.data[f"users/{UID}/rooms/r1"]["research_bible"] == "## The one the build wrote\n"
+    assert runner.messages == [], "and the editor was never run, so nothing was spent"
+
+
+def test_a_room_with_no_findings_is_refused_before_the_editor_runs():
+    store, _ = a_store()
+    store.save(UID, "r1", room_to_document("r1", {"categories": {}}, "complete", "2026-08-13"))
+    runner, patches = writing(store)
+
+    with patches[0], patches[1], patches[2]:
+        response = TestClient(server.app).post("/api/rooms/r1/bible", headers=AUTH)
+
+    assert response.status_code == 400
+    assert "Nothing was spent" in response.json()["detail"]
+    assert runner.messages == []
+
+
+def test_an_editor_that_comes_back_empty_changes_nothing():
+    """A bible that arrived as an empty string would replace a room's absent
+    bible with an absent bible and report success."""
+    store, data = a_store()
+    store.save(UID, "r1", an_imported_room())
+    _, patches = writing(store, _FakeCheckRunner(produces={"research_bible": "  "}))
+
+    with patches[0], patches[1], patches[2]:
+        response = TestClient(server.app).post("/api/rooms/r1/bible", headers=AUTH)
+
+    assert response.status_code == 502
+    assert data.data[f"users/{UID}/rooms/r1"]["research_bible"] == ""
+
+
+def test_an_editor_that_raises_leaves_the_research_untouched():
+    store, data = a_store()
+    store.save(UID, "r1", an_imported_room())
+    _, patches = writing(store, _FakeCheckRunner(raises=RuntimeError("gemini 503")))
+
+    with patches[0], patches[1], patches[2]:
+        response = TestClient(server.app).post("/api/rooms/r1/bible", headers=AUTH)
+
+    assert response.status_code == 502
+    assert "research in the drawers is untouched" in response.json()["detail"]
+    assert data.data[f"users/{UID}/rooms/r1"]["categories"]["setting"]["findings"]
+
+
+def test_another_accounts_room_cannot_be_given_a_bible():
+    store, _ = a_store()
+    store.save(UID, "r1", an_imported_room())
+    runner = a_bible_runner()
+
+    with mock.patch("star.server.verify_token", return_value="uid-two"), \
+            mock.patch("star.server._store", store), \
+            mock.patch("star.server._bible_runner", runner):
+        response = TestClient(server.app).post("/api/rooms/r1/bible", headers=AUTH)
+
+    assert response.status_code == 404
+    assert runner.messages == []
+
+
+def test_writing_a_bible_holds_its_own_hourly_window():
+    """Its own key space. An editor pass is not a build and not a check, and
+    none of the three should eat another's slots."""
+    store, _ = a_store()
+    store.save(UID, "r1", an_imported_room())
+    runner, patches = writing(store)
+
+    with patches[0], patches[1], patches[2], \
+            mock.patch.object(server._uid_limiter, "check", return_value=False) as gate:
+        response = TestClient(server.app).post("/api/rooms/r1/bible", headers=AUTH)
+
+    assert response.status_code == 429
+    assert gate.call_args[0][0] == f"bible:{UID}"
+    assert runner.messages == [], "refused before the model call, not after"
 
 
 def test_a_built_room_says_nothing_about_being_imported():
