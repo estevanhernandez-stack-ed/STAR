@@ -191,6 +191,34 @@ DEPARTMENT_COLUMNS = ("verdict", "note", "source_title", "source_url", "source_e
 _TRUE = {"1", "true", "yes", "y", "x", "dismissed"}
 
 
+def annotation_origin(text: str) -> str:
+    """The sweep this file was exported from, or "" if it does not say.
+
+    Every sweep export writes `sweep_id` into every row, and until now nothing
+    read it back: the import matched claim text against whatever sweep happened
+    to be open on screen. Import a sweep's export into a DIFFERENT sweep and it
+    behaves exactly as designed and reads as broken — the claims that sweep
+    does not raise come back "named a claim this sweep does not hold", and
+    every row carrying the other sweep's sources is reported as though the
+    writer had edited a citation.
+
+    Measured on the live service 2026-08-13: a file from one sweep, opened
+    against another, produced eight unmatched claims and six edit complaints,
+    all of them true statements about the wrong pair of documents and not one
+    of them the actual problem. The file knew. Nothing asked it.
+
+    One id, not a set. A file whose rows disagree is not a sweep export, and
+    the first row is the one to believe: it is the header's own neighbour and
+    the last thing an editing spreadsheet reorders.
+    """
+    try:
+        for row in csv.DictReader(io.StringIO(text or "")):
+            return unsafe_cell(row.get("sweep_id")).strip()
+    except csv.Error:  # pragma: no cover - csv rarely raises on read
+        return ""
+    return ""
+
+
 def read_annotations(text: str) -> tuple[dict[str, dict], list[str]]:
     """A returned CSV, reduced to the writer's own marks. Pure.
 

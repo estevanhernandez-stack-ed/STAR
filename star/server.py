@@ -2641,6 +2641,23 @@ async def annotate_sweep(
     if document is None:
         raise HTTPException(404, "Unknown sweep")
 
+    # THE FILE SAYS WHICH SWEEP IT CAME FROM, so ask before doing anything
+    # else. A file from another sweep still parses, still matches whatever
+    # claims the two happen to share, and reports every difference between them
+    # as the writer's doing — eight unmatched claims and six "you edited a
+    # citation" complaints on the run that found this, none of which named the
+    # one thing that was wrong. Refused rather than reported, because the
+    # alternative is filing half a file's notes onto a sweep the writer was not
+    # looking at.
+    origin = exports.annotation_origin(req.csv)
+    if origin and origin != sweep_id:
+        raise HTTPException(
+            400,
+            f"That file was exported from sweep {origin}, and the sweep open "
+            f"here is {sweep_id}. Open the sweep the file came from, or export "
+            "this one and mark that up instead. Nothing was changed.",
+        )
+
     annotations, complaints = exports.read_annotations(req.csv)
     # Both lists, in the order they are raised: what the FILE was wrong about
     # (unreadable rows, no claim named), then what it tried to change. The
