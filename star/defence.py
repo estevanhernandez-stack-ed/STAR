@@ -14,6 +14,65 @@ Pure. No IO, no clock, no model. Everything below is selection and reshaping of
 a document that already exists.
 """
 
+import re
+from urllib.parse import urlparse
+
+# WHAT THE ADDRESS SAYS ABOUT ITSELF, and nothing beyond that.
+#
+# A card printed off a real room quoted a Beatles Bible forum post — a reader's
+# complaint that the boots did not fit him — under a fact about the shoemakers
+# who made them. The quotation was real, the address was real, and the sheet
+# gave a writer no way to see that the words were some stranger's rather than
+# the site's own reporting. Handing that to a producer as a receipt is the
+# failure this project exists to avoid, one level below where it usually looks
+# for it: not an invented source, a real source misread.
+#
+# These match segments a publisher chose for software whose entire purpose is
+# posts by readers. They are NOT a quality judgement — a forum thread is
+# frequently the only place a detail survives, and the Gdansk tram timetable is
+# exactly that — and they are not an inference about content. The url says
+# `/forum/`; the card says the url says `/forum/`.
+#
+# HIGH CONFIDENCE ONLY, because the costly error is the false positive. Telling
+# a writer to distrust a newspaper is worse than failing to flag a forum, since
+# the flag is advice they will act on. Measured against all 567 distinct
+# addresses in the account on 2026-08-12: 8 marked, every one genuinely a
+# forum, none missed among the ambiguous.
+#
+# `talk`, `board`, `discussion`, `answers` and `questions` are deliberately
+# absent. A TED talk lives under /talks/, a company's /board/ is its directors,
+# and an /answers/ path is as often an official FAQ as a Q&A site.
+_USER_WRITTEN_HOSTS = re.compile(
+    r"(^|\.)(reddit\.com|quora\.com|stackexchange\.com|stackoverflow\.com|"
+    r"serverfault\.com|superuser\.com|answers\.yahoo\.com)$",
+    re.IGNORECASE,
+)
+_USER_WRITTEN_HOST_PREFIX = re.compile(r"^(forum|forums|boards|community)\.", re.IGNORECASE)
+_USER_WRITTEN_PATH = re.compile(
+    r"(^|/)(forum|forums|viewtopic|viewthread|showthread|thread|threads|"
+    r"comments|phpbb|smf|vbulletin)(/|$|\.php)",
+    re.IGNORECASE,
+)
+
+
+def address_is_user_written(url: object) -> bool:
+    """Does this address say, in its own path or host, that readers write here?
+
+    False is not a claim that a page is editorial. It is the absence of a
+    marker, which is why every surface that prints this says so — a forum whose
+    url does not announce itself is invisible here, and copy implying otherwise
+    would turn a partial signal into a guarantee.
+    """
+    try:
+        parsed = urlparse(str(url or ""))
+    except ValueError:
+        return False
+    return bool(
+        _USER_WRITTEN_HOSTS.search(parsed.netloc)
+        or _USER_WRITTEN_HOST_PREFIX.search(parsed.netloc)
+        or _USER_WRITTEN_PATH.search(parsed.path)
+    )
+
 
 def normalised(text: object) -> str:
     """One fact, comparable. Case and runs of whitespace only.
@@ -93,6 +152,14 @@ def card(result: dict, category: str, finding: dict, run_id: str) -> dict:
                 "url": (citation or {}).get("url") or "",
                 "title": (citation or {}).get("title") or "",
                 "excerpt": (citation or {}).get("excerpt") or "",
+                # Read off the address, never off the text. See the note above
+                # `address_is_user_written`: the point is to stop a writer
+                # handing over a stranger's forum post believing it is the
+                # site's own reporting, without this file ever ranking one
+                # source against another.
+                "user_written": address_is_user_written(
+                    (citation or {}).get("url") or ""
+                ),
             }
             for citation in finding.get("citations") or []
         ],

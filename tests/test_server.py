@@ -552,6 +552,47 @@ async def test_an_overrun_with_nothing_filed_is_still_an_error():
     del server._runs["empty"]
 
 
+def test_an_address_is_marked_user_written_only_when_it_says_so():
+    """The costly error here is the false positive, so the bar is the address.
+
+    Marking a newspaper as a forum tells a writer to distrust a source that was
+    fine, and they will act on it. Missing a forum costs them a note they did
+    not get. The patterns therefore match segments a publisher chose for
+    software whose whole purpose is reader posts, and the ambiguous words are
+    left out on purpose — every one below has a real counterexample.
+    """
+    from star.defence import address_is_user_written
+
+    for url in (
+        "https://www.reddit.com/r/Tools/comments/1hdlvc4/what_are_these/",
+        "https://www.beatlesbible.com/forum/yesterday-and-today/beatle-boots/",
+        "https://forum.dawnygdansk.pl/printview.php?t=915",
+        "https://forums.aaca.org/topic/300375-furnishing-a-garage/",
+        "https://www.garagejournal.com/forum/threads/vintage-tools.489047/",
+        "https://www.lathetrolls.com/viewtopic.php?t=4245",
+        "https://stackoverflow.com/questions/12345/how-do-i",
+    ):
+        assert address_is_user_written(url), url
+
+    for url in (
+        # The ambiguous words, each with the counterexample that keeps it out.
+        "https://www.ted.com/talks/how-to-speak",
+        "https://www.marcus.com/board/directors",
+        "https://www.gov.uk/answers/passport-renewal",
+        "https://www.bbc.co.uk/news/questions-about-the-blackout",
+        "https://en.wikipedia.org/wiki/Lenin_Shipyard",
+        "https://www.bonhams.com/auction/19801/lot/304/",
+        "https://therake.com/stories/the-kaleidoscopic-escalation",
+        # A word that merely CONTAINS a marker is not the marker: `threadbare`
+        # and `performance` are ordinary words in an ordinary path.
+        "https://example.org/history/threadbare-coats",
+        "https://example.org/comments-on-the-era-are-welcome",
+        "",
+        None,
+    ):
+        assert not address_is_user_written(url), url
+
+
 def test_the_defence_endpoint_and_the_agent_door_answer_from_one_function():
     """The property that makes the printed sheet trustworthy.
 

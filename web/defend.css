@@ -252,3 +252,20 @@ body.defence {
      exists only as link markup is one nobody can follow, and this sheet's
      whole purpose is being read away from the browser that fetched it. */
 }
+
+/* WHAT THE ADDRESS SAYS about who writes at it. Set in the label face and
+ * ruled in oxide, the same pad the unsourced block uses, because both are the
+ * department qualifying its own evidence rather than presenting it. Quieter
+ * than the unsourced rule — a forum post IS a source, and frequently the only
+ * place a detail survives, so this is a fact about the page and not a warning
+ * off it. Sits above the quotation: a reader who learns afterwards that they
+ * just read a stranger's post has already read it as the site's. */
+.defence-posted {
+  font-family: var(--label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  font-size: var(--label-sm);
+  line-height: 1.5;
+  color: var(--oxide);
+  margin: 0 0 0.5rem;
+}

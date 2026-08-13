@@ -178,7 +178,7 @@ assert.match(
   "THE SCOPE LINE. A sheet of sources without it reads as the department " +
     "endorsing the fact, which is the failure the aversion research documents"
 );
-assert.match(built.prose, /none of them were written by a model/, "the narrow claim, stated");
+assert.match(built.prose, /none of it was written by a model/, "the narrow claim, stated");
 assert.match(built.html, /defence-print/, "and the control the whole page exists for");
 
 /* 2 — a requisitioned fact says so, and dates itself. --------------------- */
@@ -336,5 +336,72 @@ assert.doesNotMatch(
   /&amp;#x27;/,
   "and never the entity itself, printed as text on a page handed to somebody"
 );
+
+/* 9 — a page anyone can post to is named as one. ------------------------- */
+//
+// THE BUG. A card off the Substitute Sync room quoted a Beatles Bible forum
+// post — a reader's complaint that the boots did not fit him — under a fact
+// about the shoemakers who made them. Real quotation, real address, and
+// nothing on the sheet said the words were a stranger's rather than the site's
+// own reporting. Handed to a producer as a receipt, that is a real source
+// misread, which is a shorter distance from a fabricated one than it looks.
+//
+// The mark is read off the url by star/defence.py. This file asserts the sheet
+// prints it, prints it BEFORE the quotation, and never states it as complete.
+
+const forum = await renderWith({
+  ...CARD,
+  sources: [
+    {
+      url: "https://www.beatlesbible.com/forum/yesterday-and-today/beatle-boots/",
+      title: "Beatle Boots | Fab Forum",
+      excerpt: "They really didn't suit me - I sent them back for a refund.",
+      user_written: true,
+    },
+    {
+      url: "https://www.bonhams.com/auction/19801/lot/304/",
+      title: "Bonhams : George Harrison",
+      excerpt: "A pair of boots from this period are a rare survivor.",
+      user_written: false,
+    },
+  ],
+});
+
+assert.match(forum.prose, /Posted by a reader on a forum or comment page/);
+assert.match(
+  forum.prose,
+  /not the site's own reporting/,
+  "which is the whole distinction a writer needs before repeating it"
+);
+assert.equal(
+  (forum.html.match(/defence-posted/g) || []).length,
+  1,
+  "the marked source only — the auction lot is not a forum and must not be " +
+    "labelled as one. A false mark tells a writer to distrust a source that " +
+    "was fine, which is the costlier error of the two"
+);
+assert.ok(
+  forum.html.indexOf("defence-posted") < forum.html.indexOf("defence-excerpt"),
+  "above the quotation, not below it: a reader who learns afterwards that " +
+    "they just read a stranger's post has already read it as the site's"
+);
+assert.match(
+  forum.prose,
+  /read off the url alone/,
+  "and the sheet says where the mark comes from"
+);
+assert.match(
+  forum.prose,
+  /absence of one is not evidence of an editor/,
+  "NEVER STATED AS COMPLETE. A forum whose address does not announce itself " +
+    "is invisible to this, and a partial signal printed as a guarantee is " +
+    "worse than no signal — it would make an unmarked source look vetted"
+);
+
+// A card with nothing marked says nothing about marking. The qualification is
+// about the sources on THIS sheet, and printed over none of them it reads as a
+// disclaimer the reader has to decode.
+assert.doesNotMatch(built.prose, /read off the url alone/);
+assert.doesNotMatch(built.html, /defence-posted/);
 
 console.log("ok - the defence card shows one fact's provenance and nothing it cannot show");

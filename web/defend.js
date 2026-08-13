@@ -60,12 +60,24 @@ function sourceHtml(source) {
   // link is just words, and these words have to be the address.
   const address = `<p class="defence-source-url"><a href="${escapeHtml(url)}"
       rel="noopener noreferrer">${escapeHtml(url)}</a></p>`;
+  // What the address says about who writes there. The server reads it off the
+  // url (star/defence.py) so this sheet and the agent door mark the same
+  // pages, and it sits ABOVE the quotation rather than below it — a reader
+  // learning after the fact that they just read a stranger's post has already
+  // read it as the site's.
+  const posted = source?.user_written
+    ? `<p class="defence-posted">Posted by a reader on a forum or comment page,
+        not the site's own reporting.</p>`
+    : "";
   const quote = excerpt
     ? `<p class="defence-excerpt">${escapeHtml(excerpt)}</p>`
     : `<p class="defence-noquote">The ledger holds no quotation from this page.
         The address above is what came back from the search; what it says is
         for you to read there.</p>`;
-  return `<li class="defence-source">${heading}${address}${quote}</li>`;
+  // `posted` before `quote` in both branches, including the one with nothing
+  // to quote: a reader following an unquoted address still needs to know what
+  // kind of page is waiting there.
+  return `<li class="defence-source">${heading}${address}${posted}${quote}</li>`;
 }
 
 function render(card) {
@@ -121,11 +133,18 @@ function render(card) {
     ${sourceBlock}
     ${unsourcedBlock}
     <p class="defence-scope">Every address above came back from a live web
-      search and was recorded before this fact was written, so the titles and
-      quotations are the pages' own words and none of them were written by a
-      model. That is what the department can tell you. Whether a source
+      search and was recorded before this fact was written, so every title and
+      quotation is text that stood at that address and none of it was written
+      by a model. That is what the department can tell you. Whether a source
       supports the claim is a judgement it does not make on your behalf — the
-      quotations are here so you can make it.</p>
+      quotations are here so you can make it.${
+        sources.some((s) => s?.user_written)
+          ? ` Where an address says it is a forum or comment page it is marked
+             above; that is read off the url alone, so a page anyone can post
+             to whose address does not say so carries no mark, and the absence
+             of one is not evidence of an editor.`
+          : ""
+      }</p>
     <button type="button" class="defence-print">Print this sheet</button>
   `;
   sheet

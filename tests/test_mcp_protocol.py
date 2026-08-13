@@ -1518,6 +1518,74 @@ async def test_defend_claim_finds_a_fact_from_a_distinctive_fragment():
 
 
 @pytest.mark.asyncio
+async def test_defend_claim_says_when_a_source_is_a_page_anyone_can_post_to():
+    """A real source misread is a shorter distance from a fabricated one than
+    it looks.
+
+    A card off a real room quoted a Beatles Bible forum post — a reader's
+    complaint that the boots did not fit — under a fact about the shoemakers
+    who made them. Nothing said the words were a stranger's rather than the
+    site's own reporting, and an agent repeating it downstream had no way to
+    know either.
+    """
+
+    async def _forum(uid, run_id):
+        return {
+            "status": "complete",
+            "result": {
+                "created_at": "2026-08-09T12:00:00Z",
+                "story_profile": {"title": "The Substitute Sync"},
+                "categories": {
+                    "objects_props": {
+                        "findings": [
+                            {
+                                "fact": "Beatle boots were made by Anello & Davide.",
+                                "citations": [
+                                    {
+                                        "url": "https://www.beatlesbible.com/forum/beatle-boots/",
+                                        "title": "Beatle Boots | Fab Forum",
+                                        "excerpt": "They didn't suit me.",
+                                    },
+                                    {
+                                        "url": "https://www.bonhams.com/auction/19801/lot/304/",
+                                        "title": "Bonhams",
+                                        "excerpt": "A rare survivor.",
+                                    },
+                                ],
+                                "unverified_urls": [],
+                            }
+                        ]
+                    }
+                },
+            },
+        }
+
+    result = await invoke(
+        "defend_claim",
+        {"run_id": "abc", "fact": "Beatle boots were made by Anello & Davide."},
+        read_room=_forum,
+    )
+    card = carried(result)
+    text = said(result)
+
+    assert [source["user_written"] for source in card["sources"]] == [True, False], (
+        "the forum, and not the auction house — a false mark tells a writer to "
+        "distrust a source that was fine"
+    )
+    assert "forum or comment page" in text
+    assert "not the site's own reporting" in text
+    assert "often the only place a detail survives" in text, (
+        "and it is not a verdict: the Gdansk tram timetable stands on a local "
+        "history forum and stands"
+    )
+    assert "absence of this note is not evidence of an editor" in text, (
+        "NEVER STATED AS COMPLETE. Read off the url, so a page anyone can post "
+        "to whose address does not say so comes back unmarked, and an agent "
+        "told otherwise would treat every unmarked source as vetted"
+    )
+
+
+@pytest.mark.asyncio
 async def test_defend_claim_will_not_match_two_facts_that_differ_by_a_number():
     """Punctuation and digits are load-bearing, and this is where that is said.
 

@@ -424,6 +424,14 @@ TOOLS: tuple[dict, ...] = (
             "worse than no card at all in the one conversation this exists "
             "for. Use `ask_room` to search on meaning and bring back the "
             "wording as filed.\n\n"
+            "A source whose ADDRESS says it is a forum or comment page is "
+            "marked `user_written`. The quotation from such a page is a post "
+            "somebody made, not the site's own reporting — worth knowing "
+            "before it is repeated, and not a verdict on it, since a forum "
+            "thread is often the only place a detail survives. It is read off "
+            "the url alone, so a page anyone can post to whose address does "
+            "not announce it comes back unmarked: absence is not evidence of "
+            "an editor.\n\n"
             "The retrieval date is the finding's own where it has one. A "
             "finding the build filed was retrieved when the room was made; "
             "one added later by `research_question` was retrieved then, and "
@@ -1807,6 +1815,20 @@ async def _defend_claim(arguments: dict, calls: Calls, identity) -> dict:
             "No source is filed behind this fact. The department will not "
             "assemble a defence out of nothing, and a claim in this state "
             "should not go in front of anyone who might ask."
+        )
+    posted = [source for source in sources if source.get("user_written")]
+    if posted:
+        lines.append(
+            f"{len(posted)} of these address{'' if len(posted) == 1 else 'es'} "
+            f"{'is' if len(posted) == 1 else 'are'} a forum or comment page — "
+            f"`{posted[0]['url']}`"
+            + (f" and {len(posted) - 1} more" if len(posted) > 1 else "")
+            + ". The quotation is a post somebody made there, not the site's "
+            "own reporting, and it is worth saying so before this goes in "
+            "front of anyone. That is not a verdict on it: a forum thread is "
+            "often the only place a detail survives. Read off the url, so a "
+            "page anyone can post to whose address does not say so is not "
+            "marked here — absence of this note is not evidence of an editor."
         )
     if card["unsourced_urls"]:
         count = len(card["unsourced_urls"])
