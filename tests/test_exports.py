@@ -12,9 +12,18 @@ from unittest import mock
 from fastapi.testclient import TestClient
 
 from star import server
-from star.exports import COLUMNS, csv_filename, safe_cell, sweep_rows, sweep_to_csv
+from star.exports import (
+    COLUMNS,
+    ROOM_COLUMNS,
+    csv_filename,
+    room_to_csv,
+    safe_cell,
+    sweep_rows,
+    sweep_to_csv,
+)
 from star.store import sweep_to_document
-from tests.test_scenes import AUTH, ROOM, UID, a_store, filed_room
+from tests.test_scenes import AUTH, UID, a_store, filed_room
+from tests.test_scenes import ROOM as ROOM_ID
 
 SWEEP = {
     "room": {"title": "Doctor Who: Liverpool and Hamburg", "era": "1958-1962"},
@@ -153,13 +162,13 @@ def test_the_download_is_a_file_and_not_a_page():
     """`text/csv` with an attachment disposition, never something a browser
     might render — a content type it can render is one it can execute."""
     store, _ = a_store()
-    store.save(UID, ROOM, filed_room())
-    store.save_sweep(UID, ROOM, "sw1", a_sweep())
+    store.save(UID, ROOM_ID, filed_room())
+    store.save_sweep(UID, ROOM_ID, "sw1", a_sweep())
 
     with mock.patch("star.server.verify_token", return_value=UID), \
             mock.patch("star.server._store", store):
         response = TestClient(server.app).get(
-            f"/api/rooms/{ROOM}/sweeps/sw1.csv", headers=AUTH
+            f"/api/rooms/{ROOM_ID}/sweeps/sw1.csv", headers=AUTH
         )
 
     assert response.status_code == 200, (
@@ -175,13 +184,152 @@ def test_the_download_is_a_file_and_not_a_page():
 
 def test_another_accounts_sweep_has_no_csv_either():
     store, _ = a_store()
-    store.save(UID, ROOM, filed_room())
-    store.save_sweep(UID, ROOM, "sw1", a_sweep())
+    store.save(UID, ROOM_ID, filed_room())
+    store.save_sweep(UID, ROOM_ID, "sw1", a_sweep())
 
     with mock.patch("star.server.verify_token", return_value="uid-two"), \
             mock.patch("star.server._store", store):
         response = TestClient(server.app).get(
-            f"/api/rooms/{ROOM}/sweeps/sw1.csv", headers=AUTH
+            f"/api/rooms/{ROOM_ID}/sweeps/sw1.csv", headers=AUTH
         )
+
+    assert response.status_code == 404
+
+
+# -- the ROOM, which is a different question from a sweep --------------------
+
+
+ROOM = {
+    "created_at": "2026-08-10T00:00:00Z",
+    "story_profile": {"title": "Doctor Who Special: Liverpool", "era": "1958-1962"},
+    "categories": {
+        "setting": {
+            "findings": [
+                {
+                    "fact": "Mona Best opened the Casbah on 29 August 1959.",
+                    "citations": [
+                        {
+                            "url": "https://casbah.example",
+                            "title": "The Casbah",
+                            "excerpt": "A six-room cellar in West Derby.",
+                        },
+                        {"url": "https://second.example", "title": "Also", "excerpt": "Again."},
+                    ],
+                }
+            ]
+        },
+        "logistics": {
+            "findings": [
+                {
+                    "fact": "Night trams ran on reduced headways.",
+                    "citations": [],
+                },
+                {
+                    "fact": "A pint cost about two shillings.",
+                    "citations": [{"url": "https://prices.example", "title": "P", "excerpt": "2s"}],
+                    "requisition": "what did a pint cost in 1958",
+                    "retrieved_at": "2026-08-13T04:00:00Z",
+                },
+            ]
+        },
+    },
+}
+
+
+def test_a_room_exports_its_research_rather_than_a_drafts_answers():
+    """The question a writer actually asked. A sweep says what a draft claimed
+    and how it held up; this says what the department FOUND, and it exists
+    without anybody having swept a screenplay."""
+    rows = parsed(room_to_csv(ROOM, "room-1"))
+
+    assert list(rows[0].keys()) == list(ROOM_COLUMNS)
+    assert len(rows) == 4, "two sources on one finding, plus two more findings"
+    assert {r["drawer"] for r in rows} == {"setting", "logistics"}
+    assert rows[0]["room"] == "Doctor Who Special: Liverpool"
+    assert rows[0]["era"] == "1958-1962"
+    assert rows[0]["run_id"] == "room-1"
+
+
+def test_a_finding_nobody_could_cite_still_gets_a_row():
+    rows = parsed(room_to_csv(ROOM))
+    bare = [r for r in rows if r["fact"].startswith("Night trams")]
+
+    assert len(bare) == 1
+    assert bare[0]["source_url"] == "", (
+        "a fact with no source is exactly the row worth finding in a spreadsheet"
+    )
+
+
+def test_a_requisitioned_finding_carries_its_question_and_its_own_date():
+    """The rule web/clip.js applies to the RET stamp, in a column somebody will
+    sort by: a finding asked for after the build was retrieved when it was
+    asked for, and stamping the room's date on it would be a fabricated
+    provenance claim."""
+    rows = parsed(room_to_csv(ROOM))
+    asked = next(r for r in rows if r["fact"].startswith("A pint"))
+    built = next(r for r in rows if r["fact"].startswith("Mona Best"))
+
+    assert asked["requisition"] == "what did a pint cost in 1958"
+    assert asked["retrieved_at"] == "2026-08-13T04:00:00Z"
+    assert built["requisition"] == "", "and the build's own findings carry none"
+    assert built["retrieved_at"] == "2026-08-10T00:00:00Z", "they take the room's date"
+
+
+def test_a_room_export_is_not_a_program_either():
+    hostile = {
+        "story_profile": {"title": "X"},
+        "categories": {
+            "setting": {
+                "findings": [
+                    {
+                        "fact": "=cmd|'/c calc'!A1",
+                        "citations": [{"url": "https://x.example", "title": "@x", "excerpt": "-1"}],
+                    }
+                ]
+            }
+        },
+    }
+    row = parsed(room_to_csv(hostile))[0]
+
+    assert row["fact"].startswith("'=")
+    assert row["source_title"].startswith("'@")
+    assert row["source_excerpt"].startswith("'-")
+
+
+def test_a_room_and_a_sweep_are_told_apart_in_a_downloads_folder():
+    assert csv_filename("Liverpool", "2026-08-13T00:00:00Z", kind="research") == (
+        "liverpool-research-2026-08-13.csv"
+    )
+    assert csv_filename("Liverpool", "2026-08-13T00:00:00Z") == (
+        "liverpool-sweep-2026-08-13.csv"
+    )
+
+
+def test_the_room_download_is_reachable_and_is_a_file():
+    """Registered ABOVE `/api/rooms/{run_id}`, which matches in declaration
+    order and would otherwise claim `abc.csv` — the exact bug the sweep CSV
+    shipped with, under a comment claiming it had been avoided."""
+    store, _ = a_store()
+    store.save(UID, ROOM_ID, filed_room())
+
+    with mock.patch("star.server.verify_token", return_value=UID), \
+            mock.patch("star.server._store", store):
+        response = TestClient(server.app).get(f"/api/rooms/{ROOM_ID}.csv", headers=AUTH)
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    assert "attachment" in response.headers["content-disposition"]
+    assert "research" in response.headers["content-disposition"]
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert "Impala" in response.text, "the room's own finding is in it"
+
+
+def test_another_accounts_room_has_no_csv():
+    store, _ = a_store()
+    store.save(UID, ROOM_ID, filed_room())
+
+    with mock.patch("star.server.verify_token", return_value="uid-two"), \
+            mock.patch("star.server._store", store):
+        response = TestClient(server.app).get(f"/api/rooms/{ROOM_ID}.csv", headers=AUTH)
 
     assert response.status_code == 404

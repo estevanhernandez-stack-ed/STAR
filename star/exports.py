@@ -245,7 +245,97 @@ def apply_annotations(document: dict, annotations: dict[str, dict]) -> tuple[dic
     return document, sorted(wanted)
 
 
-def csv_filename(room_title: str, created_at: str) -> str:
+# A ROOM's own research, which is a different question from a sweep's answers.
+# A sweep says what a draft claimed and how it held up; this says what the
+# department found, which is the thing a writer actually paid for and the thing
+# they want when somebody asks "where is your research".
+ROOM_COLUMNS = (
+    "drawer",
+    "fact",
+    "source_title",
+    "source_url",
+    "source_excerpt",
+    "retrieved_at",
+    "requisition",
+    "room",
+    "era",
+    "run_id",
+)
+
+
+def room_rows(result: dict, run_id: str = "") -> list[dict]:
+    """A room's findings, flattened. One row per finding per source. Pure.
+
+    Same shape as `sweep_rows` and for the same reason: a writer wants to
+    filter on a domain and count how much of a room rests on one site, and a
+    cell holding three urls allows neither. A finding with no source still gets
+    a row, because a fact nobody could cite is exactly the row worth finding.
+
+    `retrieved_at` is the finding's own where it has one and the room's
+    otherwise — the rule web/clip.js applies to the RET stamp. A finding
+    requisitioned after the build was retrieved when it was asked for, and
+    stamping the room's date on it would be a fabricated provenance claim in a
+    column somebody will sort by.
+
+    `requisition` carries the question a writer asked to put the finding there,
+    empty for everything the build filed. It is how a reader tells research
+    that was commissioned from research that was planned.
+    """
+    result = result or {}
+    profile = result.get("story_profile") or {}
+    room = profile.get("title") or "Untitled room"
+    era = profile.get("era") or ""
+    built = str(result.get("created_at") or "")
+    rows: list[dict] = []
+
+    for drawer, doc in (result.get("categories") or {}).items():
+        for finding in (doc or {}).get("findings") or []:
+            finding = finding or {}
+            base = {
+                "drawer": drawer,
+                "fact": finding.get("fact") or "",
+                "retrieved_at": str(finding.get("retrieved_at") or "").strip() or built,
+                "requisition": finding.get("requisition") or "",
+                "room": room,
+                "era": era,
+                "run_id": run_id,
+            }
+            citations = finding.get("citations") or []
+            if not citations:
+                rows.append(
+                    {**base, "source_title": "", "source_url": "", "source_excerpt": ""}
+                )
+                continue
+            for citation in citations:
+                citation = citation or {}
+                rows.append(
+                    {
+                        **base,
+                        "source_title": citation.get("title") or "",
+                        "source_url": citation.get("url") or "",
+                        "source_excerpt": citation.get("excerpt") or "",
+                    }
+                )
+    return rows
+
+
+def room_to_csv(result: dict, run_id: str = "") -> str:
+    """A room's research as CSV text.
+
+    Every cell goes through `safe_cell` for the reason the sweep's do: a
+    finding is a sentence a model wrote from pages off the open web, and an
+    excerpt is those pages verbatim. Both land in a program that will run a
+    cell opening `=`.
+    """
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=ROOM_COLUMNS, lineterminator="\r\n")
+    writer.writeheader()
+    for row in room_rows(result, run_id):
+        writer.writerow({key: safe_cell(row.get(key)) for key in ROOM_COLUMNS})
+    return buffer.getvalue()
+
+
+def csv_filename(room_title: str, created_at: str, kind: str = "sweep") -> str:
     """A filename a writer can find again in a downloads folder.
 
     Built from the room and the date rather than the sweep id, because a reader
@@ -259,4 +349,4 @@ def csv_filename(room_title: str, created_at: str) -> str:
     day = str(created_at or "")[:10] or "undated"
     # No stem means no room title, and `sweep-sweep-undated.csv` is what a
     # default stem of "sweep" produces. The word appears once.
-    return f"{stem}-sweep-{day}.csv" if stem else f"sweep-{day}.csv"
+    return f"{stem}-{kind}-{day}.csv" if stem else f"{kind}-{day}.csv"

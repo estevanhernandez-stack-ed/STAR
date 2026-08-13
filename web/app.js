@@ -80,6 +80,7 @@ const bibleSurface = $("bible-surface");
 const bibleBtn = $("bible-btn");
 const checkSurface = $("check-panel");
 const checkBtn = $("check-btn");
+const roomCsvBtn = $("room-csv-btn");
 
 /* What each toggle says when its surface is CLOSED, read off the markup once
  * rather than written here a second time.
@@ -506,6 +507,46 @@ function addEntry(cls, html) {
 function pad2(n) {
   return String(n).padStart(2, "0");
 }
+
+/** The open room's research, downloaded as a spreadsheet.
+ *
+ *  FETCHED, NOT LINKED. Everything under /api needs a bearer token that only
+ *  `authedFetch` attaches; a plain <a href> is a browser navigation carrying
+ *  cookies and no Authorization header, so it 401s and tells a signed-in
+ *  reader to sign in. The sweep's CSV shipped exactly that bug — this is the
+ *  same mistake already paid for once.
+ *
+ *  The filename comes back from the server's own disposition rather than being
+ *  rebuilt here, so there is one source for what lands in a downloads folder. */
+async function downloadRoomCsv() {
+  if (!openRoomId) return;
+  roomCsvBtn.disabled = true;
+  try {
+    const res = await authedFetch(`/api/rooms/${encodeURIComponent(openRoomId)}.csv`);
+    if (!res.ok) throw new Error(`The department could not build that file (${res.status}).`);
+    const blob = await res.blob();
+    const disposition = res.headers.get("content-disposition") || "";
+    const named = /filename="([^"]+)"/.exec(disposition);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", named ? named[1] : "research.csv");
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  } catch (err) {
+    // The room view has no error region of its own, and a failed download must
+    // not be silent — a reader who pressed a button and saw nothing has no way
+    // to tell a slow network from a broken one.
+    roomCsvBtn.textContent = "Could not build the file";
+    setTimeout(() => {
+      roomCsvBtn.textContent = "Research as CSV";
+    }, 4000);
+  } finally {
+    roomCsvBtn.disabled = false;
+  }
+}
+
+roomCsvBtn.addEventListener("click", downloadRoomCsv);
 
 /*  stampDate — DD MON YYYY, matching the stamp's slug-face convention in
  *  docs/design/visual-directions.md's own mockup ("RET 09 AUG 2026") — now

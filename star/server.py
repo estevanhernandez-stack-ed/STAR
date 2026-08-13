@@ -1090,6 +1090,44 @@ async def _read_room(uid: str, run_id: str) -> dict:
     )
 
 
+@app.get("/api/rooms/{run_id}.csv")
+async def get_room_csv(run_id: str, authorization: str | None = Header(None)) -> Response:
+    """A whole room's research as a spreadsheet.
+
+    A different question from a sweep's CSV: that one says what a draft claimed
+    and how it held up, this says what the department FOUND. A writer asked for
+    their research and a file that only exists after sweeping a screenplay is
+    the wrong shape for the question.
+
+    Registered ABOVE `/api/rooms/{run_id}`, because Starlette matches in
+    declaration order and that route would otherwise claim `abc.csv` and 404 on
+    a room whose id has no dot in it. The sweep CSV shipped with exactly that
+    bug and a comment claiming it had been avoided.
+
+    This room only, not its chain. A chain is a reading convenience and this is
+    a record of what one build produced; merging two rooms into one file would
+    make a writer's own research indistinguishable from the room it follows.
+    """
+    uid = _require_uid(authorization)
+    document = await asyncio.to_thread(_store.get, uid, run_id)
+    if document is None:
+        raise HTTPException(404, "Unknown run")
+
+    result = document_to_room(document)
+    profile = result.get("story_profile") or {}
+    filename = exports.csv_filename(
+        profile.get("title") or "room", result.get("created_at"), kind="research"
+    )
+    return Response(
+        content=exports.room_to_csv(result, run_id),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
 @app.get("/api/rooms/{run_id}")
 async def get_room(run_id: str, authorization: str | None = Header(None)) -> dict:
     """The browser door onto one room. Auth, then the shared read."""
