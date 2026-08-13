@@ -63,6 +63,10 @@
 import { anchor } from "/anchor.js";
 import { authedFetch } from "/auth.js";
 import { excerptProse } from "/excerpt.js";
+// The splitter, and nothing else from it. web/fountain.js decides where scenes
+// begin; this file decides what to do about it, and the two are kept apart so
+// the parsing has tests that never touch a DOM.
+import { sceneKey, scenes as fountainScenes } from "/fountain.js";
 
 const VERDICTS = new Set(["confirmed", "anachronism", "unverifiable"]);
 
@@ -755,6 +759,12 @@ function buildFoot(payload, onDelete) {
 
 let els = null;
 let roomId = null;
+// The parsed draft currently in the box, and the keys of every scene this room
+// has a filed check for. Both are this module's, not the server's: the keys
+// arrive with the filed list (star/store.py's scene_summary) and the parse is
+// redone whenever the box changes.
+let draftScenes = [];
+let checkedKeys = new Set();
 let currentSceneId = null;
 let loadedFiledFor = null;
 
@@ -770,8 +780,88 @@ export function initScriptCheck() {
     result: $("check-result"),
     filedRow: $("check-filed-row"),
     filedList: $("check-filed-list"),
+    draft: $("check-draft"),
+    draftCount: $("check-draft-count"),
+    draftDone: $("check-draft-done"),
+    draftScenes: $("check-draft-scenes"),
   };
   els.run.addEventListener("click", runCheck);
+  // `input` rather than `paste`: a paste event fires before the value lands,
+  // and a writer may also drag a file in or type. This runs a regex over the
+  // box on every keystroke, which is cheap next to what the box costs to
+  // render at ninety pages.
+  els.input.addEventListener("input", showDraft);
+}
+
+/** The draft strip: what a paste turns out to be, when it is a screenplay.
+ *
+ *  THE PROBLEM IT SOLVES. `check_scene` takes one scene, so a writer with a
+ *  finished draft found their first scene in their editor, selected it,
+ *  pasted, waited, went back for the second, and did that fifty times. The
+ *  check was always the thing they came for; the intake was shaped for a demo.
+ *
+ *  It appears only when a paste holds MORE THAN ONE heading. One scene pasted
+ *  into a scene box is the case this surface was built for and needs no strip
+ *  telling it so, and text with no headings at all — a paragraph, a treatment
+ *  fragment — is a legitimate thing to check that web/fountain.js correctly
+ *  declines to split. In both cases the box behaves exactly as it did.
+ *
+ *  Nothing here submits anything. Pressing a scene loads it into the box the
+ *  writer already knows, and the check runs from the button it already ran
+ *  from — so a draft of ninety pages cannot cost ninety checks by accident,
+ *  and every spend is still one deliberate press. */
+function showDraft() {
+  if (!els) return;
+  const parsed = fountainScenes(els.input.value);
+  draftScenes = parsed.length > 1 ? parsed : [];
+  renderDraft();
+}
+
+function renderDraft() {
+  if (!els) return;
+  if (!draftScenes.length) {
+    els.draft.classList.add("hidden");
+    els.draftScenes.replaceChildren();
+    els.draftCount.replaceChildren();
+    els.draftDone.replaceChildren();
+    return;
+  }
+
+  const done = draftScenes.filter((scene) => checkedKeys.has(sceneKey(scene.text))).length;
+  els.draft.classList.remove("hidden");
+  els.draftCount.replaceChildren(
+    document.createTextNode(
+      `This looks like a screenplay — ${plural(draftScenes.length, "scene")}. ` +
+        "Pick one to load it into the box below."
+    )
+  );
+  els.draftDone.replaceChildren(
+    document.createTextNode(done ? `${done} already checked against this room.` : "")
+  );
+
+  els.draftScenes.replaceChildren();
+  for (const scene of draftScenes) {
+    const checked = checkedKeys.has(sceneKey(scene.text));
+    const btn = el("button", "check-draft-scene");
+    btn.type = "button";
+    if (checked) btn.dataset.checked = "true";
+    // Text nodes, never markup, for the reason at the top of this file: a
+    // scene heading is writer-supplied text and this is the surface built
+    // around a hostile paste.
+    btn.appendChild(el("span", "check-draft-index", String(scene.index)));
+    btn.appendChild(el("span", "check-draft-slug", scene.heading));
+    if (checked) {
+      btn.appendChild(el("span", "check-draft-tick", "checked"));
+    }
+    btn.addEventListener("click", () => {
+      els.input.value = scene.text;
+      els.input.focus();
+      // Not submitted. See showDraft: every spend stays one deliberate press
+      // of the button the writer already knows.
+      els.error.replaceChildren();
+    });
+    els.draftScenes.appendChild(btn);
+  }
 }
 
 /** Point the surface at a room. Called every time a room is painted, so a
@@ -889,7 +979,10 @@ async function runCheck() {
     const res = await authedFetch(`/api/rooms/${encodeURIComponent(roomId)}/scenes`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scene }),
+      // The label that lets a draft split tomorrow know this scene was
+      // checked today. web/fountain.js owns what it means; the server
+      // stores it without looking at it.
+      body: JSON.stringify({ scene, scene_key: sceneKey(scene) }),
     });
     if (!res.ok) throw new Error(await failureDetail(res));
     try {
@@ -918,6 +1011,11 @@ async function runCheck() {
   // request finished — a status line clearing and a button re-enabling is not a
   // signal, and the result mounts below the fold.
   mountResult({ ...payload, scene }, { moveFocus: true });
+  // Marked now rather than after the filed list comes back. The refetch below
+  // is what makes it survive a reload; this is what makes the strip agree with
+  // what the reader just watched happen.
+  checkedKeys.add(sceneKey(scene));
+  renderDraft();
   loadedFiledFor = null;
   openedCheck();
 }
@@ -983,6 +1081,15 @@ async function loadFiledChecks() {
   }
   // The room may have changed while this was in flight.
   if (room !== roomId || !scenes.length) return;
+
+  // The keys of every scene this room has a check filed for, so a draft split
+  // in the box above can say which of its scenes are already done. This is
+  // what makes the strip survive a reload — `runCheck` marks the scene it just
+  // ran, and this is where that becomes durable.
+  checkedKeys = new Set(
+    scenes.map((summary) => String(summary?.scene_key || "")).filter(Boolean)
+  );
+  renderDraft();
 
   els.filedList.replaceChildren();
   for (const summary of scenes) {

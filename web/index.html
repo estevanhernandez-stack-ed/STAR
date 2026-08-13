@@ -334,6 +334,18 @@
           <label class="check-label" for="scene">Your scene</label>
           <textarea id="scene" rows="8"
             placeholder="INT. STUDIO B — NIGHT&#10;&#10;She threads tape onto the Ampex, thumbs a Zippo, and waits for the red light."></textarea>
+          <!-- The draft strip. Hidden until a paste turns out to hold more
+               than one scene heading, because until then there is nothing to
+               say and a control offering to split a single scene is noise.
+               web/scriptcheck.js fills it; web/fountain.js decides whether
+               there is anything to fill it with. -->
+          <div id="check-draft" class="check-draft hidden">
+            <p class="check-draft-line">
+              <span id="check-draft-count"></span>
+              <span id="check-draft-done" class="check-draft-done"></span>
+            </p>
+            <div id="check-draft-scenes" class="check-draft-scenes"></div>
+          </div>
           <div class="actions">
             <button id="check-run-btn" type="button">Check this scene</button>
             <span id="check-status" class="check-status" role="status"></span>

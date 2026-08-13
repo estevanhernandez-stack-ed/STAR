@@ -44,10 +44,16 @@ const REPO_ROOT = new URL("../../", import.meta.url);
 export const SOURCE_PATH = new URL("web/scriptcheck.js", REPO_ROOT);
 const ANCHOR_PATH = new URL("web/anchor.js", REPO_ROOT);
 const EXCERPT_PATH = new URL("web/excerpt.js", REPO_ROOT);
+// The splitter, rewritten to the REAL file for the same reason the matcher
+// is: it decides which text a scene button loads into the box, and a
+// stand-in would prove nothing about what actually gets checked.
+const FOUNTAIN_PATH = new URL("web/fountain.js", REPO_ROOT);
 
 const IMPORT_ANCHOR = 'import { anchor } from "/anchor.js";';
 const IMPORT_AUTH = 'import { authedFetch } from "/auth.js";';
 const IMPORT_EXCERPT = 'import { excerptProse } from "/excerpt.js";';
+const IMPORT_FOUNTAIN =
+  'import { sceneKey, scenes as fountainScenes } from "/fountain.js";';
 
 /** A fresh ES module instance of web/scriptcheck.js with its three
  *  browser-root imports rewritten. Fresh per call, so a scenario cannot inherit another
@@ -55,7 +61,7 @@ const IMPORT_EXCERPT = 'import { excerptProse } from "/excerpt.js";';
 export function loadPatchedModule() {
   const original = readFileSync(SOURCE_PATH, "utf8");
 
-  for (const line of [IMPORT_ANCHOR, IMPORT_AUTH, IMPORT_EXCERPT]) {
+  for (const line of [IMPORT_ANCHOR, IMPORT_AUTH, IMPORT_EXCERPT, IMPORT_FOUNTAIN]) {
     const occurrences = original.split(line).length - 1;
     assert.equal(
       occurrences,
@@ -71,6 +77,10 @@ export function loadPatchedModule() {
     .replace(
       IMPORT_EXCERPT,
       `import { excerptProse } from ${JSON.stringify(EXCERPT_PATH.href)};`
+    )
+    .replace(
+      IMPORT_FOUNTAIN,
+      `import { sceneKey, scenes as fountainScenes } from ${JSON.stringify(FOUNTAIN_PATH.href)};`
     )
     .replace(
       IMPORT_AUTH,

@@ -192,7 +192,7 @@ def room_summary(doc: dict) -> dict:
     }
 
 
-def scene_to_document(result: dict, scene: str) -> dict:
+def scene_to_document(result: dict, scene: str, scene_key: str = "") -> dict:
     """Shape one finished check into its stored document. Pure.
 
     `scene_id` and `created_at` are read off the result rather than minted
@@ -214,6 +214,17 @@ def scene_to_document(result: dict, scene: str) -> dict:
         "scene_id": result.get("scene_id") or "",
         "created_at": result.get("created_at") or "",
         "scene": scene,
+        # An opaque label the CLIENT computed, so a draft it splits tomorrow
+        # can tell which of its scenes were checked today. Stored, never
+        # interpreted: web/fountain.js owns what it means and this file owns
+        # nothing but keeping it. A second implementation here — the same eight
+        # lines of hashing in Python — is how the browser and the server come
+        # to disagree about whether a scene changed, and there is no answer
+        # this side could give that the side doing the comparing would trust.
+        #
+        # Nothing rests on it being right. It labels a writer's own bookkeeping
+        # in their own room; a wrong one shows one of their scenes as unchecked.
+        "scene_key": scene_key or "",
         "claims": result.get("claims") or [],
         "parse_rate": result.get("parse_rate") or 0.0,
         "unsourced_count": result.get("unsourced_count") or 0,
@@ -265,6 +276,11 @@ def scene_summary(doc: dict) -> dict:
     return {
         "scene_id": doc.get("scene_id"),
         "created_at": doc.get("created_at") or "",
+        # Here rather than only in the full scene, because this list is exactly
+        # what a draft is compared against and the alternative is fetching
+        # twenty whole scenes — their text, their claims — to draw a row of
+        # ticks. That is the cost this shape exists to avoid.
+        "scene_key": doc.get("scene_key") or "",
         "claim_count": len(doc.get("claims") or []),
         "search_count": doc.get("search_count") or 0,
         "unsourced_count": doc.get("unsourced_count") or 0,

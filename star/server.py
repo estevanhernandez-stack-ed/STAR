@@ -1255,7 +1255,9 @@ async def _forget_check_session(session_id: str) -> None:
         logger.exception("Failed to drop the session for check %s", session_id)
 
 
-async def _run_check(uid: str, run_id: str, scene: str) -> ScriptCheckResult:
+async def _run_check(
+    uid: str, run_id: str, scene: str, scene_key: str = ""
+) -> ScriptCheckResult:
     """Check one scene against one filed room, and file what comes back.
 
     Transport-free on purpose. The endpoint below and the MCP `check_scene`
@@ -1419,7 +1421,7 @@ async def _run_check(uid: str, run_id: str, scene: str) -> ScriptCheckResult:
             uid,
             run_id,
             result.scene_id,
-            scene_to_document(jsonable_encoder(result), scene),
+            scene_to_document(jsonable_encoder(result), scene, scene_key),
         )
     except Exception:
         logger.exception("Failed to file check %s on room %s", result.scene_id, run_id)
@@ -1671,6 +1673,11 @@ async def _run_requisition(
 
 class SceneRequest(BaseModel):
     scene: str
+    # An opaque label the browser computes so a draft it splits tomorrow knows
+    # which scenes it already checked. Optional, and empty from the agent door,
+    # which has no draft to compare against. See star/store.py on why the
+    # client owns it and this side only keeps it.
+    scene_key: str = ""
 
 
 @app.post("/api/rooms/{run_id}/scenes")
@@ -1698,7 +1705,7 @@ async def create_scene(
     # the browser and the agent door are limited by one object rather than by
     # two that have to be kept in step. See the comment against
     # `_uid_limiter.check` there for the ceiling and why it sits where it does.
-    return jsonable_encoder(await _run_check(uid, run_id, scene))
+    return jsonable_encoder(await _run_check(uid, run_id, scene, req.scene_key.strip()[:64]))
 
 
 @app.get("/api/rooms/{run_id}/defence")

@@ -830,6 +830,12 @@ def test_a_filed_check_keeps_the_scene_and_everything_the_schema_names():
         "budget_exhausted",
         "cover_note",
         "scope_note",
+        # An opaque label the CLIENT computed, stored and never interpreted.
+        # It lets a draft split in the browser tomorrow say which of its scenes
+        # were checked today, and it is the client's because the comparison is
+        # the client's — the same eight lines of hashing reimplemented here is
+        # how the two sides come to disagree about whether a scene changed.
+        "scene_key",
     }
 
 
@@ -1057,7 +1063,7 @@ def test_document_to_scene_round_trips_the_payload_the_check_returned():
 
 
 def test_scene_summary_counts_the_claims_it_refuses_to_carry():
-    summary = scene_summary(scene_to_document(RESULT, "INT. GARAGE - NIGHT"))
+    summary = scene_summary(scene_to_document(RESULT, "INT. GARAGE - NIGHT", "a1b2c3d4"))
 
     assert summary == {
         "scene_id": "abc123",
@@ -1066,7 +1072,23 @@ def test_scene_summary_counts_the_claims_it_refuses_to_carry():
         "search_count": 3,
         "unsourced_count": 0,
         "budget_exhausted": False,
+        # In the SUMMARY and not only in the full scene, which is the whole
+        # point of it: this list is what a split draft is compared against, and
+        # the alternative is fetching twenty entire scenes — their text, their
+        # claims — to draw a row of ticks. That is the cost this shape exists
+        # to avoid, and carrying eight characters to avoid it is the trade.
+        "scene_key": "a1b2c3d4",
     }
+
+
+def test_a_check_filed_without_a_key_carries_an_empty_one():
+    """The agent door sends none. `check_scene` over MCP has no draft to
+    compare against and nothing to compute a key from, so the field is empty
+    rather than absent — every reader can ask the same question of every
+    filed check without testing whether the key is there."""
+    summary = scene_summary(scene_to_document(RESULT, "INT. GARAGE - NIGHT"))
+
+    assert summary["scene_key"] == ""
 
 
 def test_list_scenes_returns_the_newest_filed_check_first():

@@ -818,3 +818,99 @@
     animation: none;
   }
 }
+
+/* THE DRAFT STRIP — what a paste turns out to be, when it is a screenplay.
+ *
+ *  Hidden until a paste holds more than one scene heading. One scene in a
+ *  scene box needs no strip telling it so, and a paragraph with no headings is
+ *  a legitimate thing to check that web/fountain.js declines to split.
+ *
+ *  Every scene here is a BUTTON that loads text into the box below and submits
+ *  nothing. A ninety-page draft must not be able to cost ninety checks by
+ *  accident, so the spend stays where it was: one deliberate press of the
+ *  control the writer already knows. */
+.check-draft {
+  margin: 0 0 1rem;
+}
+
+.check-draft-line {
+  font-family: var(--label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  font-size: var(--label-sm);
+  color: var(--pencil-text);
+  margin: 0 0 0.6rem;
+}
+
+.check-draft-done {
+  color: var(--aniline);
+  margin-left: 0.5rem;
+}
+
+/* A column, not a wrapping row. Scene slugs run to forty characters and a
+   flow-wrapped set of them turns into a paragraph of headings a reader has to
+   parse; a stack reads the way a scene list reads in every tool a writer
+   already uses. Bounded so a feature draft does not push the box off screen. */
+.check-draft-scenes {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 13rem;
+  overflow-y: auto;
+  border: 1px solid var(--manila-edge);
+}
+
+.check-draft-scene {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.45rem 0.7rem;
+  background: var(--onionskin);
+  border: 0;
+  cursor: pointer;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  color: var(--ink);
+}
+
+.check-draft-scene:hover {
+  background: color-mix(in srgb, var(--onionskin) 88%, var(--manila));
+}
+
+.check-draft-scene:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+}
+
+.check-draft-index {
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+  color: var(--pencil-text);
+  min-width: 1.6rem;
+}
+
+.check-draft-slug {
+  flex: 1;
+  /* One line each. A slug that wrapped would make rows different heights and
+     turn a scannable list into a ragged block. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Checked, in the FILED pad rather than in a tick glyph alone: the word is
+   what a screen reader reads out, and the colour is what a sighted reader
+   scans for. Both, always, for the reason the drawer stamps carry both. */
+.check-draft-tick {
+  font-family: var(--label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  font-size: var(--label-sm);
+  color: var(--aniline);
+}
+
+.check-draft-scene[data-checked="true"] .check-draft-slug {
+  color: var(--pencil-text);
+}
