@@ -1131,6 +1131,10 @@ def test_every_api_route_requires_auth_except_the_explicitly_open_sse_stream():
                     "scene": "x" * 60,
                     "question": "x" * 20,
                     "category": "setting",
+                    # The sweep route takes a list of scenes and 422s without
+                    # one, which this loop would read as "did not require
+                    # auth". Exactly the case the comment above describes.
+                    "scenes": [{"index": 1, "heading": "INT. X", "text": "x" * 40}],
                 }
             }
         return {}

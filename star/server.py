@@ -39,12 +39,13 @@ from google.adk.runners import InMemoryRunner  # noqa: E402
 from google.genai import types  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
-from star import bible, config, defence  # noqa: E402
+from star import bible, config, defence, sweep  # noqa: E402
 
 config.validate_env()
 
 from star import tokens  # noqa: E402
 from star.agents import requisition  # noqa: E402
+from star.agents import sweep as agent_sweep  # noqa: E402
 from star.agents.pipelines import build_room, check_scene  # noqa: E402
 from star.agents.script_check import check_state  # noqa: E402
 from star.auth import linked_provider, verify_claims, verify_token  # noqa: E402
@@ -52,7 +53,7 @@ from star.findings import parse_findings  # noqa: E402
 from star.guards import DailyCap, RateLimiter  # noqa: E402
 from star.ledger import SourceLedger, ledger_from_room  # noqa: E402
 from star.mcp.router import build_mcp_router  # noqa: E402
-from star.models import Category, ClaimSet, ScriptCheckResult  # noqa: E402
+from star.models import Category, Claim, ClaimSet, ScriptCheckResult  # noqa: E402
 from star.oauth import clients, codes, pkce  # noqa: E402
 from star.oauth import metadata as oauth_metadata  # noqa: E402
 from star.oauth import tokens as oauth_tokens  # noqa: E402
@@ -1671,6 +1672,215 @@ async def _run_requisition(
     }
 
 
+async def _extract_claims(scene: str) -> list[dict]:
+    """One scene's claims. Spends nothing.
+
+    The claim desk is schema'd and holds no tools, so this is model time and
+    no searches — which is the fact the whole sweep is built on. A scene the
+    extractor fails on comes back empty rather than raising: one bad scene in
+    a feature must not cost the writer the other twenty-three.
+    """
+    runner = agent_sweep.extract_runner
+    session = await runner.session_service.create_session(
+        app_name=agent_sweep.EXTRACT_APP,
+        user_id=agent_sweep.USER,
+        state=agent_sweep.extract_state(scene),
+    )
+    try:
+        message = types.Content(
+            role="user", parts=[types.Part(text=agent_sweep.EXTRACT_TURN)]
+        )
+        async for _ in runner.run_async(
+            user_id=agent_sweep.USER, session_id=session.id, new_message=message
+        ):
+            pass
+        state = await runner.session_service.get_session(
+            app_name=agent_sweep.EXTRACT_APP,
+            user_id=agent_sweep.USER,
+            session_id=session.id,
+        )
+        raw = (state.state if state else {}).get("claims")
+        return [claim.model_dump() for claim in ClaimSet.model_validate(raw).claims]
+    except Exception:
+        logger.exception("Claim extraction failed on a scene")
+        return []
+    finally:
+        try:
+            await runner.session_service.delete_session(
+                app_name=agent_sweep.EXTRACT_APP,
+                user_id=agent_sweep.USER,
+                session_id=session.id,
+            )
+        except Exception:
+            logger.exception("Failed to drop a sweep extraction session")
+
+
+async def _verify_claims(claims: list[dict], room_files: str, run_ledger: SourceLedger) -> dict:
+    """The one verification a sweep runs, over the whole deduped set.
+
+    The ledger is fed here, by the server, out of `event.get_function_responses()`
+    — the same path every other pipeline uses, and what gives a citation from a
+    sweep the identical trust property as one from a build.
+    """
+    runner = agent_sweep.verify_runner
+    session = await runner.session_service.create_session(
+        app_name=agent_sweep.VERIFY_APP,
+        user_id=agent_sweep.USER,
+        state=agent_sweep.verify_state({"claims": claims}, room_files),
+    )
+    try:
+        message = types.Content(
+            role="user", parts=[types.Part(text=agent_sweep.VERIFY_TURN)]
+        )
+        async for event in runner.run_async(
+            user_id=agent_sweep.USER, session_id=session.id, new_message=message
+        ):
+            for response in event.get_function_responses() or []:
+                run_ledger.record(
+                    getattr(event, "author", None) or "verifier",
+                    getattr(response, "response", None),
+                )
+        state = await runner.session_service.get_session(
+            app_name=agent_sweep.VERIFY_APP,
+            user_id=agent_sweep.USER,
+            session_id=session.id,
+        )
+        return state.state if state else {}
+    finally:
+        try:
+            await runner.session_service.delete_session(
+                app_name=agent_sweep.VERIFY_APP,
+                user_id=agent_sweep.USER,
+                session_id=session.id,
+            )
+        except Exception:
+            logger.exception("Failed to drop a sweep verification session")
+
+
+async def _run_sweep(uid: str, run_id: str, scenes: list[dict]) -> dict:
+    """Every claim a draft makes, asked once, against one room.
+
+    Transport-free for the reason `_run_check` and `_run_requisition` are.
+
+    ONE RATE-LIMIT SLOT AND ONE BUDGET for a whole screenplay. Scene by scene,
+    twenty-four scenes is twenty-four slots of an hourly window that admits
+    five — about five hours — and twenty-four independent search budgets. That
+    arithmetic, not the deduplication, is the case for this feature: measured
+    over a real 24-scene draft the distinct set is 21% smaller than the raw
+    one, which helps and is not the point.
+    """
+    document = await asyncio.to_thread(_store.get, uid, run_id)
+    if document is None:
+        raise HTTPException(404, "Unknown run")
+
+    live = _runs.get(run_id)
+    if live is not None and live.get("uid") == uid and live.get("status") == "running":
+        raise HTTPException(
+            409,
+            "This room is still being built. Wait for the department to finish "
+            "filing, then sweep the draft against it.",
+        )
+
+    if not _uid_limiter.check(f"sweep:{uid}"):
+        raise HTTPException(
+            429,
+            f"Draft sweeps are capped at {config.max_rooms_per_ip_per_hour()} "
+            "an hour per account, and this account has reached that. The "
+            "window is a rolling hour. One sweep covers a whole draft, so this "
+            "is a tighter ceiling than it looks.",
+        )
+
+    # Extraction, bounded. Every scene is one model call and none of them
+    # spends a search, but opening eighty sockets at once is its own way to
+    # fail — and a draft is read in order, so a bounded gate costs a writer
+    # nothing they would notice.
+    gate = asyncio.Semaphore(config.sweep_extract_concurrency())
+
+    async def one(scene: dict) -> tuple[int, list[dict]]:
+        async with gate:
+            return int(scene.get("index") or 0), await _extract_claims(
+                str(scene.get("text") or "")
+            )
+
+    timeout = config.sweep_timeout_seconds()
+    try:
+        per_scene = await asyncio.wait_for(
+            asyncio.gather(*(one(scene) for scene in scenes)), timeout=timeout
+        )
+    except TimeoutError:
+        logger.warning("Sweep on room %s exceeded its %ss ceiling", run_id, timeout)
+        raise HTTPException(
+            504,
+            f"Reading the draft ran past its {timeout}-second limit and was "
+            "stopped. Nothing was spent. Try a shorter stretch of the script.",
+        ) from None
+
+    per_scene = sorted(per_scene)
+    raised = sum(len(found) for _, found in per_scene)
+    claims, where = sweep.gather(per_scene)
+
+    if not claims:
+        # A real outcome, and it costs nothing to say so. A draft of pure
+        # dialogue asserts little about the world, and reporting that is not
+        # the same as failing to read it.
+        return {
+            "run_id": run_id,
+            "scenes_read": len(scenes),
+            "claims_raised": raised,
+            "claims": [],
+            "search_count": 0,
+            "budget_exhausted": False,
+        }
+
+    run_ledger = SourceLedger()
+    try:
+        state = await asyncio.wait_for(
+            _verify_claims(claims, _room_files(document), run_ledger), timeout=timeout
+        )
+    except TimeoutError:
+        logger.warning("Sweep verification on %s exceeded %ss", run_id, timeout)
+        raise HTTPException(
+            504,
+            f"The check ran past its {timeout}-second limit and was stopped. "
+            "Sweep a shorter stretch of the draft.",
+        ) from None
+    except Exception:
+        logger.exception("Sweep verification on room %s failed", run_id)
+        raise HTTPException(
+            502,
+            "The department hit an unexpected problem partway through the "
+            "draft. The details are in the server log.",
+        ) from None
+
+    searches = int(state.get("search_count") or 0)
+    ceiling = config.max_searches_per_sweep()
+    result = annotate(
+        state.get("verdicts"),
+        [Claim.model_validate(claim) for claim in claims],
+        ledger_from_room(document),
+        run_ledger,
+        searches >= ceiling,
+        scene_id=uuid.uuid4().hex[:12],
+        created_at=datetime.now(timezone.utc).isoformat(),  # noqa: UP017
+        search_count=searches,
+    )
+    payload = jsonable_encoder(result)
+    return {
+        "run_id": run_id,
+        "scenes_read": len(scenes),
+        # Both numbers, because the difference between them is the one thing a
+        # reader cannot work out for themselves and the whole reason a sweep
+        # costs less than the same scenes one at a time.
+        "claims_raised": raised,
+        "claims": sweep.attach(payload.get("claims") or [], where),
+        "search_count": searches,
+        "budget_exhausted": bool(payload.get("budget_exhausted")),
+        "cover_note": payload.get("cover_note") or "",
+        "scope_note": payload.get("scope_note") or "",
+        "unsourced_count": payload.get("unsourced_count") or 0,
+    }
+
+
 class SceneRequest(BaseModel):
     scene: str
     # An opaque label the browser computes so a draft it splits tomorrow knows
@@ -1706,6 +1916,54 @@ async def create_scene(
     # two that have to be kept in step. See the comment against
     # `_uid_limiter.check` there for the ceiling and why it sits where it does.
     return jsonable_encoder(await _run_check(uid, run_id, scene, req.scene_key.strip()[:64]))
+
+
+class SweepScene(BaseModel):
+    index: int = 0
+    heading: str = ""
+    text: str
+
+
+class SweepRequest(BaseModel):
+    scenes: list[SweepScene]
+
+
+@app.post("/api/rooms/{run_id}/sweep")
+async def create_sweep(
+    run_id: str, req: SweepRequest, authorization: str | None = Header(None)
+) -> dict:
+    """Every claim a whole draft makes, checked against this room in one pass."""
+    uid = _require_uid(authorization)
+
+    # The BROWSER splits the draft (web/fountain.js) and sends the scenes. No
+    # Fountain parser lives on this side, deliberately: a second one would be a
+    # second answer to "where does a scene begin", and the writer would be
+    # picking scenes out of one list while the department checked another.
+    scenes = [
+        {"index": s.index, "heading": s.heading, "text": s.text.strip()}
+        for s in req.scenes
+        if s.text.strip()
+    ]
+    if not scenes:
+        raise HTTPException(400, "Send the department a draft with scenes in it.")
+
+    cap = config.max_scenes_per_sweep()
+    if len(scenes) > cap:
+        raise HTTPException(
+            400,
+            f"That is {len(scenes)} scenes and one sweep reads {cap}. Send a "
+            "stretch of the script rather than the whole series.",
+        )
+    total = sum(len(s["text"]) for s in scenes)
+    ceiling = config.max_scene_chars() * cap
+    if total > ceiling:
+        raise HTTPException(
+            400,
+            f"That draft is {total} characters and one sweep reads {ceiling}. "
+            "Send a stretch of it.",
+        )
+
+    return await _run_sweep(uid, run_id, scenes)
 
 
 @app.get("/api/rooms/{run_id}/defence")

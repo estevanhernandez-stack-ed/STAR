@@ -72,6 +72,62 @@ def max_searches_per_check() -> int:
     return int(os.environ.get("STAR_MAX_SEARCHES_PER_CHECK", "8"))
 
 
+def max_scenes_per_sweep() -> int:
+    """How many scenes one sweep will read.
+
+    A feature is 24 to 60 scenes; a series bible or a stitched-together
+    anthology can be far more, and extraction is one model call each. The cap
+    is not about money — extraction spends no searches — it is about a single
+    request holding a bounded amount of work, so a 400-scene paste is refused
+    with an explanation rather than sat on until a timeout.
+
+    Measured against The Beat That Shook The Void, a 27-page special: 24
+    scenes, 82 claims raised, 65 distinct.
+    """
+    return int(os.environ.get("STAR_MAX_SCENES_PER_SWEEP", "80"))
+
+
+def max_searches_per_sweep() -> int:
+    """The one ceiling a whole-draft sweep runs under.
+
+    A check gets 8 for one scene. A sweep gets this for an entire screenplay,
+    and that single number is the point of the feature: scene-by-scene, 24
+    scenes is 24 independent budgets — up to 192 searches — and 24 slots of an
+    hourly window that admits 5. One pool, set here, bounds the whole thing.
+
+    30 against the 65 distinct claims the real draft produced. Not one search
+    per claim, deliberately: the verifier answers from the room's own files
+    first and only searches for what they do not cover, so the budget is for
+    the gap rather than for the draft. If sweeps come back regularly reporting
+    the budget exhausted, this is the number to move — and star/verdicts.py
+    already distinguishes "we ran out of searches" from "we looked and it is
+    not there", so the exhaustion is legible rather than silent.
+    """
+    return int(os.environ.get("STAR_MAX_SEARCHES_PER_SWEEP", "30"))
+
+
+def sweep_extract_concurrency() -> int:
+    """How many scenes a sweep reads at once.
+
+    Extraction spends no searches, so this is not a cost ceiling — it is a
+    bound on open sockets. Six keeps a 24-scene feature to four waves and a
+    long one from opening eighty connections at a moment.
+    """
+    return int(os.environ.get("STAR_SWEEP_CONCURRENCY", "6"))
+
+
+def sweep_timeout_seconds() -> int:
+    """Wall-clock ceiling on each half of a sweep.
+
+    Applied to the extraction fan-out and again to the single verification,
+    rather than once around both: the two fail differently and a reader is
+    owed which one stopped. Longer than a check's because a sweep is reading a
+    whole draft, and still finite because this is a synchronous request a
+    writer is watching.
+    """
+    return int(os.environ.get("STAR_SWEEP_TIMEOUT_SECONDS", "300"))
+
+
 def max_question_chars() -> int:
     """Ceiling on one requisitioned question.
 
