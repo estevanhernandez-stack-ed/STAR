@@ -31,28 +31,46 @@ const EXCERPT = pathToFileURL(fileURLToPath(new URL("web/excerpt.js", REPO_ROOT)
 
 const IMPORT_AUTH = 'import { authedFetch } from "/auth.js";';
 const IMPORT_CLIP = 'import { escapeHtml, isoStamp } from "/clip.js";';
-const IMPORT_EXCERPT = 'import { excerptProse } from "/excerpt.js";';
+const IMPORT_EXCERPT_IN_CLIP = 'import { excerptProse } from "/excerpt.js";';
+const IMPORT_EXCERPT_IN_CARD = 'import { excerptProse } from "/excerpt.js";';
+const IMPORT_DRAWER = 'import { DRAWER_LABELS } from "/drawer.js";';
 
 const dataUrl = (source) =>
   `data:text/javascript;base64,${Buffer.from(source, "utf8").toString("base64")}`;
 
-// web/clip.js is loaded FOR REAL, with only its own browser-root import
-// rewritten. escapeHtml and isoStamp are what the card escapes and formats
-// with, and a stand-in would prove nothing about either — the escaping is what
-// keeps a source title from reaching the sheet as markup, and the formatting
-// is the retrieval-date rule this card is most exposed to.
-const clipSource = read("web/clip.js");
-assert.equal(
-  clipSource.split(IMPORT_EXCERPT).length - 1,
-  1,
-  "web/clip.js should import /excerpt.js exactly once — update this loader"
-);
-const CLIP = dataUrl(
-  clipSource.replace(
-    IMPORT_EXCERPT,
-    `import { excerptProse } from ${JSON.stringify(EXCERPT.href)};`
-  )
-);
+/** One browser module, loadable in Node, with its `/`-absolute imports pointed
+ *  at the modules this file has already built.
+ *
+ *  Every module in the chain is the REAL one. The card's job is to show a
+ *  source's own words without inventing any, and the three modules under it
+ *  are what decide that: web/excerpt.js finds the prose inside a raw ledger
+ *  entry, web/clip.js escapes what reaches the DOM, web/drawer.js names the
+ *  four categories. A stand-in for any of them would leave this file asserting
+ *  against its own fixtures — and every bug the first printed card actually
+ *  had lived in exactly those three seams. */
+function browserModule(path, rewrites) {
+  let source = read(path);
+  for (const [importLine, replacement] of rewrites) {
+    assert.equal(
+      source.split(importLine).length - 1,
+      1,
+      `${path} should contain ${JSON.stringify(importLine)} exactly once — ` +
+        "update this loader if the source changed shape"
+    );
+    source = source.replace(importLine, replacement);
+  }
+  return dataUrl(source);
+}
+
+const CLIP = browserModule("web/clip.js", [
+  [
+    IMPORT_EXCERPT_IN_CLIP,
+    `import { excerptProse } from ${JSON.stringify(EXCERPT.href)};`,
+  ],
+]);
+const DRAWER = browserModule("web/drawer.js", [
+  ['from "/clip.js";', `from ${JSON.stringify(CLIP)};`],
+]);
 
 // The card, as star/defence.py builds it. Keys here mirror that function; a
 // drift between the two shows up as an assertion below going quiet rather
@@ -113,10 +131,19 @@ async function renderWith(card, { status = 200, url = "?run=abc123&fact=Night%20
 
   const patched = read("web/defend.js")
     .replace(IMPORT_AUTH, "const authedFetch = (...a) => globalThis.__fetch(...a);")
-    .replace(IMPORT_CLIP, `import { escapeHtml, isoStamp } from ${JSON.stringify(CLIP)};`);
-  assert.ok(
-    !patched.includes('"/auth.js"') && !patched.includes('"/clip.js"'),
-    "both imports should have been rewritten — update this loader if the source changed"
+    .replace(IMPORT_CLIP, `import { escapeHtml, isoStamp } from ${JSON.stringify(CLIP)};`)
+    .replace(
+      IMPORT_EXCERPT_IN_CARD,
+      `import { excerptProse } from ${JSON.stringify(EXCERPT.href)};`
+    )
+    .replace(IMPORT_DRAWER, `import { DRAWER_LABELS } from ${JSON.stringify(DRAWER)};`);
+  // Checked by absence rather than by counting replacements: a new
+  // browser-root import added to the card later would otherwise sail through
+  // this loader and fail as a module-resolution error two frames deep.
+  assert.doesNotMatch(
+    patched,
+    /from "\/[a-z]+\.js"/,
+    "every browser-root import should have been rewritten — update this loader"
   );
 
   // Cache-busted so each scenario re-evaluates the module: web/defend.js runs
@@ -249,5 +276,65 @@ assert.match(
 // an empty run id would 404 on a fact the reader is looking at.
 const live = clip.renderClips([FINDING], { date: "09 AUG 2026" }, {});
 assert.doesNotMatch(live, /clip-defend/, "and no link before there is a room to point at");
+
+/* 8 — the three things the first printed card got wrong. ----------------- */
+//
+// A real card off the Substitute Sync room, printed to PDF, carried all three:
+// a raw category key across its masthead, nine hundred words of forum thread
+// where a quotation should be, and `&#x27;` in the middle of a sentence. None
+// of them were reachable from a fixture — the card was assembled correctly
+// from data nobody had looked at through this surface.
+
+const messy = await renderWith({
+  ...CARD,
+  category: "objects_props",
+  sources: [
+    {
+      url: "https://www.beatlesbible.com/forum/yesterday-and-today/beatle-boots/",
+      title: "Beatle Boots | Fab Forum",
+      // The shape a scraped forum page actually arrives in: a markdown
+      // heading, then the sentence worth quoting, then the thread's furniture.
+      excerpt:
+        "# Beatle Boots | Fab Forum | The Beatles Bible\n\n" +
+        "Their boots were custom made by Anello & Davide, who still make them " +
+        "but only sell custom products, nothing ready to wear.\n\n" +
+        "The following people thank Pablo Ramon for this post: " +
+        "SgtPeppersBulldog, WeepingAtlasCedars, Leppo 7 February 2017 11.04am\n" +
+        "[sp_Permalink](https://www.beatlesbible.com/forum/beatle-boots/)",
+    },
+    {
+      url: "https://www.bonhams.com/auction/19801/lot/304/",
+      title: "Bonhams : George Harrison / The Beatles",
+      excerpt: "Following the group&#x27;s phenomenal rise to stardom in 1963.",
+    },
+  ],
+});
+
+assert.match(messy.prose, /Objects &amp; Props drawer/, "the drawer's name, not its key");
+assert.doesNotMatch(messy.html, /objects_props/i, "a storage key never reaches the sheet");
+
+assert.match(
+  messy.prose,
+  /custom made by Anello &amp; Davide/,
+  "the sentence worth quoting survives"
+);
+assert.doesNotMatch(
+  messy.html,
+  /sp_Permalink|SgtPeppersBulldog|The following people thank/,
+  "and the thread's furniture does not — web/excerpt.js finds where the prose " +
+    "starts, which is the whole reason it exists"
+);
+assert.doesNotMatch(messy.html, /^#|\n#/, "no markdown heading on a printed sheet");
+
+assert.match(
+  messy.prose,
+  /group's phenomenal rise/,
+  "an entity in the source is a character on the sheet"
+);
+assert.doesNotMatch(
+  messy.html,
+  /&amp;#x27;/,
+  "and never the entity itself, printed as text on a page handed to somebody"
+);
 
 console.log("ok - the defence card shows one fact's provenance and nothing it cannot show");

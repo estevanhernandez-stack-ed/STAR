@@ -17,6 +17,18 @@
 
 import { authedFetch } from "/auth.js";
 import { escapeHtml, isoStamp } from "/clip.js";
+// The same reducer the room's own clips quote through. Without it this sheet
+// printed the ledger entry raw, and the first card off a real room came back
+// as nine hundred words of forum thread — usernames, timestamps, "The
+// following people thank Pablo Ramon for this post", a markdown permalink —
+// around one sentence about Chelsea boots. The clips have never had that
+// problem because they have always run this; the card was the surface that
+// forgot to.
+import { excerptProse } from "/excerpt.js";
+// The drawer's own names for the four categories. `objects_props` is a key,
+// not a label, and the first printed card carried "OBJECTS_PROPS DRAWER"
+// across its masthead. One definition, in the module that owns it.
+import { DRAWER_LABELS } from "/drawer.js";
 
 const sheet = document.getElementById("sheet");
 
@@ -32,7 +44,11 @@ function problem(message) {
 function sourceHtml(source) {
   const url = String(source?.url || "");
   const title = String(source?.title || "").trim();
-  const excerpt = String(source?.excerpt || "").trim();
+  // Reduced, not truncated. web/excerpt.js finds where the prose starts —
+  // only 4 of the 50 excerpts it was measured against begin with a sentence,
+  // the rest open on a heading or a table row — so a character cap applied to
+  // the raw string caps a table cell most of the time.
+  const excerpt = excerptProse(String(source?.excerpt || "")).trim();
   // The title, when the page had one. star/findings.py falls back to the url
   // when the ledger holds no title, so a "title" identical to the address is
   // not a title and the line is dropped rather than printed twice.
@@ -58,7 +74,8 @@ function render(card) {
   const unsourced = Array.isArray(card.unsourced_urls) ? card.unsourced_urls : [];
   const retrieved = isoStamp(card.retrieved_at);
 
-  const masthead = [room.title, room.era, `${card.category || ""} drawer`]
+  const drawer = DRAWER_LABELS[card.category] || "";
+  const masthead = [room.title, room.era, drawer && `${drawer} drawer`]
     .map((part) => String(part || "").trim())
     .filter(Boolean)
     .map(escapeHtml)

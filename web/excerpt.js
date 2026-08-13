@@ -11,6 +11,13 @@
      -  7 are already plain prose.
      -  0 carry both flavours, and 0 carry HTML entities.
 
+   THAT LAST CLAUSE IS TRUE OF THOSE FIFTY AND NOT OF EVERY ROOM. A Bonhams lot
+   description in the Substitute Sync room carries `&#x27;`, which reached a
+   printed defence card as "George Harrison&#x27;s signature" on a sheet meant
+   to be handed to somebody. The count above stands as what was measured;
+   `decodeEntities` below is what the counterexample cost. A sample of one room
+   is a sample of one room.
+
    And the number this module exists for: only **4 of the 50 begin with prose**.
    34 begin with a heading. So the work is not truncation — it is finding where
    the prose starts. A character cap or a first-sentence cap applied to the raw
@@ -152,11 +159,65 @@ function capAtSentence(text, limit) {
  *  Never returns empty for a non-empty input. A reader seeing markup is a
  *  defect; a reader seeing nothing where a source was quoted is a worse one,
  *  so every fallback below ends somewhere rather than giving up. */
+/** HTML entities, decoded once, from a fixed table plus the numeric forms.
+ *
+ *  THE HEADER OF THIS FILE SAYS "0 carry HTML entities", and that was true of
+ *  the fifty excerpts it was measured against. It is not true of every room: a
+ *  Bonhams lot description in the Substitute Sync room carries `&#x27;`, and
+ *  the first defence card printed off a real room read "George Harrison&#x27;s
+ *  signature" on a sheet meant to be handed to somebody. The measurement was
+ *  honest and the sample was one room.
+ *
+ *  ONCE, NEVER RECURSIVELY, and that is a security property rather than an
+ *  optimisation. A source carrying `&amp;lt;script&amp;gt;` decodes here to
+ *  `&lt;script&gt;` and stops; decoding again would yield a live tag. Callers
+ *  escape or sanitise AFTER this runs — web/clip.js hands the result to
+ *  DOMPurify or escapeHtml and web/defend.js escapes it — so even a tag that
+ *  survived a pass never reaches the DOM as markup.
+ *
+ *  A fixed table rather than the innerHTML round-trip. Decoding through a
+ *  detached element resolves everything a browser knows, in a loop the caller
+ *  cannot bound, which is exactly the behaviour the paragraph above refuses.
+ */
+const ENTITIES = {
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+  "&quot;": '"',
+  "&apos;": "'",
+  "&nbsp;": " ",
+  "&ndash;": "\u2013",
+  "&mdash;": "\u2014",
+  "&hellip;": "\u2026",
+  "&lsquo;": "\u2018",
+  "&rsquo;": "\u2019",
+  "&ldquo;": "\u201c",
+  "&rdquo;": "\u201d",
+};
+
+export function decodeEntities(text) {
+  return String(text ?? "").replace(
+    /&(?:#(\d{1,7})|#[xX]([0-9a-fA-F]{1,6})|([a-zA-Z]+));/g,
+    (whole, dec, hex, named) => {
+      if (dec !== undefined || hex !== undefined) {
+        const code = dec !== undefined ? parseInt(dec, 10) : parseInt(hex, 16);
+        // Malformed or out of range is left exactly as written. A quotation is
+        // not the place to guess what a broken code point meant.
+        if (!Number.isFinite(code) || code <= 0 || code > 0x10ffff) return whole;
+        if (code >= 0xd800 && code <= 0xdfff) return whole;
+        return String.fromCodePoint(code);
+      }
+      return ENTITIES[`&${named};`] ?? whole;
+    }
+  );
+}
+
 export function excerptProse(raw, { limit = 320 } = {}) {
-  const text = String(raw ?? "")
-    .replace(/\r\n/g, "\n")
-    .replace(/ /g, " ")
-    .trim();
+  const text = decodeEntities(
+    String(raw ?? "")
+      .replace(/\r\n/g, "\n")
+      .replace(/ /g, " ")
+  ).trim();
   if (!text) return "";
 
   const runs = proseRuns(text).map(unwrapInline).filter(Boolean);
