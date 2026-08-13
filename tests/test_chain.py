@@ -9,7 +9,6 @@ answer able to say which room held it, and that a room with no chain behaves
 exactly as it did before any of this existed.
 """
 
-from unittest import mock
 
 import pytest
 from fastapi.testclient import TestClient
