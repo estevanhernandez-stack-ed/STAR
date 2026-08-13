@@ -1131,3 +1131,18 @@
 
 .sweep-excerpt::before { content: "“"; }
 .sweep-excerpt::after { content: "”"; }
+
+/* The way out of the app: a filed sweep's printable report. Set as a link
+ * rather than a button because it opens a document and is worth a tab of its
+ * own — a writer with three contested drafts wants three. */
+.sweep-report {
+  margin: 1rem 0 0;
+}
+
+.sweep-report-link {
+  font-family: var(--label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  font-size: var(--label-sm);
+  color: color-mix(in srgb, var(--aniline) 85%, var(--ink));
+}

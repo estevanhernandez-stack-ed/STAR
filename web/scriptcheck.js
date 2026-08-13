@@ -1122,6 +1122,24 @@ function renderSweep(payload) {
   }
   if (claims.length) body.appendChild(list);
 
+  // The way out of the app. A sweep answers a whole draft and the person who
+  // asks "are you sure" is usually not at the writer's screen, so the report
+  // is a page of its own that prints — the arrangement the defence card
+  // already proved. Only for a FILED sweep: a live result has no id yet, and a
+  // link to a report that cannot be fetched is worse than no link.
+  if (payload?.sweep_id) {
+    const out = el("p", "sweep-report");
+    const link = el("a", "sweep-report-link", "Open the printable report");
+    link.setAttribute(
+      "href",
+      `/report.html?run=${encodeURIComponent(roomId)}&sweep=${encodeURIComponent(payload.sweep_id)}`
+    );
+    link.setAttribute("target", "_blank");
+    link.setAttribute("rel", "noopener");
+    out.appendChild(link);
+    body.appendChild(out);
+  }
+
   els.sweepResult.replaceChildren(body);
   els.sweepResult.classList.remove("hidden");
   body.focus();

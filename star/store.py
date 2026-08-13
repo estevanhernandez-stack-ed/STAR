@@ -231,6 +231,12 @@ def sweep_to_document(result: dict, sweep_id: str, created_at: str) -> dict:
     return {
         "sweep_id": sweep_id,
         "created_at": created_at,
+        # Which room this was swept against, carried rather than looked up. A
+        # printed report has to name the room on its masthead, and the
+        # alternative is fetching a whole room — bible, drawers and all — to
+        # read two fields off it. Empty on a sweep filed before this existed,
+        # and the surfaces drop the line rather than inventing one.
+        "room": result.get("room") or {},
         "scenes_read": result.get("scenes_read") or 0,
         # Both numbers. The difference between them is the one thing a reader
         # cannot work out for themselves, and it is the whole reason a sweep
@@ -251,6 +257,7 @@ def document_to_sweep(doc: dict) -> dict:
     return {
         "sweep_id": doc.get("sweep_id") or "",
         "created_at": doc.get("created_at") or "",
+        "room": doc.get("room") or {},
         "scenes_read": doc.get("scenes_read") or 0,
         "claims_raised": doc.get("claims_raised") or 0,
         "claims": doc.get("claims") or [],

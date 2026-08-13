@@ -1867,8 +1867,13 @@ async def _run_sweep(uid: str, run_id: str, scenes: list[dict]) -> dict:
         search_count=searches,
     )
     payload = jsonable_encoder(result)
+    profile = (document_to_room(document).get("story_profile") or {})
     swept = {
         "run_id": run_id,
+        "room": {
+            "title": profile.get("title") or "Untitled room",
+            "era": profile.get("era") or "",
+        },
         "sweep_id": uuid.uuid4().hex[:12],
         "created_at": datetime.now(timezone.utc).isoformat(),  # noqa: UP017
         "scenes_read": len(scenes),

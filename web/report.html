@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>STAR — What the draft claims</title>
+
+  <!-- THE SWEEP REPORT, and why it is a whole document like web/defend.html.
+
+       A sweep answers a whole draft. Its result belongs in the app, where a
+       writer works — and it also has to LEAVE, because the person who asks
+       "are you sure about this" is usually not sitting at the writer's screen.
+       That means addressable by URL, openable in a tab of its own, and
+       printable without a fight.
+
+       The browser's print dialogue is a better export than any format this
+       project would invent. So web/report.css sets up @media print and
+       otherwise stays out of its way: the screen version IS the sheet.
+
+       Same arrangement as the defence card — /tokens.css and nothing else from
+       the cabinet, because the rail and the stage do not apply to a page whose
+       whole job is to be handed to somebody. -->
+
+  <link rel="stylesheet" href="/tokens.css" />
+  <link rel="stylesheet" href="/report.css" />
+</head>
+<body class="report">
+  <!-- Replaced by web/report.js once the sweep arrives. Not a spinner: this is
+       what the page says while the fetch is in flight, and a reader who lands
+       here with a dead token or a bad link sees it replaced by a sentence
+       naming which of those happened. -->
+  <main class="report-sheet" id="sheet" aria-live="polite">
+    <p class="report-loading">Pulling the sweep…</p>
+  </main>
+
+  <script type="module" src="/report.js"></script>
+</body>
+</html>

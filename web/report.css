@@ -1,0 +1,261 @@
+/* THE SWEEP REPORT — a whole draft's answers, on a sheet that prints.
+ *
+ *  Loads /tokens.css and nothing else. web/shell.css is the cabinet's
+ *  furniture and none of it applies to a document whose job is to be handed to
+ *  somebody. The two rules this page still needs from it — a focus ring and a
+ *  link colour that clear AA on paper — are scoped here, the arrangement
+ *  web/defend.css and web/consent.css both make.
+ *
+ *  THE PAGE IS THE PRINT LAYOUT, not a screen design with a print stylesheet
+ *  under it. @media print then removes the ground and the one control and
+ *  re-sets no type at all. A page that reflows when it prints is a page whose
+ *  author never printed it, and this report exists to be printed.
+ *
+ *  A CLAIM NEVER SPLITS FROM ITS SOURCES. `break-inside: avoid` on the claim,
+ *  because a verdict on page two whose citation is on page three is a verdict
+ *  nobody can check — which is the whole thing this sheet is for. */
+
+:root {
+  color-scheme: light;
+}
+
+body.report {
+  margin: 0;
+  padding: 2.5rem 1.25rem 4rem;
+  background: color-mix(in srgb, var(--onionskin) 60%, #fff);
+  color: var(--ink);
+  font-family: var(--body);
+  /* Never a viewport unit: vw resolves against the paper at print time, so a
+     measure set on screen becomes something else entirely on A4. */
+  font-size: var(--text-md);
+  line-height: 1.55;
+}
+
+.report-sheet {
+  max-width: 42rem;
+  margin: 0 auto;
+  background: var(--onionskin);
+  border: 1px solid var(--manila-edge);
+  padding: 2.5rem 2.75rem 3rem;
+}
+
+.report-loading,
+.report-problem {
+  font-family: var(--label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  font-size: var(--label-sm);
+  color: var(--pencil-text);
+}
+
+.report-problem {
+  text-transform: none;
+  letter-spacing: normal;
+  font-family: var(--body);
+  font-size: var(--text-md);
+  color: var(--ink);
+}
+
+.report-room {
+  font-family: var(--label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  font-size: var(--label-sm);
+  color: color-mix(in srgb, var(--ink) 70%, var(--onionskin));
+  margin: 0 0 0.5rem;
+}
+
+.report-title {
+  font-size: var(--text-lg);
+  line-height: 1.25;
+  margin: 0 0 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--manila-edge);
+}
+
+.report-counts {
+  font-family: var(--label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  font-size: var(--label-sm);
+  color: var(--ink);
+  margin: 0 0 1rem;
+}
+
+.report-scope {
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  margin: 0 0 0.9rem;
+}
+
+/* The FLAGGED pad. "We ran out of searches" and "we looked and it is not
+   there" are different answers, and star/verdicts.py already keeps them
+   apart — this makes the first visible before anybody reads a verdict. */
+.report-budget {
+  border-left: 2px solid var(--oxide);
+  padding-left: 0.9rem;
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  margin: 0 0 0.9rem;
+}
+
+.report-group {
+  margin: 1.75rem 0 0;
+  /* A heading alone at the foot of a page is a heading in the wrong place. */
+  break-after: avoid;
+}
+
+.report-group-head {
+  font-family: var(--label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  font-size: var(--label-md);
+  margin: 0 0 0.4rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--manila-edge);
+}
+
+.report-claim[data-verdict="anachronism"] { border-left-color: var(--oxide); }
+.report-claim[data-verdict="confirmed"] { border-left-color: var(--aniline); }
+
+.report-group-lead {
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  margin: 0 0 1rem;
+  color: color-mix(in srgb, var(--ink) 85%, var(--onionskin));
+}
+
+.report-claims {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.report-claim {
+  border-left: 2px solid color-mix(in srgb, var(--ink) 35%, var(--onionskin));
+  padding: 0 0 0 1rem;
+  margin: 0 0 1.4rem;
+  /* THE RULE THIS SHEET IS FOR. A verdict separated from its citation by a
+     page break is a verdict nobody can check. */
+  break-inside: avoid;
+}
+
+.report-claim-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  margin: 0 0 0.3rem;
+}
+
+.report-claim-text {
+  font-weight: 600;
+}
+
+.report-claim-scenes {
+  flex: none;
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+  color: color-mix(in srgb, var(--ink) 65%, var(--onionskin));
+}
+
+.report-note {
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  margin: 0 0 0.5rem;
+}
+
+.report-sources {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.report-source {
+  margin: 0 0 0.6rem;
+  break-inside: avoid;
+}
+
+.report-source-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  margin: 0 0 0.15rem;
+}
+
+.report-source-url {
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+  color: var(--aniline);
+  /* Long urls are the norm and this sheet is fixed-width. The address has to
+     survive being read off paper by hand. */
+  word-break: break-all;
+  margin: 0 0 0.25rem;
+}
+
+.report-source-url a { color: inherit; }
+
+.report-excerpt {
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  margin: 0;
+  color: color-mix(in srgb, var(--ink) 88%, var(--onionskin));
+}
+
+.report-excerpt::before { content: "“"; }
+.report-excerpt::after { content: "”"; }
+
+.report-nosource {
+  font-size: var(--text-sm);
+  color: var(--oxide);
+  margin: 0;
+}
+
+.report-print {
+  display: block;
+  margin: 2.5rem auto 0;
+  font-family: var(--label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  font-size: var(--label-sm);
+  padding: 0.6rem 1.4rem;
+  background: var(--onionskin);
+  color: var(--ink);
+  border: 1px solid var(--manila-edge);
+  cursor: pointer;
+}
+
+.report a:focus-visible,
+.report button:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+@media (max-width: 560px) {
+  body.report { padding: 1.25rem 0.75rem 3rem; }
+  .report-sheet { padding: 1.5rem 1.25rem 2rem; }
+  .report-claim-head { flex-direction: column; gap: 0.1rem; }
+}
+
+/* PRINT. Everything here removes something. The screen layout above is already
+   the sheet. */
+@media print {
+  body.report {
+    background: #fff;
+    padding: 0;
+    font-size: 10.5pt;
+  }
+
+  .report-sheet {
+    max-width: none;
+    border: 0;
+    background: #fff;
+    padding: 0;
+  }
+
+  /* The one thing on this page that cannot be acted on from paper. */
+  .report-print { display: none; }
+
+  /* No `a::after { content: attr(href) }`: web/report.js renders each url as
+     its OWN TEXT inside the link, so the address is already on the paper and
+     appending the href would print every one of them twice. */
+}
