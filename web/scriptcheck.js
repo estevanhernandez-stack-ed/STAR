@@ -765,6 +765,12 @@ let roomId = null;
 // redone whenever the box changes.
 let draftScenes = [];
 let checkedKeys = new Set();
+// The sweep an import would write into, and the CSV text waiting on a second
+// press. Both cleared on a room change and whenever a different file is
+// chosen, so a confirmation can never apply a file the reader has moved on
+// from.
+let openSweepId = null;
+let pendingAnnotations = null;
 let currentSceneId = null;
 let loadedFiledFor = null;
 
@@ -789,9 +795,21 @@ export function initScriptCheck() {
     sweepResult: $("check-sweep-result"),
     sweptRow: $("check-swept-row"),
     sweptList: $("check-swept-list"),
+    importRow: $("check-import"),
+    importInput: $("check-import-input"),
+    importBtn: $("check-import-btn"),
+    importResult: $("check-import-result"),
   };
   els.run.addEventListener("click", runCheck);
   els.sweep.addEventListener("click", runSweep);
+  // Enabled only once a file is chosen: a button that can be pressed with
+  // nothing selected teaches a reader that pressing it does nothing.
+  els.importInput.addEventListener("change", () => {
+    els.importBtn.disabled = !els.importInput.files?.length;
+    els.importResult.replaceChildren();
+    pendingAnnotations = null;
+  });
+  els.importBtn.addEventListener("click", runImport);
   // `input` rather than `paste`: a paste event fires before the value lands,
   // and a writer may also drag a file in or type. This runs a regex over the
   // box on every keystroke, which is cheap next to what the box costs to
@@ -950,6 +968,143 @@ async function runSweep() {
   // Same shape as a finished check refreshing the filed row above.
   loadFiledSweeps();
 }
+
+/** An annotated export, brought back.
+ *
+ *  TWO PRESSES, and the first one changes nothing. The same arming
+ *  `delete_room` uses and for the same reason: this writes into a filed record,
+ *  and a reader should see what a file will do before it does it. The server
+ *  enforces it too — `apply` defaults false — so a browser that skipped the
+ *  first press would still not be able to write blind.
+ *
+ *  WHAT IT CAN AND CANNOT CARRY is the whole shape of the feature. A note and a
+ *  dismissal come back; a verdict, a source and an excerpt never do. Those are
+ *  the department's, hydrated out of a ledger, and the one thing that must stay
+ *  impossible is a room reading as better-sourced than its research made it. A
+ *  row that edited one is reported by column, so a writer learns which change
+ *  was dropped rather than wondering why it did nothing. */
+async function runImport() {
+  const file = els.importInput.files?.[0];
+  if (!roomId || !openSweepId || !file) return;
+
+  els.error.replaceChildren();
+  els.importBtn.disabled = true;
+
+  // Read here rather than posting the file itself: the endpoint takes CSV text
+  // and this surface never builds a multipart body it would then have to parse
+  // an error out of.
+  let text;
+  try {
+    text = await file.text();
+  } catch {
+    els.importBtn.disabled = false;
+    els.error.replaceChildren(
+      document.createTextNode("That file could not be read from disk.")
+    );
+    return;
+  }
+
+  // Armed on the TEXT that was previewed, not on a flag. The change handler
+  // above already clears the arming whenever a different file is chosen, so in
+  // every path a reader can reach these two agree — mutating this to
+  // `pendingAnnotations !== null` survives the test suite for exactly that
+  // reason, and it is kept anyway. The handler is one listener away from being
+  // missed by a browser that does not fire `change` on a re-pick, and the cost
+  // of the identity check is a string comparison against the cost of filing a
+  // file nobody previewed.
+  const applying = pendingAnnotations === text;
+  working(applying ? "Filing your notes" : "Reading the file");
+
+  let payload;
+  try {
+    const res = await authedFetch(
+      `/api/rooms/${encodeURIComponent(roomId)}/sweeps/${encodeURIComponent(openSweepId)}/annotations`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ csv: text, apply: applying }),
+      }
+    );
+    if (!res.ok) throw new Error(await failureDetail(res));
+    payload = await res.json();
+  } catch (err) {
+    els.status.replaceChildren();
+    els.importBtn.disabled = false;
+    els.error.replaceChildren(document.createTextNode(err.message));
+    return;
+  }
+
+  els.status.replaceChildren();
+  els.importBtn.disabled = false;
+  renderImport(payload, { applying, text });
+}
+
+function renderImport(payload, { applying, text }) {
+  const matched = Number(payload?.matched) || 0;
+  const unmatched = Array.isArray(payload?.unmatched) ? payload.unmatched : [];
+  const complaints = Array.isArray(payload?.complaints) ? payload.complaints : [];
+  const body = el("div", "import-report");
+
+  if (payload?.applied) {
+    pendingAnnotations = null;
+    els.importBtn.textContent = "Read the file";
+    body.appendChild(
+      el("p", "import-done", `${plural(matched, "note")} filed against this sweep.`)
+    );
+  } else if (matched) {
+    // Armed. The same text has to come back on the second press, which is why
+    // the file itself is remembered rather than a flag: choosing a different
+    // file between presses must not apply the one that was previewed.
+    pendingAnnotations = text;
+    els.importBtn.textContent = "File these notes";
+    body.appendChild(
+      el(
+        "p",
+        "import-armed",
+        `${plural(matched, "claim")} in this sweep would take a note from that ` +
+          "file. Nothing has been changed yet — press again to file them."
+      )
+    );
+  } else {
+    pendingAnnotations = null;
+    els.importBtn.textContent = "Read the file";
+    body.appendChild(
+      el(
+        "p",
+        "import-armed",
+        "Nothing in that file matched a claim in this sweep, so there is " +
+          "nothing to file."
+      )
+    );
+  }
+
+  // Named rather than counted. Silence here would let a writer annotate twenty
+  // claims, import, and find nineteen with no way to learn which.
+  if (unmatched.length) {
+    body.appendChild(
+      el(
+        "p",
+        "import-unmatched",
+        `${plural(unmatched.length, "row")} named a claim this sweep does not ` +
+          "hold, and were skipped:"
+      )
+    );
+    const list = el("ul", "import-list");
+    for (const claim of unmatched) list.appendChild(el("li", "", String(claim)));
+    body.appendChild(list);
+  }
+
+  // The refusals. By column, so a writer knows which change was dropped.
+  if (complaints.length) {
+    const list = el("ul", "import-list");
+    for (const complaint of complaints) list.appendChild(el("li", "", String(complaint)));
+    body.appendChild(el("p", "import-refused", "What the department kept for itself:"));
+    body.appendChild(list);
+  }
+
+  els.importResult.replaceChildren(body);
+}
+
 
 /** Every sweep filed on this room, newest first.
  *
@@ -1154,6 +1309,16 @@ function renderSweep(payload) {
 
   els.sweepResult.replaceChildren(body);
   els.sweepResult.classList.remove("hidden");
+
+  // The import writes into a FILED sweep, so it appears only when one is on
+  // screen. A live result has no id to write into yet.
+  openSweepId = payload?.sweep_id || null;
+  els.importRow.classList.toggle("hidden", !openSweepId);
+  if (!openSweepId) {
+    els.importResult.replaceChildren();
+    pendingAnnotations = null;
+  }
+
   body.focus();
 }
 
@@ -1219,6 +1384,12 @@ function clearCheck({ keepScene }) {
   els.sweepResult.classList.add("hidden");
   els.sweptRow.classList.add("hidden");
   els.sweptList.replaceChildren();
+  openSweepId = null;
+  pendingAnnotations = null;
+  els.importRow.classList.add("hidden");
+  els.importResult.replaceChildren();
+  els.importBtn.disabled = true;
+  if (els.importInput) els.importInput.value = "";
   if (!keepScene) els.input.value = "";
 }
 

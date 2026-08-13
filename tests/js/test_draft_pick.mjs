@@ -59,6 +59,11 @@ class Node {
       add: (c) => this.classes.add(c),
       remove: (c) => this.classes.delete(c),
       contains: (c) => this.classes.has(c),
+      // `toggle(c, force)` with an explicit second argument, which is what the
+      // panel uses to show or hide the import in one line. Omitted from this
+      // stub until the import needed it, and its absence surfaced as a
+      // TypeError rather than as a wrong answer — which is the right way round.
+      toggle: (c, force) => (force ? this.classes.add(c) : this.classes.delete(c)),
     };
   }
   appendChild(n) { this.childNodes.push(n); return n; }
@@ -68,9 +73,18 @@ class Node {
   addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
   focus() { this.focused = true; }
   get textContent() {
+    if (this.text !== undefined) return this.text;
     return this.data !== undefined
       ? this.data
       : this.childNodes.map((c) => c.textContent).join("");
+  }
+  // Settable, because the import re-labels its button between the two presses
+  // and the label IS the arming — a control that looks identical either side
+  // of a confirmation is one a reader presses twice by accident. A getter-only
+  // stub made that a TypeError rather than a missed assertion.
+  set textContent(value) {
+    this.text = String(value);
+    this.childNodes = [];
   }
   querySelector(sel) {
     const want = sel.replace(".", "");
@@ -84,7 +98,10 @@ class Node {
   // discarded it would let every assertion below run before the fetch it is
   // asking about — a test that passes because it looked too early.
   press() { return Promise.all((this.listeners.click || []).map((fn) => fn())); }
-  type() { for (const fn of this.listeners.input || []) fn(); }
+  type() {
+    for (const fn of this.listeners.input || []) fn();
+    for (const fn of this.listeners.change || []) fn();
+  }
 }
 class Text extends Node {
   constructor(data) { super("#text"); this.data = String(data); }
@@ -97,7 +114,16 @@ for (const id of [
   "check-draft", "check-draft-count", "check-draft-done", "check-draft-scenes",
   "check-sweep-btn", "check-sweep-note", "check-sweep-result",
   "check-swept-row", "check-swept-list",
+  "check-import", "check-import-input", "check-import-btn", "check-import-result",
 ]) ids[id] = new Node();
+
+// The file input the import reads from. `files` and `.text()` are the whole of
+// what web/scriptcheck.js touches on it.
+ids["check-import-input"].files = [];
+function chooseFile(text) {
+  ids["check-import-input"].files = [{ text: async () => text }];
+  ids["check-import-input"].type();
+}
 
 globalThis.document = {
   getElementById: (id) => ids[id] || null,
@@ -402,6 +428,163 @@ assert.match(reopened, /anachronism/, "with its verdict");
 assert.match(reopened, /Spinal Tap/, "AND its sources — a reopened page of stamps with " +
   "nothing under them is the defect this surface already shipped once");
 assert.match(reopened, /scene 19/, "and which page it belongs to");
+
+/* 4e — the import is armed by a file and confirmed by a second press. ---- */
+//
+// The import writes into a filed record, so the first press changes nothing.
+// Driven here rather than asserted from source, because the defect this shape
+// invites is state — a confirmation applying a file the reader has moved on
+// from — and no assertion about spelling can see that.
+
+const annotations = [];
+globalThis.__fetch = async (url, options) => {
+  const method = (options?.method || "GET").toUpperCase();
+  if (method === "POST" && url.includes("/annotations")) {
+    const body = JSON.parse(options?.body || "{}");
+    annotations.push(body);
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        applied: Boolean(body.apply),
+        matched: 2,
+        unmatched: ["A claim that was never here"],
+        complaints: ["Row 4 carries verdict, which the department writes."],
+        claims: [],
+      }),
+    };
+  }
+  if (method === "GET" && url.includes("/sweeps/sw9")) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        sweep_id: "sw9",
+        scenes_read: 4,
+        claims_raised: 5,
+        search_count: 1,
+        claims: [{ text: "a Gibson", verdict: "confirmed", scenes: [1] }],
+      }),
+    };
+  }
+  if (method === "GET" && url.includes("/sweeps")) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        sweeps: [{ sweep_id: "sw9", created_at: "2026-08-12T22:00:00Z", scenes_read: 4, claim_count: 5 }],
+      }),
+    };
+  }
+  return { ok: true, status: 200, json: async () => ({ scene_id: "s9", claims: [], scenes: [] }) };
+};
+
+mod.resetCheck();
+mod.setCheckRoom("room-5");
+
+assert.ok(
+  ids["check-import"].classList.contains("hidden"),
+  "hidden until a filed sweep is on screen — there is nothing to annotate before that"
+);
+
+mod.openedCheck();
+await new Promise((r) => setTimeout(r, 0));
+await ids["check-swept-list"].childNodes[0].press();
+await new Promise((r) => setTimeout(r, 0));
+
+assert.ok(
+  !ids["check-import"].classList.contains("hidden"),
+  "a filed sweep is open, so the import appears"
+);
+assert.equal(ids["check-import-btn"].disabled, true, "and the button is dead until a file is chosen");
+
+chooseFile("claim,writer_note\na Gibson,Keep it\n");
+assert.equal(ids["check-import-btn"].disabled, false, "a file arms the button");
+
+await ids["check-import-btn"].press();
+await new Promise((r) => setTimeout(r, 0));
+
+assert.equal(annotations.length, 1, "the first press reads the file");
+assert.equal(annotations[0].apply, false, "AND CHANGES NOTHING");
+assert.match(ids["check-import-result"].textContent, /Nothing has been changed yet/);
+assert.match(ids["check-import-btn"].textContent, /File these notes/, "the label is the arming");
+assert.match(
+  ids["check-import-result"].textContent,
+  /A claim that was never here/,
+  "a row matching nothing is NAMED — silence would let a writer annotate twenty " +
+    "claims, import, find nineteen, and never learn which"
+);
+assert.match(
+  ids["check-import-result"].textContent,
+  /carries verdict, which the department writes/,
+  "and the refusal names the column it kept for itself"
+);
+
+await ids["check-import-btn"].press();
+await new Promise((r) => setTimeout(r, 0));
+
+assert.equal(annotations.length, 2, "the second press files them");
+assert.equal(annotations[1].apply, true);
+assert.match(ids["check-import-result"].textContent, /2 notes filed/);
+assert.match(ids["check-import-btn"].textContent, /Read the file/, "and disarms");
+
+/* 4f — a different file cannot be applied by the arming of the first. ---- */
+//
+// THE SWAP HAS TO HAPPEN AFTER A PREVIEW, not after an apply. A successful
+// apply clears the arming anyway, so testing the swap there proves nothing —
+// an arming that merely asked "is anything armed?" instead of "is THIS the
+// file I previewed?" passed that version of this test, and would silently
+// write a file the reader never looked at.
+
+chooseFile("claim,writer_note\na Gibson,First file\n");
+await ids["check-import-btn"].press();
+await new Promise((r) => setTimeout(r, 0));
+assert.equal(annotations[annotations.length - 1].apply, false, "previewed, not applied");
+assert.match(ids["check-import-btn"].textContent, /File these notes/, "and armed");
+
+// Now swap the file while still armed, and confirm.
+chooseFile("claim,writer_note\na Gibson,A DIFFERENT note\n");
+await ids["check-import-btn"].press();
+await new Promise((r) => setTimeout(r, 0));
+
+const last = annotations[annotations.length - 1];
+assert.equal(
+  last.apply,
+  false,
+  "the second file is PREVIEWED rather than filed. An arming that survives a " +
+    "file change would write something the reader never saw a preview of"
+);
+assert.match(last.csv, /A DIFFERENT note/, "and it is the new file being read");
+
+/* 4g — a LIVE sweep offers no import, because there is nothing to write into. */
+//
+// A sweep that has just run carries its own sweep_id, so this needs the case
+// where one does not — a payload with no id is a result the server could not
+// file, and an import pointed at it would post to `/sweeps/null/annotations`.
+
+globalThis.__fetch = async (url, options) => {
+  const method = (options?.method || "GET").toUpperCase();
+  if (method === "POST" && url.includes("/sweep")) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ scenes_read: 4, claims_raised: 2, claims: [], search_count: 0 }),
+    };
+  }
+  return { ok: true, status: 200, json: async () => ({ sweeps: [], claims: [], scenes: [] }) };
+};
+
+mod.resetCheck();
+mod.setCheckRoom("room-6");
+ids.scene.value = DRAFT;
+ids.scene.type();
+await ids["check-sweep-btn"].press();
+await new Promise((r) => setTimeout(r, 0));
+
+assert.ok(
+  ids["check-import"].classList.contains("hidden"),
+  "no sweep_id came back, so there is nothing an import could write into"
+);
 
 /* 5 — pasting something unrelated drops the list. ------------------------ */
 

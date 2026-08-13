@@ -374,6 +374,25 @@
             <span id="check-swept-list"></span>
           </div>
           <div id="check-sweep-result" class="check-sweep-result hidden"></div>
+          <!-- Bringing an annotated export back. Hidden until a filed sweep is
+               open, because there is nothing to annotate before that — and the
+               file input is the one control on this surface that takes
+               something the department did not produce. -->
+          <div id="check-import" class="check-import hidden">
+            <p class="check-import-line">
+              Marked the export up in a spreadsheet? Bring it back. Your notes
+              are kept; verdicts, sources and excerpts are the department's and
+              an import never changes them.
+            </p>
+            <div class="check-import-controls">
+              <label class="check-import-file">
+                <span>Choose the CSV</span>
+                <input type="file" id="check-import-input" accept=".csv,text/csv" />
+              </label>
+              <button id="check-import-btn" type="button" disabled>Read the file</button>
+            </div>
+            <div id="check-import-result" class="check-import-result"></div>
+          </div>
           <div class="actions">
             <button id="check-run-btn" type="button">Check this scene</button>
             <span id="check-status" class="check-status" role="status"></span>

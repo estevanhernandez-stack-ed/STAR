@@ -1154,3 +1154,125 @@
   gap: 1.25rem;
   flex-wrap: wrap;
 }
+
+
+/* BRINGING AN ANNOTATED EXPORT BACK.
+ *
+ *  The only control on this surface that takes something the department did
+ *  not produce, so it says what it will and will not accept before a file is
+ *  chosen rather than after one is refused.
+ *
+ *  Two presses: the button re-labels itself from "Read the file" to "File
+ *  these notes" once a preview has come back. The label IS the arming, because
+ *  a control that looks identical either side of a confirmation is one a
+ *  reader presses twice by accident. */
+.check-import {
+  margin: 1.5rem 0 0;
+  padding-top: 1rem;
+  border-top: 1px solid var(--manila-edge);
+}
+
+.check-import.hidden {
+  display: none;
+}
+
+.check-import-line {
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  max-width: 68ch;
+  margin: 0 0 0.8rem;
+  color: var(--ink);
+}
+
+.check-import-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.check-import-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-family: var(--label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  font-size: var(--label-sm);
+  color: var(--ink);
+}
+
+.check-import-file input[type="file"] {
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--ink);
+  max-width: 22rem;
+}
+
+#check-import-btn {
+  background: var(--cabinet);
+  color: var(--manila);
+  border: 1px solid var(--cabinet);
+  font-family: var(--label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  font-size: var(--label-sm);
+  padding: 0.6rem 1.1rem;
+  cursor: pointer;
+}
+
+#check-import-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+#check-import-btn:focus-visible,
+.check-import-file input:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.check-import-result {
+  margin: 0.9rem 0 0;
+}
+
+.import-done,
+.import-armed,
+.import-unmatched,
+.import-refused {
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  max-width: 68ch;
+  margin: 0 0 0.5rem;
+}
+
+/* The FILED pad for a write that landed. */
+.import-done {
+  color: color-mix(in srgb, var(--aniline) 85%, var(--ink));
+  font-weight: 600;
+}
+
+/* Skipped rows and refused columns share the FLAGGED pad, because both are
+   the department declining to do something a reader asked for and both have
+   to be read rather than glanced at. */
+.import-unmatched,
+.import-refused {
+  color: color-mix(in srgb, var(--oxide) 80%, var(--ink));
+}
+
+.import-list {
+  margin: 0 0 0.75rem;
+  padding-left: 1.2rem;
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  max-width: 68ch;
+}
+
+@media (max-width: 700px) {
+  .check-import-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
