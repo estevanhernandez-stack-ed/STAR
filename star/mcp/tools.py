@@ -29,6 +29,9 @@ comment makes. spec.md's Decision 4 argues why the dependencies move to the
 router instead of the run registry moving to a service module.
 """
 
+import csv
+import hashlib
+import io
 import json
 import math
 import secrets
@@ -138,6 +141,18 @@ class Calls:
     run_check: Callable[..., Any]
     delete_room: Callable[..., Any]
     run_requisition: Callable[..., Any]
+    # The second half of the department, added when the export and import the
+    # browser had stopped being reachable from a desktop agent. Everything
+    # below is the SAME transport-free function the browser's own route calls,
+    # for the reason the six above are: a second implementation on this side is
+    # how the two doors come to disagree about what a room is.
+    run_sweep: Callable[..., Any]
+    read_sweeps: Callable[..., Any]
+    read_sweep: Callable[..., Any]
+    export_room: Callable[..., Any]
+    import_rooms: Callable[..., Any]
+    write_bible: Callable[..., Any]
+    link_room: Callable[..., Any]
 
 
 # --- The strings a refusal is made of ---------------------------------------
@@ -670,7 +685,292 @@ TOOLS: tuple[dict, ...] = (
             "additionalProperties": False,
         },
     },
+    {
+        "name": "get_sweep",
+        "description": (
+            "Read the draft sweeps filed on a room.\n\n"
+            f"Needs `run_id`, {_ROOM_ID}. Send `sweep_id` for one sweep's "
+            "verdicts; leave it out to list what is filed.\n\n"
+            "The list gives `sweep_id`, `created_at`, `scenes_read`, "
+            "`claims_raised`, `claim_count` and `search_count` per sweep. One "
+            "sweep gives every claim: its text, the scenes it appears in, a "
+            "`verdict` of `confirmed`, `anachronism` or `unverifiable`, the "
+            "department's note, and the sources behind it.\n\n"
+            "`claims_raised` and `claim_count` are different numbers on "
+            "purpose. The first is how many claims the draft made, the second "
+            "how many distinct ones were asked about — the gap is the "
+            "deduplication, and it is why a sweep costs less than the same "
+            "scenes checked one at a time.\n\n"
+            "Costs nothing, spends no searches, and is never rate-limited. A "
+            "sweep is filed the moment it finishes, so a sweep run through "
+            "either door is readable here."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "run_id": {"type": "string", "description": _ROOM_ID},
+                "sweep_id": {
+                    "type": "string",
+                    "description": (
+                        "the id of one filed sweep, as returned by "
+                        "`sweep_draft` or by this tool with no `sweep_id`"
+                    ),
+                },
+            },
+            "required": ["run_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "export_room",
+        "description": (
+            "A room's research, its story's, its bible or one sweep — as the "
+            "file a writer would download.\n\n"
+            f"Needs `run_id`, {_ROOM_ID}. `kind` picks what leaves:\n"
+            "- `research` (the default): this room's findings as CSV, one row "
+            "per finding per source.\n"
+            "- `story`: the same, widened to every room this one follows. A "
+            "`room` column keeps them apart, so filtering it gives back the "
+            "single-room file.\n"
+            "- `bible`: the research bible as markdown, with a masthead naming "
+            "the room, era, build date and source count.\n"
+            "- `sweep`: one filed sweep's claims and verdicts as CSV. Needs "
+            "`sweep_id`; call `get_sweep` with no `sweep_id` for the ids.\n\n"
+            "**`shape` decides how much comes back, and the default is "
+            "`summary` on purpose.** A room's research file runs to hundreds "
+            "of kilobytes, most of it quoted source excerpts, and reading one "
+            "into a model's context costs more than everything else this "
+            "department does put together. `summary` returns the filename, the "
+            "character count, the row count, the column names and the first "
+            "few rows — enough to know the file is right. `file` returns the "
+            "whole text, and is for handing to something that writes files.\n\n"
+            "The CSV imports back through `import_rooms`, in this account or "
+            "anybody else's. That round trip is what these files are for.\n\n"
+            "Costs nothing, spends no searches, and is never rate-limited."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "run_id": {"type": "string", "description": _ROOM_ID},
+                "kind": {
+                    "type": "string",
+                    "enum": ["research", "story", "bible", "sweep"],
+                    "description": (
+                        "what leaves: `research` for this room, `story` for "
+                        "the chain it belongs to, `bible` for the document, "
+                        "`sweep` for one filed sweep. Defaults to `research`"
+                    ),
+                },
+                "shape": {
+                    "type": "string",
+                    "enum": ["summary", "file"],
+                    "description": (
+                        "`summary` for the shape and the first rows, `file` "
+                        "for the whole text. Defaults to `summary`, because "
+                        "these files are large and a summary is what checking "
+                        "one needs"
+                    ),
+                },
+                "sweep_id": {
+                    "type": "string",
+                    "description": "the filed sweep to export, when `kind` is `sweep`",
+                },
+            },
+            "required": ["run_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "import_rooms",
+        "description": (
+            "File a research export as rooms under this account.\n\n"
+            "Needs `csv`, the text of a `research` or `story` export — this "
+            "account's or somebody else's. A `story` file arrives as several "
+            "rooms, already linked to each other by ids minted here.\n\n"
+            "**Two calls, and the first one writes nothing.** Leave `confirm` "
+            "out to see what the file holds: how many rooms, their titles and "
+            "eras, how many findings and sources each carries, and anything "
+            "wrong with the file. That reply hands back a one-time token; send "
+            "it as `confirm` to file them.\n\n"
+            "**AN IMPORTED ROOM SAYS IT WAS IMPORTED, and cannot be made to "
+            "stop.** It carries the date it arrived, claims no searches, and "
+            "brings no bible. Anyone can type a plausible fact and a "
+            "real-looking address into a spreadsheet, and this department has "
+            "no way to tell — so it says who did the telling. The source count "
+            "on the room is counted from the addresses that actually arrived, "
+            "never from a number the file states.\n\n"
+            "It brings no bible on purpose: a document about findings, shipped "
+            "beside them, can describe research that did not survive the file. "
+            "Call `write_bible` on the new room and it writes one from what it "
+            "actually holds.\n\n"
+            "Costs nothing and spends no searches. Filing the same file twice "
+            "makes two sets of rooms; nothing merges and nothing is "
+            "overwritten, and no id inside a file can address a room this "
+            "account already holds."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "csv": {
+                    "type": "string",
+                    "description": (
+                        "the full text of a research or story export, header "
+                        "row included"
+                    ),
+                },
+                "confirm": {
+                    "type": "string",
+                    "description": (
+                        "the one-time token the first call handed back. Leave "
+                        "it out to see what the file holds and get one"
+                    ),
+                },
+            },
+            "required": ["csv"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "write_bible",
+        "description": (
+            "Write the research bible for a room that has none.\n\n"
+            f"Needs `run_id`, {_ROOM_ID}. The room must have findings and no "
+            "bible: an imported room, or a build whose editor never landed.\n\n"
+            "One editor pass over the findings the room already holds. **No "
+            "searches** — the expensive half of research, the live searches "
+            "and the sources standing behind every citation, already happened. "
+            "That is why this can be run on research somebody else did.\n\n"
+            "Refuses a room that already has one. Rewriting is destructive on "
+            "a document a build was paid for, and this is not that.\n\n"
+            "Writing a bible does not make an imported room a researched one. "
+            "It still says it was imported, because it still was.\n\n"
+            "Spends one model call against the account's hourly window, in its "
+            "own key space: an editor pass does not cost a build or a check."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"run_id": {"type": "string", "description": _ROOM_ID}},
+            "required": ["run_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "link_room",
+        "description": (
+            "Say which room a room follows, so a story reads as one.\n\n"
+            f"Needs `run_id`, {_ROOM_ID}. Send `continues`, the id of the room "
+            "it follows. **Leave `continues` out to clear the link.**\n\n"
+            "A chain is what lets a check draw on research filed in an earlier "
+            "room: a scene set in one era, checked against a room built for "
+            "another, is answered from the whole story rather than from one "
+            "room. `check_scene`, `ask_room` and `export_room` with "
+            "`kind: story` all read the chain this sets.\n\n"
+            "Refused by name when it cannot be done: a room cannot follow "
+            "itself, cannot follow a room this account does not hold, and "
+            "cannot close a loop.\n\n"
+            "Costs nothing and spends no searches. Only the writer decides "
+            "what follows what — a build never guesses it from two treatments "
+            "sharing a decade."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "run_id": {"type": "string", "description": _ROOM_ID},
+                "continues": {
+                    "type": "string",
+                    "description": (
+                        "the id of the room this one follows. Omit it to clear "
+                        "the link and leave this room standing alone"
+                    ),
+                },
+            },
+            "required": ["run_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "sweep_draft",
+        "description": (
+            "Check a WHOLE DRAFT against one room in a single pass.\n\n"
+            f"Needs `run_id`, {_ROOM_ID}, and `scenes`, an array of strings "
+            "with one scene's text in each.\n\n"
+            "**Split the draft yourself.** Nothing on this side splits a "
+            "screenplay, deliberately: a second answer to where a scene begins "
+            "would have the writer picking scenes out of one list while the "
+            "department checked another. In Fountain, a scene begins at a line "
+            "starting `INT.`, `EXT.`, `EST.`, `INT./EXT.` or `.` with a blank "
+            "line either side of it.\n\n"
+            "Returns every distinct claim the draft makes about the world, "
+            "each with the scene numbers that made it, a verdict, a note and "
+            "the sources behind it — plus `scenes_read`, `claims_raised` (how "
+            "many the draft made) and the claim count (how many distinct ones "
+            "were asked about). The gap between the last two is the whole "
+            "argument for this tool.\n\n"
+            "**Use this rather than `check_scene` in a loop.** Twenty-four "
+            "scenes checked one at a time is twenty-four slots of an hourly "
+            "window that admits five, and twenty-four separate search budgets. "
+            "This is one slot and one budget for the whole draft. It also "
+            "catches what no number of scene checks can: an object that is "
+            "right in 1958 and wrong in 1960 is wrong in neither scene "
+            "alone.\n\n"
+            "The sweep is filed, so `get_sweep` reads it back for free "
+            "afterwards and `export_room` with `kind: sweep` exports it.\n\n"
+            "**SPENDS.** One slot of the account's hourly window and one "
+            "search budget for the draft — which is what a whole screenplay "
+            "costs here, once. Needs the `rooms:write` scope."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "run_id": {"type": "string", "description": _ROOM_ID},
+                "scenes": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "the draft's scenes, one scene's full text per entry, "
+                        "in the order they appear on the page"
+                    ),
+                },
+            },
+            "required": ["run_id", "scenes"],
+            "additionalProperties": False,
+        },
+    },
 )
+
+# THE ORDER A MODEL MEETS THEM IN, declared rather than emergent.
+#
+# Free first, and it is load-bearing rather than decorative: a model reading
+# `tools/list` top-down meets everything that costs nothing before anything
+# that costs money. Three bands, in this order:
+#
+#   1. Reads. Nothing changes, nothing is spent, nothing is limited.
+#   2. Writes that spend nothing — a link drawn, a file filed, a room removed.
+#      Free, and not reads: each one changes what the account holds.
+#   3. Spends. Live searches, or a model call, against the hourly window.
+#
+# Declared here rather than left to where a dict literal was pasted, because
+# the order IS a rule and a rule should be legible as one. A tool missing from
+# this tuple raises at import rather than sorting to the end, so adding one
+# without deciding where it belongs is not something this file lets happen.
+_ORDER = (
+    "list_rooms",
+    "get_room",
+    "ask_room",
+    "defend_claim",
+    "get_sweep",
+    "export_room",
+    "link_room",
+    "import_rooms",
+    "delete_room",
+    "build_room",
+    "check_scene",
+    "research_question",
+    "sweep_draft",
+    "write_bible",
+)
+
+TOOLS = tuple(sorted(TOOLS, key=lambda tool: _ORDER.index(tool["name"])))
 
 _TOOLS_BY_NAME = {tool["name"]: tool for tool in TOOLS}
 
@@ -783,6 +1083,32 @@ def _arguments(tool: dict, arguments: dict) -> dict:
                 f"`{name}` needs `{key}`: {description}. This call did not "
                 f"send it. Call `tools/list` for the full argument list."
             )
+        # ARRAYS OF STRINGS, for the one argument that cannot be a string: a
+        # draft arrives as its scenes, already split. Nothing on this side
+        # splits a screenplay, deliberately — a second Fountain parser would
+        # be a second answer to "where does a scene begin", and the writer
+        # would be picking scenes out of one list while the department checked
+        # another. Driven off the schema like everything else here, so the
+        # shape an agent reads in `tools/list` is the shape it is held to.
+        if properties[key].get("type") == "array":
+            if not isinstance(value, list):
+                raise _BadArguments(
+                    f"`{name}`'s `{key}` must be an array of strings. This "
+                    f"call sent {_kind(value)}. It should be {description}."
+                )
+            items = [item for item in value if isinstance(item, str) and item.strip()]
+            if len(items) != len(value):
+                raise _BadArguments(
+                    f"`{name}`'s `{key}` must hold strings, and this call sent "
+                    f"{len(value) - len(items)} entry(s) that were empty or "
+                    f"were not text. It should be {description}."
+                )
+            if not items:
+                raise _BadArguments(
+                    f"`{name}`'s `{key}` arrived empty. Send {description}."
+                )
+            values[key] = items
+            continue
         if not isinstance(value, str):
             raise _BadArguments(
                 f"`{name}`'s `{key}` must be a string. This call sent "
@@ -1900,6 +2226,324 @@ async def _research_question(arguments: dict, calls: Calls, identity) -> dict:
     return _payload("\n\n".join(lines), result)
 
 
+# --- The file half: sweeps, exports, imports --------------------------------
+
+
+async def _get_sweep(arguments: dict, calls: Calls, identity) -> dict:
+    values = _arguments(_TOOLS_BY_NAME["get_sweep"], arguments)
+    run_id = values["run_id"]
+    sweep_id = values.get("sweep_id")
+
+    if not sweep_id:
+        sweeps = _jsonable(await calls.read_sweeps(identity.uid, run_id))
+        if not sweeps:
+            return _payload(
+                "No draft sweep is filed on this room. `sweep_draft` runs one "
+                "over a whole screenplay in a single pass; `check_scene` "
+                "answers one scene. A room with no sweeps is a normal answer "
+                "and not an error.",
+                {"sweeps": []},
+            )
+        return _payload(
+            f"{len(sweeps)} sweep{'' if len(sweeps) == 1 else 's'} filed on "
+            "this room, newest first. `claims_raised` is how many claims the "
+            "draft made and `claim_count` how many distinct ones were asked "
+            "about — the gap is the deduplication a sweep pays for once. Send "
+            "a `sweep_id` back to this tool for one sweep's verdicts.",
+            {"sweeps": sweeps},
+        )
+
+    result = _jsonable(await calls.read_sweep(identity.uid, run_id, sweep_id))
+    claims = result.get("claims") or []
+    tally = {verdict: 0 for verdict in _VERDICTS}
+    for claim in claims:
+        tally[claim.get("verdict", "unverifiable")] = (
+            tally.get(claim.get("verdict", "unverifiable"), 0) + 1
+        )
+    return _payload(
+        f"{len(claims)} distinct claim{'' if len(claims) == 1 else 's'} from "
+        f"{result.get('scenes_read')} scenes: {tally.get('confirmed', 0)} "
+        f"confirmed, {tally.get('anachronism', 0)} anachronism, "
+        f"{tally.get('unverifiable', 0)} unverifiable. Each carries the scene "
+        "numbers that made it, so a verdict points at the pages to open. "
+        "A verdict is the department's reading of the sources under it, not a "
+        "check of the line against the world.",
+        result,
+    )
+
+
+# The first rows a summary shows. Enough to see the header is right and the
+# escaping held; not so many that a "cheap" shape stops being cheap.
+_SAMPLE_ROWS = 3
+
+
+def _file_summary(export: dict) -> dict:
+    """A file's shape, without the file.
+
+    The default for `export_room`, and the reason it is the default is
+    arithmetic: a room's research export runs to hundreds of kilobytes, most of
+    it quoted source excerpts, and reading one into a model's context costs
+    more than every other tool on this door put together. What checking a file
+    actually needs is its name, its size, its columns and a look at the first
+    rows.
+    """
+    text = export["text"]
+    lines = text.splitlines()
+    summary = {
+        "filename": export["filename"],
+        "media_type": export["media_type"],
+        "characters": len(text),
+        "lines": len(lines),
+    }
+    if export["media_type"].startswith("text/csv"):
+        rows = list(csv.reader(io.StringIO(text)))
+        summary["columns"] = rows[0] if rows else []
+        summary["rows"] = max(0, len(rows) - 1)
+        summary["first_rows"] = rows[1 : 1 + _SAMPLE_ROWS]
+    else:
+        summary["opening"] = "\n".join(lines[:12])
+    return summary
+
+
+async def _export_room(arguments: dict, calls: Calls, identity) -> dict:
+    values = _arguments(_TOOLS_BY_NAME["export_room"], arguments)
+    kind = values.get("kind") or "research"
+    shape = values.get("shape") or "summary"
+    sweep_id = values.get("sweep_id") or ""
+
+    if kind == "sweep" and not sweep_id:
+        raise _BadArguments(
+            "`export_room` with `kind: sweep` needs a `sweep_id`. Call "
+            "`get_sweep` with just a `run_id` for the sweeps filed on this "
+            "room and the ids to use here. Nothing was read."
+        )
+    if kind != "sweep" and sweep_id:
+        raise _BadArguments(
+            f"`export_room` takes `sweep_id` only with `kind: sweep`, and this "
+            f"call sent it with `kind: {kind}`. Drop one of the two."
+        )
+
+    export = await calls.export_room(identity.uid, values["run_id"], kind, sweep_id)
+
+    if shape == "file":
+        return _payload(
+            f"`{export['filename']}`, {len(export['text'])} characters. This "
+            "is the whole file — hand it to something that writes files rather "
+            "than reading it as prose. It imports back through `import_rooms` "
+            "in this account or anybody else's."
+            if kind != "bible"
+            else (
+                f"`{export['filename']}`, {len(export['text'])} characters of "
+                "markdown. The document itself, not a rendering of it."
+            ),
+            {"filename": export["filename"], "text": export["text"]},
+        )
+
+    summary = _file_summary(export)
+    return _payload(
+        f"`{summary['filename']}` is ready: {summary['characters']} characters. "
+        "This is the file's SHAPE, not the file — call again with `shape: "
+        "file` for the text itself, which is large. What is below is enough to "
+        "see that the header, the columns and the escaping are right.",
+        summary,
+    )
+
+
+_PENDING_IMPORTS: dict[tuple[str, str], tuple[str, float]] = {}
+
+
+def _import_digest(text: str) -> str:
+    """Which file a confirmation was minted for.
+
+    Keyed on the file rather than on the account alone, for the reason a delete
+    confirmation is keyed on its room: a token handed back for one file must
+    never file a different one. An agent that previewed a story and then sent a
+    second file with the first file's token is one argument away from filing
+    something nobody looked at.
+    """
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
+async def _import_rooms_tool(arguments: dict, calls: Calls, identity) -> dict:
+    values = _arguments(_TOOLS_BY_NAME["import_rooms"], arguments)
+    text = values["csv"]
+    offered = values.get("confirm")
+    digest = _import_digest(text)
+    key = (identity.uid, digest)
+
+    applying = False
+    if offered:
+        held = _PENDING_IMPORTS.pop(key, None)
+        if held and time.monotonic() - held[1] <= _CONFIRM_TTL_SECONDS:
+            applying = secrets.compare_digest(held[0], offered)
+        if not applying:
+            raise _BadArguments(
+                "That confirmation is not one this file is holding. A token is "
+                "minted per file, used once, and expires after "
+                f"{_CONFIRM_TTL_SECONDS} seconds — and it does not carry from "
+                "one file to another. Call `import_rooms` again with the same "
+                "`csv` and no `confirm` for a fresh one. Nothing was filed."
+            )
+
+    result = _jsonable(await calls.import_rooms(identity.uid, text, applying))
+    rooms = result.get("rooms") or []
+    complaints = result.get("complaints") or []
+
+    if not rooms:
+        return _payload(
+            "Nothing in that file could be filed as a room. A research export "
+            "has a `fact` column; a sweep export has a `claim` column and goes "
+            "back through the sweep it came from, not through here. Nothing "
+            "was filed.",
+            result,
+        )
+
+    findings = sum(room.get("findings") or 0 for room in rooms)
+    sources = sum(room.get("sources") or 0 for room in rooms)
+    named = ", ".join(f"“{room.get('title') or 'Untitled'}”" for room in rooms)
+
+    if applying:
+        lines = [
+            (
+                f"Filed {len(rooms)} room{'' if len(rooms) == 1 else 's'}: "
+                f"{named}. {findings} findings and {sources} sources arrived "
+                "with them, and no search was spent — the verification "
+                "travelled in the file."
+            ),
+            (
+                "Every one of them says it was imported: the date it arrived, "
+                "a search count of zero, and a source count taken from the "
+                "addresses actually in the file rather than any number the "
+                "file stated. That does not come off, and writing a bible "
+                "does not remove it."
+            ),
+            (
+                "None has a bible. Call `write_bible` on a `run_id` below and "
+                "it writes one from the findings that room actually holds — "
+                "one model call, no searches."
+            ),
+        ]
+    else:
+        token = secrets.token_urlsafe(9)
+        _PENDING_IMPORTS[key] = (token, time.monotonic())
+        result = {**result, "confirm": token}
+        lines = [
+            (
+                f"That file holds {len(rooms)} room"
+                f"{'' if len(rooms) == 1 else 's'}: {named}, carrying "
+                f"{findings} findings and {sources} sources. **Nothing has "
+                "been filed.**"
+            ),
+            (
+                "The source counts above are counted from the addresses in "
+                "the file, not read off it. Anything the file claims about "
+                "its own research is ignored here, because a file can claim "
+                "anything."
+            ),
+            (
+                f"Send `confirm: {token}` with the same `csv` to file them. "
+                f"The token is good for {_CONFIRM_TTL_SECONDS} seconds, works "
+                "once, and only for this file."
+            ),
+        ]
+
+    if complaints:
+        lines.append("The file was not clean: " + " ".join(complaints))
+    return _payload("\n\n".join(lines), result)
+
+
+async def _write_bible(arguments: dict, calls: Calls, identity) -> dict:
+    values = _arguments(_TOOLS_BY_NAME["write_bible"], arguments)
+    result = _jsonable(await calls.write_bible(identity.uid, values["run_id"]))
+    written = result.get("research_bible") or ""
+    return _payload(
+        f"The editor wrote {len(written)} characters over this room's filed "
+        "findings. No search was spent: the sources standing behind every "
+        "citation were already in the room, and this was one pass over them.\n\n"
+        "Every citation in it comes from a source the room already held — the "
+        "editor is given the addresses it may cite and no others. A room that "
+        "was imported still says so; a document written about research does "
+        "not make the research this account's.",
+        result,
+    )
+
+
+async def _link_room(arguments: dict, calls: Calls, identity) -> dict:
+    values = _arguments(_TOOLS_BY_NAME["link_room"], arguments)
+    run_id = values["run_id"]
+    parent = values.get("continues") or ""
+    result = _jsonable(await calls.link_room(identity.uid, run_id, parent))
+
+    if not parent:
+        return _payload(
+            f"Room {run_id} now follows nothing and stands alone. Checks "
+            "against it draw on its own research only.",
+            result,
+        )
+    return _payload(
+        f"Room {run_id} now follows {parent}. A check on either room reads the "
+        "whole chain, nearest first, so a scene set in one era is answered "
+        "from research filed for another — and it spends no new searches doing "
+        "it, because the sources were bought once already. `export_room` with "
+        "`kind: story` now returns both rooms in one file.",
+        result,
+    )
+
+
+async def _sweep_draft(arguments: dict, calls: Calls, identity) -> dict:
+    values = _arguments(_TOOLS_BY_NAME["sweep_draft"], arguments)
+    scenes = [
+        {"index": number, "heading": text.strip().splitlines()[0][:80], "text": text}
+        for number, text in enumerate(values["scenes"], start=1)
+    ]
+
+    # Ahead of the call, for the reason check_scene's cap is: refusing here
+    # means nothing was spent and the message can say so.
+    cap = config.max_scenes_per_sweep()
+    if len(scenes) > cap:
+        raise _BadArguments(
+            f"That draft is {len(scenes)} scenes and one sweep reads {cap}. "
+            "Send a stretch of the script rather than the whole series. "
+            "Nothing was spent."
+        )
+
+    result = _jsonable(await calls.run_sweep(identity.uid, values["run_id"], scenes))
+    claims = result.get("claims") or []
+    raised = result.get("claims_raised") or 0
+    tally = {verdict: 0 for verdict in _VERDICTS}
+    for claim in claims:
+        verdict = claim.get("verdict", "unverifiable")
+        tally[verdict] = tally.get(verdict, 0) + 1
+
+    lines = [
+        (
+            f"Read {result.get('scenes_read')} scenes. The draft made {raised} "
+            f"claims about the world and {len(claims)} of them were distinct, "
+            f"so the department asked {len(claims)} questions rather than "
+            f"{raised}. {tally.get('confirmed', 0)} confirmed, "
+            f"{tally.get('anachronism', 0)} anachronism, "
+            f"{tally.get('unverifiable', 0)} unverifiable."
+        ),
+        (
+            "Every claim carries the scene numbers that made it, so a verdict "
+            "points at the pages to open. An `anachronism` is the one to read "
+            "first: it is the department saying the draft put something in a "
+            "year it did not exist in."
+        ),
+        (
+            f"This sweep is filed as `{result.get('sweep_id')}`. `get_sweep` "
+            "reads it back for free, and `export_room` with `kind: sweep` "
+            "exports it as the spreadsheet a writer would download."
+        ),
+    ]
+    if result.get("budget_exhausted"):
+        lines.append(
+            "The sweep reached its search limit before the end of the draft. "
+            "What came back is real; what is missing was never asked."
+        )
+    return _payload("\n\n".join(lines), result)
+
+
 # Name to implementation, kept OUT of `TOOLS` rather than as a key inside each
 # entry. `TOOLS` is serialised straight onto the wire, and a callable sitting
 # in it would either fail to serialise or have to be stripped on the way out —
@@ -1914,6 +2558,12 @@ _RUNNERS: dict[str, Callable[[dict, "Calls", Any], Any]] = {
     "defend_claim": _defend_claim,
     "research_question": _research_question,
     "delete_room": _delete_room,
+    "get_sweep": _get_sweep,
+    "export_room": _export_room,
+    "import_rooms": _import_rooms_tool,
+    "write_bible": _write_bible,
+    "link_room": _link_room,
+    "sweep_draft": _sweep_draft,
 }
 
 

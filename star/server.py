@@ -1061,42 +1061,99 @@ class RoomImport(BaseModel):
     apply: bool = False
 
 
-@app.post("/api/rooms/import")
-async def import_rooms(
-    req: RoomImport, authorization: str | None = Header(None)
-) -> dict:
-    """Somebody else's research, filed into this account.
+def _as_download(export: dict) -> Response:
+    """One `_export` result, as a file a browser saves rather than renders.
 
-    THE FIRST WAY A ROOM ENTERS AN ACCOUNT WITHOUT BEING RESEARCHED BY IT, and
-    the whole design turns on saying so. Anyone can type a plausible fact and a
-    real-looking url into a spreadsheet. If an imported room rendered like a
-    built one, "a room reading as better-sourced than its research made it" —
-    the property the annotation import refuses to break one claim at a time —
-    would be broken wholesale at the room level, by anyone, in one press.
-
-    So an imported room carries `imported_at`, spends no searches and claims
-    none, and never gets a bible from the file. Every surface that makes a
-    sourcing claim reads that field. The room is still worth having: a
-    co-writer handing over a story's research is the case this exists for, and
-    they are not attacking anybody.
-
-    ARMED, like `delete_room` and the annotation import: the first call reports
-    and writes nothing. This mints rooms in somebody's account and a reader
-    should see what they are about to get before they get it.
-
-    Costs nothing against the daily build ceiling, because it spends nothing —
-    no searches, no model calls. The bible is where the spend is, and it is a
-    separate press on `/api/rooms/{run_id}/bible`.
+    `nosniff` and an attachment disposition on both, because a content type a
+    browser can render is a content type it can be talked into executing, and
+    every one of these carries text off the open web.
     """
-    uid = _require_uid(authorization)
-    if len(req.csv) > config.max_import_chars():
+    return Response(
+        content=export["text"],
+        media_type=export["media_type"],
+        headers={
+            "Content-Disposition": f'attachment; filename="{export["filename"]}"',
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+async def _export(uid: str, run_id: str, kind: str, sweep_id: str = "") -> dict:
+    """One room's research, its story's, its bible or a sweep — as a file.
+
+    Transport-free for the reason `_run_check` and `_run_sweep` are: two doors
+    call it and neither should be reaching through the other's response class.
+    Returns `{filename, media_type, text}` so the browser route can set its
+    headers and the agent door can hand the text to a filesystem it has and
+    this process does not.
+    """
+    document = await asyncio.to_thread(_store.get, uid, run_id)
+    if document is None:
+        raise HTTPException(404, "Unknown run")
+
+    result = document_to_room(document)
+    title = (result.get("story_profile") or {}).get("title") or "room"
+    built = result.get("created_at")
+
+    if kind == "bible":
+        text = exports.bible_markdown(result, run_id)
+        if not text:
+            raise HTTPException(404, "This room has no bible to download.")
+        return {
+            "filename": exports.csv_filename(title, built, kind="bible", ext="md"),
+            "media_type": "text/markdown; charset=utf-8",
+            "text": text,
+        }
+
+    if kind == "sweep":
+        swept = await asyncio.to_thread(_store.get_sweep, uid, run_id, sweep_id)
+        if swept is None:
+            raise HTTPException(404, "Unknown sweep")
+        return {
+            "filename": exports.csv_filename(
+                (swept.get("room") or {}).get("title") or "sweep", swept.get("created_at")
+            ),
+            "media_type": "text/csv; charset=utf-8",
+            "text": exports.sweep_to_csv(swept),
+        }
+
+    if kind == "story":
+        documents = await _chain_documents(uid, run_id, document)
+        text = exports.chain_to_csv(
+            [(rid, document_to_room(doc)) for rid, doc in documents]
+        )
+        # A chain of one is a room. Naming that file `story` would promise a
+        # reader rooms that are not in it.
+        label = "story" if len(documents) > 1 else "research"
+        return {
+            "filename": exports.csv_filename(title, built, kind=label),
+            "media_type": "text/csv; charset=utf-8",
+            "text": text,
+        }
+
+    return {
+        "filename": exports.csv_filename(title, built, kind="research"),
+        "media_type": "text/csv; charset=utf-8",
+        "text": exports.room_to_csv(result, run_id),
+    }
+
+
+async def _import_rooms(uid: str, text: str, apply: bool) -> dict:
+    """A research export filed as rooms. Transport-free, for two doors.
+
+    Everything the endpoint's own docstring says about provenance is enforced
+    here rather than there, because the agent door reaches this function and
+    not that route — and the property that an imported room can never pass for
+    a built one must not depend on which door was used.
+    """
+    if len(text) > config.max_import_chars():
         raise HTTPException(
             400,
-            f"That file is {len(req.csv)} characters and the ceiling is "
+            f"That file is {len(text)} characters and the ceiling is "
             f"{config.max_import_chars()}. Import one story's research.",
         )
 
-    rooms, complaints = await asyncio.to_thread(exports.read_room, req.csv)
+    rooms, complaints = await asyncio.to_thread(exports.read_room, text)
     cap = config.max_rooms_per_import()
     if len(rooms) > cap:
         raise HTTPException(
@@ -1152,7 +1209,7 @@ async def import_rooms(
         for run_id, result in filed
     ]
 
-    if req.apply and filed:
+    if apply and filed:
         for run_id, result in filed:
             await asyncio.to_thread(
                 _store.save,
@@ -1161,7 +1218,112 @@ async def import_rooms(
                 room_to_document(run_id, result, "complete", now),
             )
 
-    return {"filed": bool(req.apply and filed), "rooms": preview, "complaints": complaints}
+    return {"filed": bool(apply and filed), "rooms": preview, "complaints": complaints}
+
+
+async def _link_room(uid: str, run_id: str, parent_id: str) -> dict:
+    """Make one room follow another, or clear the link. Transport-free.
+
+    Refused by name, each for its own reason, because "that did not work" on a
+    link a writer just drew is the least useful sentence available. The room
+    list is read once and answers all three.
+    """
+    parent_id = (parent_id or "").strip()
+    if parent_id:
+        if parent_id == run_id:
+            raise HTTPException(400, "A room cannot continue from itself.")
+        rooms = await asyncio.to_thread(_store.list_rooms, uid)
+        known = {room["run_id"] for room in rooms}
+        if parent_id not in known:
+            raise HTTPException(
+                404,
+                "That room is not filed under this account, so it cannot be "
+                "the one this room follows.",
+            )
+        if _chain_would_close(rooms, run_id, parent_id):
+            raise HTTPException(
+                400,
+                "That room already follows this one, directly or through "
+                "another, and a story cannot loop back into itself. Point this "
+                "room at an earlier one instead.",
+            )
+    if not await asyncio.to_thread(_store.set_continues, uid, run_id, parent_id):
+        raise HTTPException(404, "Unknown run")
+    return {"run_id": run_id, "continues": parent_id}
+
+
+async def _sweep_draft(uid: str, run_id: str, scenes: list[dict]) -> dict:
+    """A whole draft swept against one room. Transport-free, for two doors.
+
+    The BROWSER splits the draft (web/fountain.js) and sends the scenes, and so
+    must an agent. No Fountain parser lives on this side, deliberately: a
+    second one would be a second answer to "where does a scene begin", and the
+    writer would be picking scenes out of one list while the department checked
+    another.
+    """
+    scenes = [
+        {
+            "index": scene.get("index") or 0,
+            "heading": str(scene.get("heading") or ""),
+            "text": str(scene.get("text") or "").strip(),
+            # Bounded like the check route bounds its own, because this is
+            # client-supplied text that gets stored and handed back.
+            "key": str(scene.get("key") or "").strip()[:64],
+        }
+        for scene in scenes
+        if str(scene.get("text") or "").strip()
+    ]
+    if not scenes:
+        raise HTTPException(400, "Send the department a draft with scenes in it.")
+
+    cap = config.max_scenes_per_sweep()
+    if len(scenes) > cap:
+        raise HTTPException(
+            400,
+            f"That is {len(scenes)} scenes and one sweep reads {cap}. Send a "
+            "stretch of the script rather than the whole series.",
+        )
+    total = sum(len(s["text"]) for s in scenes)
+    ceiling = config.max_scene_chars() * cap
+    if total > ceiling:
+        raise HTTPException(
+            400,
+            f"That draft is {total} characters and one sweep reads {ceiling}. "
+            "Send a stretch of it.",
+        )
+
+    return await _run_sweep(uid, run_id, scenes)
+
+
+@app.post("/api/rooms/import")
+async def import_rooms(
+    req: RoomImport, authorization: str | None = Header(None)
+) -> dict:
+    """Somebody else's research, filed into this account.
+
+    THE FIRST WAY A ROOM ENTERS AN ACCOUNT WITHOUT BEING RESEARCHED BY IT, and
+    the whole design turns on saying so. Anyone can type a plausible fact and a
+    real-looking url into a spreadsheet. If an imported room rendered like a
+    built one, "a room reading as better-sourced than its research made it" —
+    the property the annotation import refuses to break one claim at a time —
+    would be broken wholesale at the room level, by anyone, in one press.
+
+    So an imported room carries `imported_at`, spends no searches and claims
+    none, and never gets a bible from the file. Every surface that makes a
+    sourcing claim reads that field. The room is still worth having: a
+    co-writer handing over a story's research is the case this exists for, and
+    they are not attacking anybody.
+
+    ARMED, like `delete_room` and the annotation import: the first call reports
+    and writes nothing. This mints rooms in somebody's account and a reader
+    should see what they are about to get before they get it.
+
+    Costs nothing against the daily build ceiling, because it spends nothing —
+    no searches, no model calls. The bible is where the spend is, and it is a
+    separate press on `/api/rooms/{run_id}/bible`.
+    """
+    uid = _require_uid(authorization)
+    return await _import_rooms(uid, req.csv, req.apply)
 
 
 @app.get("/api/rooms/{run_id}/events")
@@ -1402,38 +1564,7 @@ async def get_room_csv(
     worth asking for rather than being handed.
     """
     uid = _require_uid(authorization)
-    document = await asyncio.to_thread(_store.get, uid, run_id)
-    if document is None:
-        raise HTTPException(404, "Unknown run")
-
-    result = document_to_room(document)
-    profile = result.get("story_profile") or {}
-
-    if whole_chain:
-        # `document` passed in so the room already read is not read twice, the
-        # same reason _chain_documents takes `first` for a check.
-        documents = await _chain_documents(uid, run_id, document)
-        content = exports.chain_to_csv(
-            [(rid, document_to_room(doc)) for rid, doc in documents]
-        )
-        # A chain of one is a room. Naming that file `story` would promise a
-        # reader rooms that are not in it.
-        kind = "story" if len(documents) > 1 else "research"
-    else:
-        content = exports.room_to_csv(result, run_id)
-        kind = "research"
-
-    filename = exports.csv_filename(
-        profile.get("title") or "room", result.get("created_at"), kind=kind
-    )
-    return Response(
-        content=content,
-        media_type="text/csv; charset=utf-8",
-        headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
-            "X-Content-Type-Options": "nosniff",
-        },
-    )
+    return _as_download(await _export(uid, run_id, "story" if whole_chain else "research"))
 
 
 @app.get("/api/rooms/{run_id}.md")
@@ -1458,31 +1589,7 @@ async def get_room_bible(run_id: str, authorization: str | None = Header(None)) 
     other half of that pair and already prints.
     """
     uid = _require_uid(authorization)
-    document = await asyncio.to_thread(_store.get, uid, run_id)
-    if document is None:
-        raise HTTPException(404, "Unknown run")
-
-    result = document_to_room(document)
-    body = exports.bible_markdown(result, run_id)
-    if not body:
-        # A room can be filed with drawers full of research and no bible — an
-        # interrupted synthesis, or one the editor never reached. Refused with
-        # the reason rather than sent as a masthead over an empty page, which
-        # would read as a bible that says nothing.
-        raise HTTPException(404, "This room has no bible to download.")
-
-    profile = result.get("story_profile") or {}
-    filename = exports.csv_filename(
-        profile.get("title") or "room", result.get("created_at"), kind="bible", ext="md"
-    )
-    return Response(
-        content=body,
-        media_type="text/markdown; charset=utf-8",
-        headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
-            "X-Content-Type-Options": "nosniff",
-        },
-    )
+    return _as_download(await _export(uid, run_id, "bible"))
 
 
 @app.get("/api/rooms/{run_id}")
@@ -2599,38 +2706,14 @@ async def create_sweep(
     # Fountain parser lives on this side, deliberately: a second one would be a
     # second answer to "where does a scene begin", and the writer would be
     # picking scenes out of one list while the department checked another.
-    scenes = [
-        {
-            "index": s.index,
-            "heading": s.heading,
-            "text": s.text.strip(),
-            # Bounded like the check route bounds its own, because this is
-            # client-supplied text that gets stored and handed back.
-            "key": s.key.strip()[:64],
-        }
-        for s in req.scenes
-        if s.text.strip()
-    ]
-    if not scenes:
-        raise HTTPException(400, "Send the department a draft with scenes in it.")
-
-    cap = config.max_scenes_per_sweep()
-    if len(scenes) > cap:
-        raise HTTPException(
-            400,
-            f"That is {len(scenes)} scenes and one sweep reads {cap}. Send a "
-            "stretch of the script rather than the whole series.",
-        )
-    total = sum(len(s["text"]) for s in scenes)
-    ceiling = config.max_scene_chars() * cap
-    if total > ceiling:
-        raise HTTPException(
-            400,
-            f"That draft is {total} characters and one sweep reads {ceiling}. "
-            "Send a stretch of it.",
-        )
-
-    return await _run_sweep(uid, run_id, scenes)
+    return await _sweep_draft(
+        uid,
+        run_id,
+        [
+            {"index": s.index, "heading": s.heading, "text": s.text, "key": s.key}
+            for s in req.scenes
+        ],
+    )
 
 
 @app.get("/api/rooms/{run_id}/defence")
@@ -2847,29 +2930,10 @@ async def update_room(
 
     if "continues" in body:
         parent_id = str(body.get("continues") or "").strip()
-        if parent_id:
-            # Refused by name, each for its own reason, because "that did not
-            # work" on a link a writer just drew is the least useful sentence
-            # available. The room list is read once and answers all three.
-            if parent_id == run_id:
-                raise HTTPException(400, "A room cannot continue from itself.")
-            rooms = await asyncio.to_thread(_store.list_rooms, uid)
-            known = {room["run_id"] for room in rooms}
-            if parent_id not in known:
-                raise HTTPException(
-                    404,
-                    "That room is not filed under this account, so it cannot "
-                    "be the one this room follows.",
-                )
-            if _chain_would_close(rooms, run_id, parent_id):
-                raise HTTPException(
-                    400,
-                    "That room already follows this one, directly or through "
-                    "another, and a story cannot loop back into itself. Point "
-                    "this room at an earlier one instead.",
-                )
-        if not await asyncio.to_thread(_store.set_continues, uid, run_id, parent_id):
-            raise HTTPException(404, "Unknown run")
+        # One implementation, shared with the agent door. A second copy of the
+        # three refusals is how the two doors come to disagree about what a
+        # legal chain is.
+        await _link_room(uid, run_id, parent_id)
 
     updated = {"run_id": run_id}
     if "title" in body:
@@ -3102,6 +3166,24 @@ async def _mcp_run_requisition(
     return await _run_requisition(uid, run_id, question, Category(category))
 
 
+async def _mcp_read_sweeps(uid: str, run_id: str) -> list[dict]:
+    """The sweeps filed on one room, off the event loop like `list_rooms`.
+
+    No 404 for a room this account cannot see, and none for one that does not
+    exist: the path is rooted at `users/{uid}`, so both answer with an empty
+    list by construction — the same no-oracle posture the browser's own
+    `/scenes` route arrives at.
+    """
+    return await asyncio.to_thread(_store.list_sweeps, uid, run_id)
+
+
+async def _mcp_read_sweep(uid: str, run_id: str, sweep_id: str) -> dict:
+    document = await asyncio.to_thread(_store.get_sweep, uid, run_id, sweep_id)
+    if document is None:
+        raise HTTPException(404, "Unknown sweep")
+    return {"run_id": run_id, **document_to_sweep(document)}
+
+
 app.include_router(
     build_mcp_router(
         start_build=_mcp_start_build,
@@ -3110,6 +3192,17 @@ app.include_router(
         run_check=_run_check,
         delete_room=_mcp_delete_room,
         run_requisition=_mcp_run_requisition,
+        # The file half, and every one of these is the SAME transport-free
+        # function the browser's own route calls. That is the whole point of
+        # extracting them: an agent importing a room and a writer importing one
+        # cannot end up with different rules about what an imported room is.
+        run_sweep=_sweep_draft,
+        read_sweeps=_mcp_read_sweeps,
+        read_sweep=_mcp_read_sweep,
+        export_room=_export,
+        import_rooms=_import_rooms,
+        write_bible=_write_bible,
+        link_room=_link_room,
         resolve_token=_resolve_mcp_token,
     )
 )

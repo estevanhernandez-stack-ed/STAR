@@ -1007,6 +1007,13 @@ def calls_for(**handlers) -> tools.Calls:
         run_requisition=(
             handlers.get("run_requisition") or _unreachable("run_requisition")
         ),
+        run_sweep=handlers.get("run_sweep") or _unreachable("run_sweep"),
+        read_sweeps=handlers.get("read_sweeps") or _unreachable("read_sweeps"),
+        read_sweep=handlers.get("read_sweep") or _unreachable("read_sweep"),
+        export_room=handlers.get("export_room") or _unreachable("export_room"),
+        import_rooms=handlers.get("import_rooms") or _unreachable("import_rooms"),
+        write_bible=handlers.get("write_bible") or _unreachable("write_bible"),
+        link_room=handlers.get("link_room") or _unreachable("link_room"),
     )
 
 
@@ -1064,17 +1071,33 @@ def test_no_tool_is_a_second_name_for_another_tools_answer():
     model reading this list top-down meets everything that costs nothing before
     anything that costs money.
     """
-    assert [tool["name"] for tool in tools.TOOLS] == [
-        "list_rooms",
-        "get_room",
-        "ask_room",
-        "defend_claim",
-        "delete_room",
-        "build_room",
-        "check_scene",
-        "research_question",
-    ]
+    assert [tool["name"] for tool in tools.TOOLS] == list(tools._ORDER), (
+        "the order is declared in one place, and this is that place asserting "
+        "it is the order actually served"
+    )
     assert set(tools._RUNNERS) == {tool["name"] for tool in tools.TOOLS}
+
+
+def test_the_order_is_free_first_in_three_bands():
+    """The rule the declared order encodes, asserted as the rule.
+
+    A model reading `tools/list` top-down meets everything that costs nothing
+    before anything that costs money. `import_rooms` sits in the middle band on
+    purpose: it spends nothing and it is not a read either, because it mints
+    rooms in an account — and `delete_room` is in that band for the mirror
+    reason.
+    """
+    from star.oauth import validate
+
+    spends = {"build_room", "check_scene", "research_question", "sweep_draft", "write_bible"}
+    reads = {name for name, scope in validate.SCOPE_BY_TOOL.items() if scope == "rooms:read"}
+    order = list(tools._ORDER)
+
+    assert set(order[: len(reads)]) == reads, "every read comes first"
+    assert set(order[-len(spends) :]) == spends, "and everything that spends comes last"
+    assert set(order[len(reads) : -len(spends)]) == {"link_room", "import_rooms", "delete_room"}, (
+        "leaving the band that changes an account without charging it"
+    )
 
 
 def test_every_tool_carries_a_description_and_a_schema_a_client_can_read():
@@ -1088,7 +1111,14 @@ def test_every_tool_carries_a_description_and_a_schema_a_client_can_read():
         assert schema["additionalProperties"] is False
         assert set(schema.get("required") or []) <= set(schema["properties"])
         for prop in schema["properties"].values():
-            assert prop["type"] == "string"
+            # Strings, with exactly one exception: a draft arrives as its
+            # scenes, already split, because nothing on this side splits a
+            # screenplay. An array declared here is an array `_arguments`
+            # enforces — see the array branch there, which is driven off this
+            # same schema rather than written out per tool.
+            assert prop["type"] in ("string", "array"), tool["name"]
+            if prop["type"] == "array":
+                assert prop["items"]["type"] == "string", tool["name"]
             assert prop["description"].strip()
 
         description = tool["description"]
@@ -1163,14 +1193,23 @@ async def test_tools_list_puts_them_all_on_the_wire_with_their_descriptions():
 
     listed = body["result"]["tools"]
     assert [tool["name"] for tool in listed] == [
+        # Reads.
         "list_rooms",
         "get_room",
         "ask_room",
         "defend_claim",
+        "get_sweep",
+        "export_room",
+        # Writes that spend nothing.
+        "link_room",
+        "import_rooms",
         "delete_room",
+        # Spends.
         "build_room",
         "check_scene",
         "research_question",
+        "sweep_draft",
+        "write_bible",
     ]
     for tool in listed:
         assert tool["description"].strip()

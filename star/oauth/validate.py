@@ -63,6 +63,27 @@ SCOPE_BY_TOOL = {
     # workspace. Granting them together would be inferring the second consent
     # from the first.
     "delete_room": "rooms:delete",
+    # The file half. Reads read, spends spend, and the two that are neither
+    # obviously are worth their own sentence.
+    "get_sweep": "rooms:read",
+    "export_room": "rooms:read",
+    # Spends nothing and is still a write: it rewires what a story IS, and
+    # every check, every `ask_room` and every story export afterwards reads the
+    # chain it sets. A reader who handed an agent a read token was promising
+    # themselves the worst it could do is read.
+    "link_room": "rooms:write",
+    # Same band, and this is the line most worth arguing. `import_rooms`
+    # spends no searches and costs nothing — by the "what separates the two
+    # scopes is spending" rule above it would be a read. It is not: it MINTS
+    # ROOMS in somebody's account, and a reader who handed an agent a read
+    # token was promising themselves that the worst it could do is read. A
+    # workspace filling with rooms nobody asked for is not that.
+    "import_rooms": "rooms:write",
+    # Spends a model call over research the room already holds, and writes the
+    # document into it. No searches, but a write either way.
+    "write_bible": "rooms:write",
+    # One slot of the hourly window and one search budget for a whole draft.
+    "sweep_draft": "rooms:write",
 }
 
 # A tool missing from the map above is not scope-free, it is unfinished: the

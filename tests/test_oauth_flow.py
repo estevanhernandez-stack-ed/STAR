@@ -25,6 +25,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from star import server
+from star.mcp import tools
 
 RESOURCE = "https://star.626labs.dev"
 REDIRECT = "http://127.0.0.1:33418/callback"
@@ -170,16 +171,12 @@ def test_the_whole_flow_ends_with_a_token_that_opens_the_door(door):
         },
     )
     assert opened.status_code == 200
-    assert [t["name"] for t in opened.json()["result"]["tools"]] == [
-        "list_rooms",
-        "get_room",
-        "ask_room",
-        "defend_claim",
-        "delete_room",
-        "build_room",
-        "check_scene",
-        "research_question",
-    ]
+    # The whole department, in the order star/mcp/tools.py declares. Read off
+    # that tuple rather than copied here: what this test is for is that a real
+    # OAuth round trip ends at a door serving the real tool list, and a second
+    # hand-typed copy of the list would go stale and start asserting that it
+    # serves the tools it used to.
+    assert [t["name"] for t in opened.json()["result"]["tools"]] == list(tools._ORDER)
 
 
 def test_the_wrong_verifier_cannot_redeem_a_real_code(door):

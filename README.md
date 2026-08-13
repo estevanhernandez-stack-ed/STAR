@@ -71,8 +71,10 @@ Pipeline B · Script Check  (SequentialAgent)
 The agent door
   star/mcp/     Streamable HTTP, hand-written against the transport spec.
                 free:   list_rooms · get_room · ask_room · defend_claim
-                        delete_room
+                        get_sweep · export_room
+                writes: link_room · import_rooms · delete_room
                 spends: build_room · check_scene · research_question
+                        sweep_draft · write_bible
 ```
 
 Both doors call the **same** function objects for admission and for running a build, so
@@ -168,8 +170,11 @@ Tokens are stored as sha256, shown once at issue, never recoverable, and revocab
 can only be issued to an account with a linked identity, because an anonymous account's only
 proof of ownership is a `localStorage` entry.
 
-The door serves `list_rooms`, `get_room`, `ask_room`, `defend_claim`, `build_room`,
-`check_scene`, `delete_room` and `research_question`. `get_room` **is** `build_room`'s poll.
+The door serves `list_rooms`, `get_room`, `ask_room`, `defend_claim`, `get_sweep`,
+`export_room`, `link_room`, `import_rooms`, `delete_room`, `build_room`, `check_scene`,
+`research_question`, `sweep_draft` and `write_bible` — in that order, which is free first,
+then writes that spend nothing, then everything that costs money. `get_room` **is**
+`build_room`'s poll.
 `research_question` is what `ask_room` points at when a room does not answer: it researches
 that one question and files the result into the room the writer already has, rather than
 charging them a whole second room to learn one thing. `defend_claim` takes one filed fact
@@ -178,6 +183,17 @@ writer hands to whoever is challenging the detail, and it refuses to find a fact
 approximation rather than put real sources behind a claim the room never made. Every
 description is written for a reader who cannot see a screen, and every refusal names what
 failed and what to do next.
+
+The second half of that list is the writer's whole pipeline reachable without a browser.
+`sweep_draft` checks a whole screenplay against a room in one pass, for one slot of the
+hourly window instead of one per scene. `export_room` hands back the same CSV and markdown
+the browser downloads — defaulting to the file's SHAPE rather than its text, because a
+research export runs to hundreds of kilobytes and reading one into a model's context costs
+more than everything else on this door put together. `import_rooms` files somebody else's
+export as rooms, armed like `delete_room` and marked as imported in a way that does not come
+off. `write_bible` writes the document an imported room arrives without, from the findings it
+actually holds. Every one of them is the same transport-free function the browser's own route
+calls, so the two doors cannot end up disagreeing about what an imported room is.
 
 ## The draft, rather than the scene
 
