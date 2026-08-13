@@ -48,6 +48,10 @@ The console room hums.`;
 class Node {
   constructor(tag = "div") {
     this.nodeName = tag.toUpperCase();
+    // Both names, because the DOM has both and a test asserting an element is
+    // a <details> rather than a styled <div> should not have to know which one
+    // this stub happened to implement.
+    this.tagName = this.nodeName;
     this.childNodes = [];
     this.attributes = {};
     this.dataset = {};
@@ -587,6 +591,16 @@ globalThis.__fetch = async (url, options) => {
         matched: 2,
         unmatched: ["A claim that was never here"],
         complaints: ["Row 4 carries verdict, which the department writes."],
+        changes: [
+          { claim: "a Gibson", writer_note: "Keep it", dismissed: false },
+          {
+            claim: "turning it up to eleven",
+            writer_note: "Cut this",
+            dismissed: true,
+            was_note: "The note I typed on Tuesday",
+            was_dismissed: false,
+          },
+        ],
         claims: [],
       }),
     };
@@ -658,6 +672,53 @@ const inReport = (btn) => {
   return walk(ids["check-import-result"]);
 };
 
+/* The fold-out: what the count does not say. -------------------------- */
+//
+// "2 claims in this sweep would take a note" is TRUE and unactionable. It does
+// not say where the notes land, and it does not say that one of them is about
+// to overwrite something the writer typed a fortnight ago. That overwrite is
+// the reason this exists: it is invisible in a count and irreversible after
+// the press.
+
+const report = ids["check-import-result"].childNodes[0];
+const find = (cls, node = report) => {
+  if (String(node.attributes?.class || "").split(/\s+/).includes(cls)) return node;
+  for (const kid of node.childNodes || []) {
+    const hit = find(cls, kid);
+    if (hit) return hit;
+  }
+  return null;
+};
+
+const foldout = find("import-changes");
+assert.ok(foldout, "the preview renders a fold-out");
+assert.equal(foldout.tagName, "DETAILS", "a <details>, so it discloses without script");
+assert.equal(
+  foldout.childNodes[0].tagName,
+  "SUMMARY",
+  "whose first child is the summary, or it never collapses"
+);
+assert.match(foldout.textContent, /Show exactly what/, "and the summary invites the open");
+
+const foldoutText = foldout.textContent;
+assert.match(foldoutText, /a Gibson/, "each claim is named");
+assert.match(foldoutText, /Keep it/, "with the note it would take");
+assert.match(
+  foldoutText,
+  /replacing: The note I typed on Tuesday/,
+  "AND THE WORDS BEING OVERWRITTEN. A writer re-importing a stale copy of the " +
+    "file loses what they typed since, and no count on this page would say so"
+);
+assert.match(foldoutText, /struck from the sweep/, "a strike reads as a strike");
+
+// Above the button, below the sentence. The button is the last child of the
+// report, so the fold-out has to come before it or a reader presses first.
+const kids = report.childNodes;
+assert.ok(
+  kids.indexOf(foldout) < kids.indexOf(ids["check-import-btn"]),
+  "the fold-out renders ABOVE the control it informs"
+);
+
 assert.ok(inReport(ids["check-import-btn"]), "armed, the button is INSIDE the report");
 assert.ok(
   ids["check-import-btn"].classList.contains("armed"),
@@ -669,7 +730,6 @@ assert.ok(
 );
 // Under the warnings, never above them. A confirm button that renders before
 // the skipped rows is one a reader presses without having read them.
-const report = ids["check-import-result"].childNodes[0];
 assert.equal(
   report.childNodes[report.childNodes.length - 1],
   ids["check-import-btn"],

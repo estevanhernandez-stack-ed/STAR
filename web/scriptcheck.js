@@ -1153,10 +1153,72 @@ function stowImportButton() {
   if (els.importControls) els.importControls.appendChild(els.importBtn);
 }
 
+/** The fold-out: claim by claim, exactly what this import writes.
+ *
+ *  "25 claims in this sweep would take a note" is a count, and a count is not
+ *  a preview. A writer arming a write into their own filed record could read
+ *  that and still not know whether the notes were landing where they meant,
+ *  whether a line they struck last week was about to be un-struck, or whether
+ *  a note from a fortnight ago was about to be replaced out of a stale copy of
+ *  the file. Same shape as every other defect on this surface this week: the
+ *  screen said something true that nobody could act on.
+ *
+ *  A <details> rather than a list, because the common case is a writer who
+ *  already trusts the file and wants the button. Shut by default, one press to
+ *  open, no script — the element does its own disclosure, so this works before
+ *  and after any of our JavaScript has run.
+ *
+ *  The diff is the SERVER'S. star/server.py holds the stored sweep and the
+ *  marked one at the same moment and says which claims moved; recomputing that
+ *  here from a payload carrying only the after-state is how one fact grows a
+ *  second implementation in a second language, which is exactly how
+ *  web/consent.js came to say "four calls" on the day a fifth tool shipped. */
+function renderChanges(changes, { applied }) {
+  const details = el("details", "import-changes");
+  const label = applied
+    ? `${plural(changes.length, "claim")} filed. Show what was written`
+    : `${plural(changes.length, "claim")} would change. Show exactly what`;
+  details.appendChild(el("summary", "", label));
+
+  const list = el("ul", "import-list");
+  for (const change of changes) {
+    const item = el("li", "import-change");
+    item.appendChild(el("span", "import-change-claim", String(change?.claim || "")));
+
+    if (change?.dismissed) {
+      item.appendChild(el("span", "import-change-struck", "struck from the sweep"));
+    } else if (change?.was_dismissed) {
+      // The un-strike. Silent, this is the one a writer would never guess
+      // happened: a blank `dismissed` cell in a stale file restores a line
+      // they cut on purpose.
+      item.appendChild(el("span", "import-change-struck", "no longer struck"));
+    }
+
+    if (change?.writer_note) {
+      item.appendChild(el("span", "import-change-note", String(change.writer_note)));
+    } else if (change?.was_note) {
+      item.appendChild(el("span", "import-change-struck", "note removed"));
+    }
+
+    // Last, and only when something is being overwritten. A "was" on every row
+    // would bury the handful that are actually replacing a writer's own words.
+    if (change?.was_note) {
+      item.appendChild(
+        el("span", "import-change-was", `replacing: ${String(change.was_note)}`)
+      );
+    }
+    list.appendChild(item);
+  }
+
+  details.appendChild(list);
+  return details;
+}
+
 function renderImport(payload, { applying, text }) {
   const matched = Number(payload?.matched) || 0;
   const unmatched = Array.isArray(payload?.unmatched) ? payload.unmatched : [];
   const complaints = Array.isArray(payload?.complaints) ? payload.complaints : [];
+  const changes = Array.isArray(payload?.changes) ? payload.changes : [];
   const body = el("div", "import-report");
   let armed = false;
   // Home first, so the branches below only have to say when it moves. A stow
@@ -1198,6 +1260,10 @@ function renderImport(payload, { applying, text }) {
       )
     );
   }
+
+  // Directly under the sentence that names the count, because it is the answer
+  // to the question that sentence raises.
+  if (changes.length) body.appendChild(renderChanges(changes, { applied: !!payload?.applied }));
 
   // Named rather than counted. Silence here would let a writer annotate twenty
   // claims, import, and find nineteen with no way to learn which.

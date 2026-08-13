@@ -1285,6 +1285,69 @@
   color: color-mix(in srgb, var(--oxide) 80%, var(--ink));
 }
 
+/* THE FOLD-OUT. Shut by default: the common case is a writer who already
+   trusts the file and wants the button, and the list can run to eighty lines
+   on a whole-draft sweep. */
+.import-changes {
+  margin: 0 0 0.75rem;
+  border-left: 2px solid color-mix(in srgb, var(--cabinet) 30%, transparent);
+  padding-left: 0.8rem;
+}
+
+.import-changes > summary {
+  font-family: var(--label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  font-size: var(--label-sm);
+  color: var(--cabinet);
+  cursor: pointer;
+  padding: 0.25rem 0;
+}
+
+.import-changes > summary:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.import-changes .import-list {
+  margin-top: 0.5rem;
+}
+
+.import-change {
+  margin-bottom: 0.6rem;
+}
+
+/* Each part on its own line: a claim, then what happens to it. Run together
+   they read as one sentence, and the claim text is the writer's own words
+   while everything after it is ours. */
+.import-change > span {
+  display: block;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.import-change-claim {
+  font-weight: 600;
+}
+
+.import-change-note {
+  color: color-mix(in srgb, var(--aniline) 85%, var(--ink));
+}
+
+/* Struck, un-struck, and note-removed share the FLAGGED pad, because all three
+   take something away and a writer skimming should catch them. */
+.import-change-struck {
+  color: color-mix(in srgb, var(--oxide) 80%, var(--ink));
+}
+
+/* The overwrite. Quieter than the new note it replaces, because it is what is
+   going away — but present, because a note being replaced by a stale file is
+   the one change nobody would guess had happened. */
+.import-change-was {
+  color: color-mix(in srgb, var(--ink) 55%, transparent);
+  font-style: italic;
+}
+
 .import-list {
   margin: 0 0 0.75rem;
   padding-left: 1.2rem;

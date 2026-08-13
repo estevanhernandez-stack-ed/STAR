@@ -2741,8 +2741,59 @@ async def annotate_sweep(
         # one went missing.
         "unmatched": unmatched,
         "complaints": complaints,
+        "changes": _annotation_changes(document, updated),
         "claims": updated.get("claims") or [],
     }
+
+
+def _annotation_changes(before: dict, after: dict) -> list[dict]:
+    """Claim by claim, what this import would write. Pure.
+
+    "25 claims in this sweep would take a note" is a count, and a count is not
+    a preview. A writer arming a write into their own filed record can read
+    that sentence and still not know whether the notes are going where they
+    meant, whether a line they struck last week is about to be un-struck, or
+    whether a note they typed a fortnight ago is about to be replaced by one
+    from a stale copy of the file. Same shape as every other defect on this
+    surface this week: true, and not the thing.
+
+    So the diff is computed here, where BOTH documents are in hand, rather than
+    in the browser. The alternative is the app re-deriving what the server
+    already knows from a payload that carries only the after-state, which is
+    how a second implementation of one fact starts.
+
+    `was` fields are present only when they differ, so a reader scanning the
+    list sees a replacement standing out from a first note rather than having
+    to compare two strings on every row.
+    """
+    stored = {
+        str((claim or {}).get("text") or "").strip(): claim or {}
+        for claim in before.get("claims") or []
+    }
+
+    changes: list[dict] = []
+    for claim in after.get("claims") or []:
+        claim = claim or {}
+        text = str(claim.get("text") or "").strip()
+        note = claim.get("writer_note") or ""
+        struck = bool(claim.get("dismissed"))
+        old = stored.get(text) or {}
+        was_note = old.get("writer_note") or ""
+        was_struck = bool(old.get("dismissed"))
+
+        if note == was_note and struck == was_struck:
+            continue
+
+        change: dict = {"claim": text, "writer_note": note, "dismissed": struck}
+        # Only when they moved. A `was_note` echoing the new note on every row
+        # would bury the handful that are genuinely overwriting something.
+        if was_note and was_note != note:
+            change["was_note"] = was_note
+        if was_struck != struck:
+            change["was_dismissed"] = was_struck
+        changes.append(change)
+
+    return changes
 
 
 @app.delete("/api/rooms/{run_id}/sweeps/{sweep_id}")
