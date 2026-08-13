@@ -168,6 +168,27 @@
                  software: see #auth-error above, which had that shape. -->
             <span id="intake-error" class="error" role="alert"></span>
           </div>
+
+          <!-- BRINGING SOMEBODY ELSE'S RESEARCH IN. Here, beside the control
+               that starts a room, because this is the surface a person who has
+               been handed a file arrives on — they have no room to open, so an
+               import buried inside one could only ever serve the person who
+               already had the data. Below the build box rather than beside it:
+               starting your own room is the main act on this page. -->
+          <div class="intake-import">
+            <h3>Been handed somebody else's research?</h3>
+            <p>
+              A room's <strong>Research as CSV</strong> or <strong>The story as
+              CSV</strong> files straight back in. Nothing is searched and
+              nothing is spent — the verification travelled with the file. The
+              room will say it was imported rather than researched here.
+            </p>
+            <div class="actions">
+              <input id="import-input" type="file" accept=".csv,text/csv" />
+              <button id="import-btn" type="button" disabled>Read the file</button>
+            </div>
+            <div id="import-result" class="import-result" role="status"></div>
+          </div>
         </div>
 
         <!-- The four plates, at index scale. Each remit is compressed from the

@@ -189,6 +189,11 @@ def test_room_summary_is_small_enough_for_a_rail():
         # the same test the exclusions below fail: the alternative is reading
         # twenty rooms whole to draw a list of twenty.
         "continues": "",
+        # Empty on a room this account researched, and set on one that arrived
+        # in a file. On the same trade again: whether a room's research was
+        # done here or handed over is not something a reader should have to
+        # open the room to find out.
+        "imported_at": "",
         # Empty here, and that is the point of it being cheap: a note only
         # exists on a room that ended badly, so the rail carries one sentence
         # for the one room in twenty that failed and nothing for the rest. It

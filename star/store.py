@@ -126,8 +126,18 @@ def room_to_document(
         "bible_tokens": result.get("bible_tokens") or {},
         # Which room this one follows. Empty at build: a story becomes a story
         # when its writer says so, not when the department guesses from two
-        # treatments sharing a decade.
-        "continues": "",
+        # treatments sharing a decade. An IMPORT is the exception — the link
+        # travelled in the file and the importer has already remapped it onto
+        # the ids it minted, so a story that arrives arrives whole.
+        "continues": result.get("continues") or "",
+        # WHEN THIS ROOM ARRIVED FROM A FILE, and empty on every room this
+        # account actually researched. It is the one field that separates
+        # research this department did from research somebody handed over, and
+        # every surface that makes a claim about sourcing has to be able to
+        # read it. A room that arrived in a spreadsheet and renders as a built
+        # one is the room-sized version of the thing the annotation import
+        # refuses to do one claim at a time.
+        "imported_at": result.get("imported_at") or "",
         # Why this room ended the way it did, when that needs saying. Empty on
         # a room that finished: a complete build's account of itself is the
         # research, and a note there would be a label on a door that is open.
@@ -163,6 +173,7 @@ def document_to_room(doc: dict) -> dict:
         "bible_finish_reason": doc.get("bible_finish_reason") or "",
         "bible_tokens": doc.get("bible_tokens") or {},
         "continues": doc.get("continues") or "",
+        "imported_at": doc.get("imported_at") or "",
         "note": doc.get("note") or "",
     }
 
@@ -185,6 +196,10 @@ def room_summary(doc: dict) -> dict:
         # Reading twenty rooms whole to draw a list of twenty is the exact cost
         # this shape exists to avoid.
         "continues": doc.get("continues") or "",
+        # And here for the same reason again: whether a room was researched by
+        # this account or handed to it is the kind of thing a reader should not
+        # have to open a room to find out.
+        "imported_at": doc.get("imported_at") or "",
         # For the same reason, one layer along: a rail that shows a room as
         # failed and makes the reader open it to learn why has moved the
         # explanation somewhere they have to go looking for it.

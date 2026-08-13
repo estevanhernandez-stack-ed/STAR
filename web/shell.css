@@ -1078,6 +1078,94 @@ button {
   cursor: wait;
 }
 
+/* BRINGING A ROOM IN. Under the build box, separated by a rule, because
+   starting your own room is the main act on this page and this is the other
+   door onto it. Same treatment as the check panel's own import block — one
+   pattern for "hand the department a file", wherever it appears. */
+.intake-import {
+  margin: 1.75rem 0 0;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--manila-edge);
+}
+
+.intake-import h3 {
+  margin: 0 0 0.6rem;
+  font-family: var(--label);
+  font-size: var(--text-sm);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.intake-import p {
+  margin: 0 0 0.9rem;
+  max-width: 62ch;
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+.intake-import .actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.intake-import input[type="file"] {
+  font-family: var(--body);
+  font-size: var(--text-sm);
+  color: var(--ink);
+  max-width: 22rem;
+}
+
+#import-btn {
+  background: var(--cabinet);
+  color: var(--manila);
+  border: 1px solid var(--cabinet);
+  border-radius: 3px;
+  padding: 0.5rem 1.1rem;
+  font-family: var(--label);
+  font-size: var(--label-sm);
+  font-weight: 700;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+#import-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.import-result {
+  margin-top: 0.9rem;
+}
+
+.import-result p {
+  margin: 0 0 0.45rem;
+}
+
+/* One room's line in the preview. Slug-faced so a list of rooms reads as a
+   list rather than as prose. */
+.import-room {
+  font-family: var(--slug);
+  font-size: var(--text-sm);
+}
+
+/* NOT --oxide raw: see the note on .error below. Same 4.57:1 mix, same
+   reason — this sits on --manila too. */
+.import-error,
+.import-complaint {
+  color: color-mix(in srgb, var(--oxide) 70%, var(--ink));
+}
+
+.import-done {
+  font-weight: 700;
+}
+
 /* The intake's own error line, which sits on --manila where raw --oxide is
    3.23:1 — Task 3's logged palette-inherent shortfall, and this is one of the
    two places it reaches text. Mixed toward --ink it is 4.57:1 — the browser's

@@ -45,6 +45,7 @@ import {
   setLiveRun,
   setRoomRenderer,
   knownRooms,
+  loadRoom,
 } from "/shell.js";
 import { initAccount, openAccount } from "/account.js";
 // Served by star/server.py from config.max_room_title_chars(), not typed here.
@@ -83,6 +84,9 @@ const checkBtn = $("check-btn");
 const roomCsvBtn = $("room-csv-btn");
 const chainCsvBtn = $("chain-csv-btn");
 const bibleMdBtn = $("bible-md-btn");
+const importInput = $("import-input");
+const importBtn = $("import-btn");
+const importResult = $("import-result");
 
 /* What each toggle says when its surface is CLOSED, read off the markup once
  * rather than written here a second time.
@@ -585,6 +589,149 @@ chainCsvBtn.addEventListener("click", () =>
 // document rather than a table and leaves as one — see exports.bible_markdown
 // for why it is not a cell in the CSV above.
 bibleMdBtn.addEventListener("click", () => downloadCsv(bibleMdBtn, ".md", "bible.md"));
+
+/*  BRINGING A ROOM IN. Lives on the intake surface, which is the whole point:
+ *  a reader who has been handed a file has no room to open, so an import
+ *  reached through a room could only ever serve the person who already had the
+ *  data. That was the shape the sweep's annotation import shipped in, and it
+ *  made a triage tool look like a sharing one.
+ *
+ *  TWO PRESSES, armed on the text that was previewed rather than on a flag —
+ *  the same arming the annotation import uses and for the same reason. This one
+ *  mints rooms in an account, and a reader should see what they are about to
+ *  get before they get it. The server enforces it too: `apply` defaults false. */
+let pendingImport = null;
+
+importInput.addEventListener("change", () => {
+  importBtn.disabled = !importInput.files?.length;
+  importBtn.textContent = "Read the file";
+  importResult.replaceChildren();
+  pendingImport = null;
+});
+
+importBtn.addEventListener("click", runImport);
+
+async function runImport() {
+  const file = importInput.files?.[0];
+  if (!file) return;
+  importBtn.disabled = true;
+
+  let text;
+  try {
+    text = await file.text();
+  } catch {
+    importBtn.disabled = false;
+    importResult.replaceChildren(el("p", "import-error", "That file could not be read from disk."));
+    return;
+  }
+
+  const applying = pendingImport === text;
+  importResult.replaceChildren(
+    el("p", "import-working", applying ? "Filing the research…" : "Reading the file…")
+  );
+
+  let payload;
+  try {
+    const res = await authedFetch("/api/rooms/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ csv: text, apply: applying }),
+    });
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        detail = (await res.json()).detail || detail;
+      } catch {
+        /* body wasn't JSON; fall back to statusText */
+      }
+      throw new Error(detail);
+    }
+    payload = await res.json();
+  } catch (err) {
+    importBtn.disabled = false;
+    importResult.replaceChildren(el("p", "import-error", err.message));
+    return;
+  }
+
+  importBtn.disabled = false;
+  renderImport(payload, text);
+}
+
+function renderImport(payload, text) {
+  const rooms = Array.isArray(payload?.rooms) ? payload.rooms : [];
+  const complaints = Array.isArray(payload?.complaints) ? payload.complaints : [];
+  const body = document.createDocumentFragment();
+
+  if (payload?.filed) {
+    pendingImport = null;
+    importInput.value = "";
+    importBtn.disabled = true;
+    importBtn.textContent = "Read the file";
+    body.appendChild(
+      el(
+        "p",
+        "import-done",
+        `${rooms.length === 1 ? "One room" : `${rooms.length} rooms`} filed. ` +
+          "They are in the rail, marked as imported."
+      )
+    );
+  } else if (!rooms.length) {
+    // Nothing to arm. Leaving the button on "File these rooms" here would
+    // offer to file a file that has no rooms in it.
+    pendingImport = null;
+    importBtn.textContent = "Read the file";
+    body.appendChild(el("p", "import-error", "Nothing in that file could be filed as a room."));
+  } else {
+    pendingImport = text;
+    importBtn.textContent = "File these rooms";
+    body.appendChild(
+      el(
+        "p",
+        "import-note",
+        `${rooms.length === 1 ? "One room" : `${rooms.length} rooms`} in that file. ` +
+          "Nothing has been filed yet."
+      )
+    );
+  }
+
+  for (const room of rooms) {
+    const line = [
+      room.title || "Untitled room",
+      room.era || "",
+      `${room.findings} finding${room.findings === 1 ? "" : "s"}`,
+      `${room.sources} source${room.sources === 1 ? "" : "s"}`,
+      room.continues ? "follows another room in this file" : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    body.appendChild(el("p", "import-room", line));
+  }
+
+  // Named rather than counted, the rule the annotation import already follows:
+  // silence here would let a reader file a file that quietly dropped half of it.
+  for (const complaint of complaints) {
+    body.appendChild(el("p", "import-complaint", complaint));
+  }
+
+  if (!payload?.filed && rooms.length) {
+    body.appendChild(
+      el(
+        "p",
+        "import-note",
+        "Nothing is searched and nothing is spent. These rooms will say they " +
+          "were imported rather than researched here."
+      )
+    );
+  }
+
+  importResult.replaceChildren(body);
+
+  if (payload?.filed && rooms.length) {
+    // The rail first, then the room. A reader who just filed research should
+    // land in it rather than be told where to find it.
+    refreshRail(rooms[0].run_id).then(() => loadRoom(rooms[0].run_id));
+  }
+}
 
 /*  stampDate — DD MON YYYY, matching the stamp's slug-face convention in
  *  docs/design/visual-directions.md's own mockup ("RET 09 AUG 2026") — now
@@ -1359,6 +1506,18 @@ function paintRoom(result, status) {
  *  worth reporting. */
 function statsLine(result, filed) {
   const parts = [];
+  // AN IMPORTED ROOM SAYS SO FIRST, before any number that could be read as
+  // work this account did. "0 web searches" is literally true of one and reads
+  // as a build that found nothing rather than as research that arrived in a
+  // file, so the search count is dropped and replaced.
+  if (String(result.imported_at || "").trim()) {
+    parts.push(`imported ${roomDate(result.imported_at) || ""}`.trim());
+    if (typeof result.source_count === "number" && result.source_count > 0) {
+      parts.push(`${plural(result.source_count, "source")} came with it`);
+    }
+    parts.push("no searches run by you");
+    return parts.filter(Boolean).join(" · ");
+  }
   // typeof, not Number(): `Number(null)` is 0, and a room whose count never
   // reached the client would have printed a confident "0 web searches" for a
   // run that ran seventeen.
@@ -1377,6 +1536,20 @@ function statsLine(result, filed) {
  *  because this file's only other reason to reach into clip.js would be
  *  escapeHtml, which it already has its own copy of. Recorded as a known
  *  duplication, not an oversight: see this file's escapeHtml below. */
+/** A fourth copy, and named as one. web/account.js, web/consent.js and
+ *  web/scriptcheck.js each carry these seven lines, and none of them exports
+ *  it. Recorded as a known duplication for the same reason `plural` and
+ *  `escapeHtml` below are: the alternative is a shared module whose only
+ *  member is this, imported by four files that otherwise share nothing. */
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.setAttribute("class", className);
+  if (text !== undefined && text !== null && text !== "") {
+    node.appendChild(document.createTextNode(String(text)));
+  }
+  return node;
+}
+
 function plural(n, word) {
   const suffix = /(?:[sxz]|[cs]h)$/i.test(word) ? "es" : "s";
   return n === 1 ? `${n} ${word}` : `${n} ${word}${suffix}`;
@@ -1439,6 +1612,7 @@ function renderDocket(profile, status, result) {
     .join(" &middot; ");
 
   return `
+    ${String(result.imported_at || "").trim() ? importedDocketNote() : ""}
     ${status === "partial" && !String(result.research_bible || "").trim() ? partialDocketNote() : ""}
     ${slug ? `<p class="docket-slug">${slug}</p>` : ""}
     ${
@@ -1524,6 +1698,27 @@ function filedCount(categories) {
  *  the same fact rather than two proxies for it. */
 function partialDocketNote() {
   return `<p class="docket-note">Filed without a bible. The research is in the drawers.</p>`;
+}
+
+/** THE ONE CLAIM AN IMPORTED ROOM HAS TO MAKE ABOUT ITSELF, on the cover sheet
+ *  where a reader meets the room rather than three surfaces in.
+ *
+ *  A room that arrived in a spreadsheet and renders like a built one is the
+ *  room-sized version of what the annotation import refuses to do one claim at
+ *  a time: let a room read as better-sourced than its research made it. The
+ *  difference is that this one takes a single press by anybody, on a file
+ *  anybody can type. The sources are real or they are not, and this app has no
+ *  way to tell — so it says who did the telling. */
+function importedDocketNote() {
+  // Says "here" rather than naming the thing a room is filed under, which
+  // tests/js/test_intake_silence.mjs forbids every module on this path from
+  // putting in a sentence. Plainer copy for the same meaning, which is the
+  // usual outcome when that rule bites.
+  return (
+    `<p class="docket-note">Imported from a file. The research and its ` +
+    `sources came from somewhere else — no searches were run here, and ` +
+    `nothing in it has been verified by this department.</p>`
+  );
 }
 
 /** One drawer of a filed room, mounted with its own toggle.

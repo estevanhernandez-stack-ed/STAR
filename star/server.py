@@ -883,6 +883,114 @@ async def create_room(
     return await _start_build(uid, req.treatment, gate=_ip_gate(request))
 
 
+class RoomImport(BaseModel):
+    csv: str
+    apply: bool = False
+
+
+@app.post("/api/rooms/import")
+async def import_rooms(
+    req: RoomImport, authorization: str | None = Header(None)
+) -> dict:
+    """Somebody else's research, filed into this account.
+
+    THE FIRST WAY A ROOM ENTERS AN ACCOUNT WITHOUT BEING RESEARCHED BY IT, and
+    the whole design turns on saying so. Anyone can type a plausible fact and a
+    real-looking url into a spreadsheet. If an imported room rendered like a
+    built one, "a room reading as better-sourced than its research made it" —
+    the property the annotation import refuses to break one claim at a time —
+    would be broken wholesale at the room level, by anyone, in one press.
+
+    So an imported room carries `imported_at`, spends no searches and claims
+    none, and never gets a bible from the file. Every surface that makes a
+    sourcing claim reads that field. The room is still worth having: a
+    co-writer handing over a story's research is the case this exists for, and
+    they are not attacking anybody.
+
+    ARMED, like `delete_room` and the annotation import: the first call reports
+    and writes nothing. This mints rooms in somebody's account and a reader
+    should see what they are about to get before they get it.
+
+    Costs nothing against the daily build ceiling, because it spends nothing —
+    no searches, no model calls. The bible is where the spend is, and it is a
+    separate press on `/api/rooms/{run_id}/bible`.
+    """
+    uid = _require_uid(authorization)
+    if len(req.csv) > config.max_import_chars():
+        raise HTTPException(
+            400,
+            f"That file is {len(req.csv)} characters and the ceiling is "
+            f"{config.max_import_chars()}. Import one story's research.",
+        )
+
+    rooms, complaints = await asyncio.to_thread(exports.read_room, req.csv)
+    cap = config.max_rooms_per_import()
+    if len(rooms) > cap:
+        raise HTTPException(
+            400,
+            f"That file holds {len(rooms)} rooms and one import files {cap}. "
+            "Send a story rather than a library.",
+        )
+
+    now = datetime.now(timezone.utc).isoformat()  # noqa: UP017
+    # Minted before anything is written so `continues` can be remapped: the
+    # link in the file names the SENDER'S room, which means nothing here, and
+    # the only account that can resolve it is one holding both rooms at once.
+    # That is exactly this request.
+    minted = {sender: uuid.uuid4().hex[:12] for sender, _ in rooms}
+    filed = []
+    for sender, result in rooms:
+        run_id = minted[sender]
+        parent = minted.get(result.get("continues") or "", "")
+        if result.get("continues") and not parent:
+            complaints.append(
+                f"“{result['story_profile']['title']}” follows a room "
+                "that is not in this file, so it arrives unlinked. Set what it "
+                "follows with Name and place."
+            )
+        filed.append(
+            (
+                run_id,
+                {
+                    **result,
+                    "continues": parent,
+                    "imported_at": now,
+                    # NOT carried from the file, and this is the line that does
+                    # the work. A count is a claim about searches this account
+                    # ran, and it ran none.
+                    "search_count": 0,
+                },
+            )
+        )
+
+    preview = [
+        {
+            "run_id": run_id,
+            "title": (result.get("story_profile") or {}).get("title") or "",
+            "era": (result.get("story_profile") or {}).get("era") or "",
+            "continues": result.get("continues") or "",
+            "findings": sum(
+                len(drawer.get("findings") or [])
+                for drawer in (result.get("categories") or {}).values()
+            ),
+            "sources": result.get("source_count") or 0,
+            "drawers": sorted((result.get("categories") or {}).keys()),
+        }
+        for run_id, result in filed
+    ]
+
+    if req.apply and filed:
+        for run_id, result in filed:
+            await asyncio.to_thread(
+                _store.save,
+                uid,
+                run_id,
+                room_to_document(run_id, result, "complete", now),
+            )
+
+    return {"filed": bool(req.apply and filed), "rooms": preview, "complaints": complaints}
+
+
 @app.get("/api/rooms/{run_id}/events")
 async def stream_events(
     run_id: str,

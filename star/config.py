@@ -139,6 +139,27 @@ def max_annotation_chars() -> int:
     return int(os.environ.get("STAR_MAX_ANNOTATION_CHARS", "500000"))
 
 
+def max_import_chars() -> int:
+    """Ceiling on a research file being filed as rooms.
+
+    Larger than the annotation ceiling because a chain export carries several
+    rooms and every excerpt behind every finding: the two-room Doctor Who story
+    exports at roughly 320KB. Doubled from there, so a story of five or six
+    rooms lands and a library does not.
+    """
+    return int(os.environ.get("STAR_MAX_IMPORT_CHARS", "1500000"))
+
+
+def max_rooms_per_import() -> int:
+    """How many rooms one file may file at once.
+
+    A story, not a library. The chain a check walks is capped at 12 rooms
+    (star/chain.py's MAX_DEPTH) and importing a chain deeper than a check can
+    read would file rooms the department could never use together.
+    """
+    return int(os.environ.get("STAR_MAX_ROOMS_PER_IMPORT", "12"))
+
+
 def max_question_chars() -> int:
     """Ceiling on one requisitioned question.
 

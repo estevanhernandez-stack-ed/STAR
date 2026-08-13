@@ -22,6 +22,8 @@ export is a view of a filed sweep; a sweep is the record.
 import csv
 import io
 
+from star.models import Category
+
 # What a spreadsheet treats as the start of a formula, plus the two whitespace
 # characters that let an attacker push a formula past a naive prefix check.
 _DANGEROUS = ("=", "+", "-", "@", "\t", "\r")
@@ -347,6 +349,12 @@ ROOM_COLUMNS = (
     "requisition",
     "room",
     "era",
+    # The room this one follows, by the SENDER'S id. Meaningless on its own in
+    # anybody else's account — but when both rooms travel in one chain export,
+    # the import remaps it onto the ids it just minted and the story arrives
+    # linked. A chain that arrives as two unrelated rooms has lost the thing
+    # the chain was built for.
+    "continues",
     "run_id",
 )
 
@@ -386,6 +394,7 @@ def room_rows(result: dict, run_id: str = "") -> list[dict]:
                 "requisition": finding.get("requisition") or "",
                 "room": room,
                 "era": era,
+                "continues": str(result.get("continues") or ""),
                 "run_id": run_id,
             }
             citations = finding.get("citations") or []
@@ -447,6 +456,192 @@ def chain_to_csv(rooms) -> str:
         for row in room_rows(result, run_id):
             writer.writerow({key: safe_cell(row.get(key)) for key in ROOM_COLUMNS})
     return buffer.getvalue()
+
+
+# The four drawers a room has. A row naming anything else is filed under the
+# drawer it most nearly is, and told about — a room with a fifth drawer renders
+# nowhere, and silently dropping the row would lose research the sender paid
+# for. Imported from star.models so the names cannot drift from the ones the
+# researchers, the bible and web/drawer.js all use.
+_DRAWERS = {category.value for category in Category}
+_DRAWER_ALIASES = {
+    "objects": Category.OBJECTS_PROPS.value,
+    "props": Category.OBJECTS_PROPS.value,
+    "objects & props": Category.OBJECTS_PROPS.value,
+    "objects and props": Category.OBJECTS_PROPS.value,
+    "forces": Category.FORCES_CONFLICTS.value,
+    "conflicts": Category.FORCES_CONFLICTS.value,
+    "forces & conflicts": Category.FORCES_CONFLICTS.value,
+    "forces and conflicts": Category.FORCES_CONFLICTS.value,
+    "setting & atmosphere": Category.SETTING.value,
+    "atmosphere": Category.SETTING.value,
+}
+
+
+def read_room(text: str) -> tuple[list[tuple[str, dict]], list[str]]:
+    """A research export, rebuilt into rooms. Pure.
+
+    Returns `[(sender_run_id, result), ...]` in the order the file lists them,
+    and a list of complaints.
+
+    THIS IS THE ONLY PATH BY WHICH A ROOM ENTERS AN ACCOUNT WITHOUT BEING
+    RESEARCHED BY IT, and everything about the shape it returns follows from
+    that. It carries findings, their sources, a title and an era, and nothing
+    that would let the room claim work this account did not do: no search
+    count, no bible, no field notes, no parse rate. The caller stamps it as
+    imported; this function has no way to produce a room that could pass for a
+    built one.
+
+    Rows are grouped into rooms by `run_id`, falling back to `room` when a
+    hand-built file has no ids in it. Findings are grouped within a room by
+    (drawer, fact), so the several rows one finding occupies — one per source —
+    come back as one finding with several citations, which is exactly what
+    `room_rows` split apart.
+
+    A chain export holds several rooms. All of them come back, in file order,
+    and the caller remaps `continues` onto the ids it mints. Row order is never
+    read as structure: a spreadsheet gets sorted, and a chain inferred from
+    which room happened to be listed first would invert under a sort.
+    """
+    complaints: list[str] = []
+
+    try:
+        rows = list(csv.DictReader(io.StringIO(text or "")))
+    except csv.Error as exc:  # pragma: no cover - csv rarely raises on read
+        return [], [f"That file could not be read as CSV: {exc}"]
+
+    if not rows:
+        return [], ["That file has no rows under its header."]
+
+    header = set(rows[0].keys())
+    if "fact" not in header:
+        return [], [
+            (
+                "That file has no `fact` column, so there is nothing in it to "
+                "file as research. Export a room's research and bring that "
+                "file back — a sweep export is a different file, and it goes "
+                "back into the sweep it came from."
+            )
+        ]
+
+    # Insertion-ordered so the file's own order survives, which is what makes
+    # "nearest first" meaningful when the caller relinks a chain.
+    rooms: dict[str, dict] = {}
+    unknown_drawers: set[str] = set()
+
+    for number, row in enumerate(rows, start=2):
+        fact = unsafe_cell(row.get("fact")).strip()
+        if not fact:
+            complaints.append(f"Row {number} states no fact and was skipped.")
+            continue
+
+        title = unsafe_cell(row.get("room")).strip()
+        key = unsafe_cell(row.get("run_id")).strip() or title or "room"
+        room = rooms.setdefault(
+            key,
+            {
+                "title": title,
+                "era": unsafe_cell(row.get("era")).strip(),
+                "continues": unsafe_cell(row.get("continues")).strip(),
+                "findings": {},
+            },
+        )
+        # First row wins on the room's own fields. They repeat on every row of
+        # a room, and a file edited by hand may disagree with itself; taking
+        # the first is at least a rule a reader can predict.
+        room["title"] = room["title"] or title
+
+        raw = unsafe_cell(row.get("drawer")).strip().casefold()
+        drawer = raw if raw in _DRAWERS else _DRAWER_ALIASES.get(raw, "")
+        if not drawer:
+            if raw:
+                unknown_drawers.add(raw)
+            drawer = Category.SETTING.value
+
+        finding = room["findings"].setdefault(
+            (drawer, fact),
+            {
+                "fact": fact,
+                "citations": [],
+                "retrieved_at": unsafe_cell(row.get("retrieved_at")).strip(),
+                "requisition": unsafe_cell(row.get("requisition")).strip(),
+                "unverified_urls": [],
+                "seen": set(),
+            },
+        )
+
+        url = unsafe_cell(row.get("source_url")).strip()
+        if not url:
+            continue
+        if url in finding["seen"]:
+            # The same source twice on one finding. Two rows saying it does not
+            # make it two sources, and a room whose source count double-counts
+            # is a room overstating its research.
+            continue
+        finding["seen"].add(url)
+        finding["citations"].append(
+            {
+                "url": url,
+                "title": unsafe_cell(row.get("source_title")).strip(),
+                "excerpt": unsafe_cell(row.get("source_excerpt")).strip(),
+            }
+        )
+
+    if unknown_drawers:
+        complaints.append(
+            f"{len(unknown_drawers)} drawer name"
+            f"{'' if len(unknown_drawers) == 1 else 's'} in that file "
+            f"({', '.join(sorted(unknown_drawers))}) are not one of the four this "
+            "department files under. Those findings were filed under Setting so "
+            "nothing was lost; move them once the room is open."
+        )
+
+    built: list[tuple[str, dict]] = []
+    for key, room in rooms.items():
+        categories: dict[str, dict] = {}
+        for (drawer, _), finding in room["findings"].items():
+            finding.pop("seen", None)
+            categories.setdefault(
+                drawer,
+                {
+                    "category": drawer,
+                    "markdown": "",
+                    "findings": [],
+                    "field_notes": "",
+                    "parse_rate": 0.0,
+                    "unverified_count": 0,
+                },
+            )["findings"].append(finding)
+        if not categories:
+            continue
+        built.append(
+            (
+                key,
+                {
+                    "story_profile": {
+                        "title": room["title"] or "Imported research",
+                        "era": room["era"],
+                    },
+                    "categories": categories,
+                    "continues": room["continues"],
+                    # Counted from what actually arrived rather than carried in
+                    # a column. A file can claim any number; this is the number
+                    # of distinct pages the findings below actually cite.
+                    "source_count": len(
+                        {
+                            citation["url"]
+                            for drawer in categories.values()
+                            for finding in drawer["findings"]
+                            for citation in finding["citations"]
+                        }
+                    ),
+                },
+            )
+        )
+
+    if not built:
+        complaints.append("Nothing in that file could be filed as a room.")
+    return built, complaints
 
 
 def bible_markdown(result: dict, run_id: str = "") -> str:
