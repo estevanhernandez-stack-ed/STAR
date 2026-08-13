@@ -295,6 +295,12 @@ _LIGHT_KEYS = (
     # would answer a question about a failed room by omitting the only part of
     # it that says anything.
     "note",
+    # The brand, in the payload as well as the prose. It was in neither: a
+    # caller parsing this reply rather than reading it had no field to check,
+    # and `search_count: 0` was the only signal that the room was typed rather
+    # than researched — which is a number an imported room shares with a build
+    # that failed before its first search.
+    "imported_at",
 )
 
 
@@ -1374,6 +1380,29 @@ def _room_report(status: str, result: object) -> str:
         # researcher came back empty was told it had four drawers of findings.
         # Counted now, from the same payload the drawers themselves come from.
         drawers = _filed_drawers(result)
+        # AN IMPORTED ROOM IS NOT A BUILT ONE, and this sentence said it was.
+        # `import_rooms` promises the brand "cannot be made to stop", and it is
+        # on `list_rooms`, on the room's own document and on every surface the
+        # web app draws — and it was absent from the one reply an agent reads
+        # to learn what a single room IS. Verified live 2026-08-13 on an
+        # imported room: no `imported_at` in the payload, no import sentence,
+        # and a promise of "the research plan", which an import does not carry
+        # at all. First, because it changes how everything after it is read.
+        imported = str((result or {}).get("imported_at") or "").strip()
+        if imported:
+            return (
+                "This room was IMPORTED from a spreadsheet on "
+                f"{imported[:10]}, not researched here. Somebody typed its "
+                "findings and its addresses, nobody here searched for any of "
+                "it, and nothing was checked when it arrived. It carries no "
+                "research plan, because it was never planned. That does not "
+                "come off, and writing a bible for it does not remove it — "
+                f"what it holds is {drawers} category "
+                f"drawer{'' if drawers == 1 else 's'} of findings with the "
+                "addresses that came with them, and "
+                + bible.closing_clause(result)
+                + _verify_line(result)
+            )
         return (
             "This room is filed and complete: the story profile, the research "
             f"plan, {drawers} category drawer{'' if drawers == 1 else 's'} of "

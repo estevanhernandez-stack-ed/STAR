@@ -122,3 +122,65 @@ def test_the_chain_marks_each_room_for_itself():
     files = server._room_files(IMPORTED) + "\n\n" + server._room_files(RESEARCHED)
 
     assert files.count("IMPORTED") == 1, "one room, one banner"
+
+
+# --- the same brand, on the surface an agent reads a room through ------------
+
+
+def a_room_reply(imported: str) -> tuple[str, dict]:
+    """`get_room` shape=summary over one filed room, as the door renders it."""
+    from star.mcp import tools
+
+    result = {
+        "status": "complete",
+        "imported_at": imported,
+        "search_count": 0 if imported else 17,
+        "source_count": 6,
+        "story_profile": {"title": "T", "era": "1958-1962"},
+        "bible_coverage": {"covered": 4, "expected": 4, "missing": [], "truncated": False},
+        "categories": {"setting": {"findings": [{"fact": "x", "citations": [{"url": "u"}]}]}},
+    }
+    return tools._room_report("complete", result), result
+
+
+def test_get_room_says_an_imported_room_was_imported():
+    """VERIFIED LIVE 2026-08-13 against room 054dfd2a82ad, and it did not.
+
+    `import_rooms` promises the brand "cannot be made to stop". It was on
+    `list_rooms`, on the stored document and on every surface the web app
+    draws — and absent from the one reply an agent reads to learn what a
+    single room IS.
+    """
+    line, _ = a_room_reply("2026-08-13T21:14:55+00:00")
+
+    assert "IMPORTED" in line, line
+    assert "2026-08-13" in line, line
+    assert "nobody here searched" in line, line
+
+
+def test_it_stops_promising_a_research_plan_an_import_never_had():
+    """The live reply opened "filed and complete: the story profile, the
+    research plan…". An imported room carries no plan, because it was never
+    planned — so the sentence was not merely missing the brand, it was
+    asserting a document that does not exist."""
+    line, _ = a_room_reply("2026-08-13T21:14:55+00:00")
+
+    assert "the research plan," not in line, line
+    assert "no research plan" in line, line
+
+
+def test_a_researched_room_still_reads_exactly_as_it_did():
+    line, _ = a_room_reply("")
+
+    assert "filed and complete" in line
+    assert "the research plan" in line
+    assert "IMPORTED" not in line
+
+
+def test_the_brand_is_a_field_and_not_only_a_sentence():
+    """A caller that parses this reply rather than reading it had no field to
+    check. `search_count: 0` was the only signal, and an imported room shares
+    that number with a build that failed before its first search."""
+    from star.mcp import tools
+
+    assert "imported_at" in tools._LIGHT_KEYS

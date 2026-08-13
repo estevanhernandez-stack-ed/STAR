@@ -91,6 +91,36 @@ a sweep's CLAIMS as researched FINDINGS — the same laundering as D1, arrived a
 by obeying the documentation. A sweep goes back through `import_notes`, and
 both places that said otherwise now say so.
 
+## D3 — the brand was missing where a room is actually read
+
+**Fixed.** Verified live against room `054dfd2a82ad` rather than taken on
+report, and it was worse than reported: no `imported_at` anywhere in the
+payload, no import sentence, and the reply opened by promising *"the story
+profile, the research plan…"* — a document an imported room does not carry,
+because it was never planned. `search_count: 0` was the only honest signal, and
+an imported room shares that number with a build that failed before its first
+search.
+
+`get_room` now leads with the brand, drops the plan it cannot promise, and
+carries `imported_at` as a field so a caller that parses rather than reads has
+something to check. Four tests, two mutations caught.
+
+## D1's other two thirds are still open, and they are the bigger half
+
+The banner closes the LAUNDERING path: an imported room can no longer stand
+behind a confirmed verdict. It does not close the other two failures the walk
+stacked under D1, and a fully researched room can still produce the same wrong
+answer honestly:
+
+- **The researched build filed a finding smeared across "1958–1960"** covering
+  objects that arrived at different points inside that range.
+- **The sweep answered a specific-year scene out of that range** without
+  noticing the mismatch — the inversion of the argument `sweep_draft`'s own
+  description makes for itself.
+
+That is a research-pipeline defect, not an import one, and it is the next real
+piece of work.
+
 ## Still open, in the order I would take them
 
 1. **The arm preview mints a `run_id` that addresses nothing** — preview says
