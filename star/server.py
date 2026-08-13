@@ -39,7 +39,7 @@ from google.adk.runners import InMemoryRunner  # noqa: E402
 from google.genai import types  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
-from star import bible, config, defence, exports, sweep  # noqa: E402
+from star import bible, chain, config, defence, exports, sweep  # noqa: E402
 
 config.validate_env()
 
@@ -1126,6 +1126,64 @@ _CHECK_USER = "check"
 _CHECK_TURN = "Check the scene on file against this room."
 
 
+async def _chain_documents(
+    uid: str, run_id: str, first: dict | None = None
+) -> list[tuple[str, dict]]:
+    """This room and every room it follows, nearest first.
+
+    `first` is the room's document when the caller already holds it, which both
+    callers do — they read it to decide whether to refuse. Passing it in is not
+    a micro-optimisation: without it this re-read the same document a second
+    time on every check, and the test that walks a check's Firestore calls
+    caught it immediately.
+
+    Fetched one at a time rather than in a batch, because a story is a handful
+    of rooms and each read is uid-scoped by path — which is what keeps a chain
+    from ever reaching a room this account cannot see. A `continues` pointing
+    at somebody else's room simply ends the walk.
+    """
+    found: list[tuple[str, dict]] = []
+    seen: set[str] = set()
+    current = str(run_id or "")
+    document = first
+    while current and current not in seen and len(found) < chain.MAX_DEPTH:
+        if document is None:
+            document = await asyncio.to_thread(_store.get, uid, current)
+        if document is None:
+            break
+        seen.add(current)
+        found.append((current, document))
+        current = chain.parents(document)
+        document = None
+    return found
+
+
+def _chain_files(documents: list[tuple[str, dict]]) -> str:
+    """Every room in a chain, as one block for the verifier.
+
+    Each room's findings sit under its own name, so an answer can say WHICH
+    room held the fact — a chain that cannot is a bigger room with worse
+    provenance. Nearest first, because the verifier reads top down under a size
+    ceiling and the room a writer is working in should never be the part that
+    gets cut.
+
+    A single-room chain produces exactly what `_room_files` produced before any
+    of this existed, which is the property that makes stacking safe to add: an
+    unlinked room's checks do not change.
+    """
+    if len(documents) <= 1:
+        return _room_files(documents[0][1]) if documents else ""
+
+    blocks: list[str] = []
+    for _, document in documents:
+        files = _room_files(document)
+        if files:
+            blocks.append(
+                f"=== FROM THE ROOM: {chain.label(document)} ===\n{files}"
+            )
+    return "\n\n".join(blocks)
+
+
 def _room_files(document: dict) -> str:
     """Assemble a stored room's own research for the verifier's prompt.
 
@@ -1339,7 +1397,8 @@ async def _run_check(
             "checks costs nothing and is not limited.",
         )
 
-    room_files = _room_files(document)
+    documents = await _chain_documents(uid, run_id, document)
+    room_files = _chain_files(documents)
     run_ledger = SourceLedger()
     timeout = config.check_timeout_seconds()
     session = await _check_runner.session_service.create_session(
@@ -1837,7 +1896,8 @@ async def _run_sweep(uid: str, run_id: str, scenes: list[dict]) -> dict:
     run_ledger = SourceLedger()
     try:
         state = await asyncio.wait_for(
-            _verify_claims(claims, _room_files(document), run_ledger), timeout=timeout
+            _verify_claims(claims, _chain_files(await _chain_documents(uid, run_id, document)), run_ledger),
+            timeout=timeout
         )
     except TimeoutError:
         logger.warning("Sweep verification on %s exceeded %ss", run_id, timeout)
