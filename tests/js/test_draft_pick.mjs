@@ -96,6 +96,7 @@ for (const id of [
   "check-result", "check-filed-row", "check-filed-list",
   "check-draft", "check-draft-count", "check-draft-done", "check-draft-scenes",
   "check-sweep-btn", "check-sweep-note", "check-sweep-result",
+  "check-swept-row", "check-swept-list",
 ]) ids[id] = new Node();
 
 globalThis.document = {
@@ -331,6 +332,76 @@ assert.ok(
   !ids["check-sweep-result"].classList.contains("hidden"),
   "the answer is showing"
 );
+
+/* 4d — a filed sweep is listed and reopens. ------------------------------ */
+//
+// A sweep costs a draft read and a search budget, and until it was filed the
+// answer lived only in the tab that ran it. The row is what makes that real to
+// a reader: it has to appear after a sweep runs, and pressing an entry has to
+// bring the whole thing back — verdicts, sources and scene numbers.
+
+globalThis.__fetch = async (url, options) => {
+  const method = (options?.method || "GET").toUpperCase();
+  if (method === "GET" && url.includes("/sweeps/")) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        sweep_id: "sw1",
+        scenes_read: 24,
+        claims_raised: 85,
+        search_count: 4,
+        claims: [
+          {
+            text: "turning it up to eleven",
+            verdict: "anachronism",
+            scenes: [19],
+            note: "Coined in 1984.",
+            citations: [
+              { url: "https://tap.example/11", title: "Spinal Tap", excerpt: "1984." },
+            ],
+          },
+        ],
+      }),
+    };
+  }
+  if (method === "GET" && url.includes("/sweeps")) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        sweeps: [
+          { sweep_id: "sw1", created_at: "2026-08-12T22:00:00Z", scenes_read: 24, claim_count: 67 },
+        ],
+      }),
+    };
+  }
+  if (method === "POST") posted.push({ url, body: JSON.parse(options?.body || "{}") });
+  return { ok: true, status: 200, json: async () => ({ scene_id: "s9", claims: [], scenes: [] }) };
+};
+
+mod.resetCheck();
+mod.setCheckRoom("room-4");
+mod.openedCheck();
+await new Promise((r) => setTimeout(r, 0));
+
+const sweptRow = ids["check-swept-list"].childNodes.map((n) => n.textContent);
+assert.equal(sweptRow.length, 1, "the filed sweep is listed");
+assert.match(sweptRow[0], /24 scenes/, "labelled by what it swept");
+assert.match(sweptRow[0], /67 claims/, "and how much it found");
+assert.match(sweptRow[0], /AUG 2026/, "with the date after — two sweeps of one draft " +
+  "on one day are told apart by their counts, which a rewrite changes");
+assert.ok(!ids["check-swept-row"].classList.contains("hidden"));
+
+await ids["check-swept-list"].childNodes[0].press();
+await new Promise((r) => setTimeout(r, 0));
+
+const reopened = ids["check-sweep-result"].textContent;
+assert.match(reopened, /turning it up to eleven/, "the claim comes back");
+assert.match(reopened, /anachronism/, "with its verdict");
+assert.match(reopened, /Spinal Tap/, "AND its sources — a reopened page of stamps with " +
+  "nothing under them is the defect this surface already shipped once");
+assert.match(reopened, /scene 19/, "and which page it belongs to");
 
 /* 5 — pasting something unrelated drops the list. ------------------------ */
 

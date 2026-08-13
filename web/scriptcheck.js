@@ -787,6 +787,8 @@ export function initScriptCheck() {
     sweep: $("check-sweep-btn"),
     sweepNote: $("check-sweep-note"),
     sweepResult: $("check-sweep-result"),
+    sweptRow: $("check-swept-row"),
+    sweptList: $("check-swept-list"),
   };
   els.run.addEventListener("click", runCheck);
   els.sweep.addEventListener("click", runSweep);
@@ -943,6 +945,71 @@ async function runSweep() {
 
   els.status.replaceChildren();
   els.sweep.disabled = false;
+  renderSweep(payload);
+  // The sweep that just ran is now filed, so the row has to learn about it.
+  // Same shape as a finished check refreshing the filed row above.
+  loadFiledSweeps();
+}
+
+/** Every sweep filed on this room, newest first.
+ *
+ *  Fetched when the check mode opens rather than on every room paint, for the
+ *  reason the filed checks are: it costs a request and a reader who never
+ *  opens this mode should not pay for one. */
+async function loadFiledSweeps() {
+  const room = roomId;
+  let sweeps = [];
+  try {
+    const res = await authedFetch(`/api/rooms/${encodeURIComponent(room)}/sweeps`);
+    if (!res.ok) return;
+    const body = await res.json();
+    sweeps = Array.isArray(body?.sweeps) ? body.sweeps : [];
+  } catch {
+    // Silent, and the row stays hidden. A list that cannot be read is not an
+    // error worth a banner when the surface's actual job still works.
+    return;
+  }
+  if (room !== roomId || !sweeps.length) return;
+
+  els.sweptList.replaceChildren();
+  for (const summary of sweeps) {
+    const id = String(summary?.sweep_id || "");
+    if (!id) continue;
+    // WHAT was swept, then when. Two sweeps of the same draft on the same day
+    // are told apart by their counts — a rewrite changes what a draft claims,
+    // which is the whole reason somebody sweeps it twice.
+    const label = [
+      `${plural(Number(summary?.scenes_read) || 0, "scene")}`,
+      `${plural(Number(summary?.claim_count) || 0, "claim")}`,
+      filedDate(summary?.created_at) || "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    const button = el("button", "check-filed-btn", label);
+    button.setAttribute("type", "button");
+    button.addEventListener("click", () => openFiledSweep(id));
+    els.sweptList.appendChild(button);
+  }
+  els.sweptRow.classList.remove("hidden");
+}
+
+async function openFiledSweep(sweepId) {
+  if (!roomId) return;
+  els.error.replaceChildren();
+  working("Pulling the filed sweep");
+  let payload;
+  try {
+    const res = await authedFetch(
+      `/api/rooms/${encodeURIComponent(roomId)}/sweeps/${encodeURIComponent(sweepId)}`
+    );
+    if (!res.ok) throw new Error(await failureDetail(res));
+    payload = await res.json();
+  } catch (err) {
+    els.status.replaceChildren();
+    els.error.replaceChildren(document.createTextNode(err.message));
+    return;
+  }
+  els.status.replaceChildren();
   renderSweep(payload);
 }
 
@@ -1120,6 +1187,8 @@ function clearCheck({ keepScene }) {
   els.sweep.disabled = false;
   els.sweepResult.replaceChildren();
   els.sweepResult.classList.add("hidden");
+  els.sweptRow.classList.add("hidden");
+  els.sweptList.replaceChildren();
   if (!keepScene) els.input.value = "";
 }
 
@@ -1130,6 +1199,7 @@ export function openedCheck() {
   if (!roomId || loadedFiledFor === roomId) return;
   loadedFiledFor = roomId;
   loadFiledChecks();
+  loadFiledSweeps();
 }
 
 /** The working state, and the whole of what obligation 6 permits: that the
