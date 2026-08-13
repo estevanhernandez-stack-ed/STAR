@@ -192,6 +192,21 @@ def room_summary(doc: dict) -> dict:
     }
 
 
+def _first_line(text: str, limit: int = 60) -> str:
+    """The first line with anything on it, trimmed to fit a button.
+
+    Used as a filed check's label. Truncation is by characters and the cut is
+    marked, because a slug reading `INT. HAMBURG DOCKS WAREHOUSE - CONTINU` is
+    a slug a reader will squint at trying to decide whether it is the one they
+    filed.
+    """
+    for line in str(text or "").splitlines():
+        stripped = line.strip()
+        if stripped:
+            return stripped if len(stripped) <= limit else stripped[: limit - 1] + "…"
+    return ""
+
+
 def scene_to_document(result: dict, scene: str, scene_key: str = "") -> dict:
     """Shape one finished check into its stored document. Pure.
 
@@ -225,6 +240,19 @@ def scene_to_document(result: dict, scene: str, scene_key: str = "") -> dict:
         # Nothing rests on it being right. It labels a writer's own bookkeeping
         # in their own room; a wrong one shows one of their scenes as unchecked.
         "scene_key": scene_key or "",
+        # WHICH SCENE, for a list that is otherwise a column of identical
+        # dates. Every check a writer files in one sitting carries the same
+        # day, so "12 AUG 2026 - 3 claims" beside "12 AUG 2026 - 5 claims" asks
+        # them to remember which was which.
+        #
+        # The first non-empty line, and that is the whole rule. A Fountain
+        # scene opens on its slug so this is the slug; a hand-pasted fragment
+        # opens on whatever it opens on, which is still the most useful thing
+        # to call it. Derived here rather than sent by the browser — unlike
+        # `scene_key`, nothing compares this, so there is no second
+        # implementation to disagree with, and a check filed through the agent
+        # door gets a label too.
+        "scene_label": _first_line(scene),
         "claims": result.get("claims") or [],
         "parse_rate": result.get("parse_rate") or 0.0,
         "unsourced_count": result.get("unsourced_count") or 0,
@@ -281,6 +309,7 @@ def scene_summary(doc: dict) -> dict:
         # twenty whole scenes — their text, their claims — to draw a row of
         # ticks. That is the cost this shape exists to avoid.
         "scene_key": doc.get("scene_key") or "",
+        "scene_label": doc.get("scene_label") or "",
         "claim_count": len(doc.get("claims") or []),
         "search_count": doc.get("search_count") or 0,
         "unsourced_count": doc.get("unsourced_count") or 0,

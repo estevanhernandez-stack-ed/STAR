@@ -1138,10 +1138,24 @@ async function loadFiledChecks() {
   for (const summary of scenes) {
     const id = String(summary?.scene_id || "");
     if (!id) continue;
+    // WHICH SCENE first, the date second. Every check filed in one sitting
+    // carries the same day, so a column reading "12 AUG 2026 · 3 claims" over
+    // "12 AUG 2026 · 5 claims" asks a writer to remember which was which — and
+    // the one thing they actually know about a check is the scene they ran it
+    // on. The date stays, because on a room worked over weeks it is the thing
+    // that separates two checks of the SAME scene.
+    //
+    // star/store.py derives the label from the scene's first non-empty line.
+    // A room checked before that field existed has none, and falls back to
+    // what the row said before.
+    const scene = String(summary?.scene_label || "").trim();
     const label = [
-      filedDate(summary?.created_at) || "Filed",
+      scene || filedDate(summary?.created_at) || "Filed",
       plural(Number(summary?.claim_count) || 0, "claim"),
-    ].join(" · ");
+      scene ? filedDate(summary?.created_at) : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
     const button = el("button", "check-filed-btn", label);
     button.setAttribute("type", "button");
     button.setAttribute("aria-current", id === currentSceneId ? "true" : "false");

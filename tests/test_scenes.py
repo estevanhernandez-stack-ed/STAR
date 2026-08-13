@@ -830,6 +830,11 @@ def test_a_filed_check_keeps_the_scene_and_everything_the_schema_names():
         "budget_exhausted",
         "cover_note",
         "scope_note",
+        # Which scene this was, derived from its first non-empty line. Unlike
+        # `scene_key` nothing COMPARES this, so it is derived server-side
+        # rather than sent — one implementation, and a check filed through the
+        # agent door is labelled too.
+        "scene_label",
         # An opaque label the CLIENT computed, stored and never interpreted.
         # It lets a draft split in the browser tomorrow say which of its scenes
         # were checked today, and it is the client's because the comparison is
@@ -1078,6 +1083,10 @@ def test_scene_summary_counts_the_claims_it_refuses_to_carry():
         # claims — to draw a row of ticks. That is the cost this shape exists
         # to avoid, and carrying eight characters to avoid it is the trade.
         "scene_key": "a1b2c3d4",
+        # And the one thing a reader knows about a check they filed: the scene
+        # they ran it on. Without it the row is a column of identical dates —
+        # every check filed in one sitting carries the same day.
+        "scene_label": "INT. GARAGE - NIGHT",
     }
 
 

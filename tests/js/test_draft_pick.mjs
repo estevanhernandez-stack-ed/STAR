@@ -188,6 +188,56 @@ assert.equal(posted.length, 1, "nothing further was spent");
 assert.match(ids["check-error"].textContent, /whole draft — 4 scenes/);
 assert.match(ids["check-error"].textContent, /Pick one from the list above/);
 
+/* 4b — a filed check is labelled by its scene, not by its date. ---------- */
+//
+// Every check filed in one sitting carries the same day, so a row reading
+// "12 AUG 2026 · 3 claims" above "12 AUG 2026 · 5 claims" asks a writer to
+// remember which was which. The scene is the one thing they know about it.
+
+globalThis.__fetch = async (url, options) => {
+  const method = (options?.method || "GET").toUpperCase();
+  if (method === "POST") posted.push({ url, body: JSON.parse(options?.body || "{}") });
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({
+      scene_id: "s1",
+      claims: [],
+      search_count: 1,
+      scenes: [
+        {
+          scene_id: "s1",
+          created_at: "2026-08-12T10:00:00Z",
+          claim_count: 5,
+          scene_label: "INT. BUS (TOP DECK) — CONTINUOUS",
+        },
+        {
+          scene_id: "s2",
+          created_at: "2026-08-12T11:00:00Z",
+          claim_count: 3,
+          scene_label: "",
+        },
+      ],
+    }),
+  };
+};
+
+mod.resetCheck();
+mod.setCheckRoom("room-2");
+mod.openedCheck();
+await new Promise((r) => setTimeout(r, 0));
+
+const filed = ids["check-filed-list"].childNodes.map((n) => n.textContent);
+assert.match(filed[0], /^INT\. BUS \(TOP DECK\)/, "the scene leads the label");
+assert.match(filed[0], /5 claims/, "with what it found");
+assert.match(filed[0], /AUG 2026/, "and the date after, which separates two checks of one scene");
+assert.match(
+  filed[1],
+  /^\d/,
+  "a check filed before scene_label existed falls back to the date rather " +
+    "than rendering an empty button"
+);
+
 /* 5 — pasting something unrelated drops the list. ------------------------ */
 
 ids.scene.value = "INT. SOMEWHERE ELSE - DAY\n\nA different script entirely.";
