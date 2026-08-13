@@ -202,6 +202,122 @@ def test_a_chain_never_reaches_another_accounts_room():
     assert "secret" not in _files_seen(runner).lower()
 
 
+def test_an_answer_from_the_parent_room_is_not_downgraded():
+    """THE BUG STACKING SHIPPED WITH, and the reason it was worse than useless.
+
+    The verifier is handed every room in the chain, so it can cite a url it
+    only ever saw in the room this one follows. `annotate` hydrated that url
+    against the NEAR room's ledger alone — where it is not — and
+    star/verdicts.py correctly downgraded the verdict to unverifiable with zero
+    citations and the note "in neither the room's files nor this check's search
+    results".
+
+    So a claim the parent room COULD answer came back unanswerable, and the
+    reader was told the source did not exist. Stacking made answers worse than
+    not stacking, invisibly: the check reads like an honest "we could not
+    settle this".
+
+    Every test in the suite passed through this. They asserted what the
+    verifier was SHOWN and never what came back hydrated.
+    """
+    store, _ = a_store()
+    a_chain(store)
+    # The verifier answers a Hamburg scene by citing LIVERPOOL's source.
+    runner = a_runner(
+        produces={
+            "claims": {"claims": [{"text": "the Casbah", "claim_type": "geography"}]},
+            "verdicts": (
+                "- confirmed | the Casbah | https://casbah.example | "
+                "Opened in West Derby in 1959.\n"
+            ),
+            "search_count": 0,
+        },
+        events=[],
+    )
+
+    with checking(store, runner=runner):
+        body = TestClient(server.app).post(
+            f"/api/rooms/{HAMBURG}/scenes",
+            json={"scene": "INT. CLUB — NIGHT"},
+            headers=AUTH,
+        ).json()
+
+    claim = body["claims"][0]
+    assert claim["verdict"] == "confirmed", (
+        "the parent room answered it, so it stands. Hydrating against the near "
+        "room alone made this 'unverifiable' and told the reader the source was "
+        "in neither the files nor the search"
+    )
+    assert [c["url"] for c in claim["citations"]] == ["https://casbah.example"], (
+        "with Liverpool's source attached rather than stripped"
+    )
+    assert claim["citations"][0]["excerpt"], "and the page's own words with it"
+    assert not claim.get("unsourced_urls"), "nothing was left dangling"
+
+
+def test_a_url_in_no_room_of_the_chain_is_still_refused():
+    """The other half. Widening the ledger to the chain must not turn it into a
+    ledger that accepts anything — a url nobody researched is still a url the
+    department will not stand behind."""
+    store, _ = a_store()
+    a_chain(store)
+    runner = a_runner(
+        produces={
+            "claims": {"claims": [{"text": "a Vespa", "claim_type": "object"}]},
+            "verdicts": "- confirmed | a Vespa | https://invented.example | Sure.\n",
+            "search_count": 0,
+        },
+        events=[],
+    )
+
+    with checking(store, runner=runner):
+        body = TestClient(server.app).post(
+            f"/api/rooms/{HAMBURG}/scenes",
+            json={"scene": "EXT. STREET"},
+            headers=AUTH,
+        ).json()
+
+    claim = body["claims"][0]
+    assert claim["verdict"] == "unverifiable"
+    assert claim["citations"] == []
+    assert "neither the room's files nor" in (claim["note"] or "")
+
+
+def test_two_rooms_citing_one_page_merge_rather_than_collide():
+    """A chain ledger is built through `record()`, which already decides how two
+    sightings of a url merge. A second accumulator would be a second set of
+    those rules."""
+    from star.ledger import ledger_from_chain
+
+    first = {
+        "categories": {
+            "setting": {
+                "findings": [
+                    {"citations": [{"url": "https://same.example", "title": "A",
+                                    "excerpt": "From Liverpool."}]}
+                ]
+            }
+        }
+    }
+    second = {
+        "categories": {
+            "setting": {
+                "findings": [
+                    {"citations": [{"url": "https://same.example", "title": "A",
+                                    "excerpt": "From Hamburg."}]}
+                ]
+            }
+        }
+    }
+
+    merged = ledger_from_chain([first, second])
+
+    assert len(merged) == 1, "one page, one entry"
+    entry = merged.get("https://same.example")
+    assert "From Liverpool." in entry.excerpts
+    assert "From Hamburg." in entry.excerpts, "both rooms' words survive"
+
+
 @pytest.mark.parametrize("depth", [1, 2, 3])
 def test_a_chain_of_any_depth_is_read_in_one_pass(depth):
     store, _ = a_store()

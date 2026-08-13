@@ -51,7 +51,10 @@ from star.agents.script_check import check_state  # noqa: E402
 from star.auth import linked_provider, verify_claims, verify_token  # noqa: E402
 from star.findings import parse_findings  # noqa: E402
 from star.guards import DailyCap, RateLimiter  # noqa: E402
-from star.ledger import SourceLedger, ledger_from_room  # noqa: E402
+from star.ledger import (  # noqa: E402
+    SourceLedger,
+    ledger_from_chain,
+)
 from star.mcp.router import build_mcp_router  # noqa: E402
 from star.models import Category, Claim, ClaimSet, ScriptCheckResult  # noqa: E402
 from star.oauth import clients, codes, pkce  # noqa: E402
@@ -1457,7 +1460,11 @@ async def _run_check(
     result = annotate(
         state.get("verdicts"),
         claims,
-        ledger_from_room(document),
+        # THE WHOLE CHAIN, not this room alone. The verifier was handed
+        # every room's files and may cite a url it only saw in the parent;
+        # hydrating against one room finds it in neither ledger and
+        # downgrades a correct answer to unverifiable.
+        ledger_from_chain(document for _, document in documents),
         run_ledger,
         # The server's own fact, never the model's. parallel_search holds the
         # ceiling and counts every allowed spend into session state, so this is
@@ -1893,11 +1900,16 @@ async def _run_sweep(uid: str, run_id: str, scenes: list[dict]) -> dict:
             "budget_exhausted": False,
         }
 
+    # Walked once and held, because the chain is needed twice: the verifier
+    # reads its files, and the ledger that hydrates the verdicts has to hold
+    # every source it was shown. Fetching it twice would also mean the two
+    # could disagree if a room changed between them.
+    documents = await _chain_documents(uid, run_id, document)
     run_ledger = SourceLedger()
     try:
         state = await asyncio.wait_for(
-            _verify_claims(claims, _chain_files(await _chain_documents(uid, run_id, document)), run_ledger),
-            timeout=timeout
+            _verify_claims(claims, _chain_files(documents), run_ledger),
+            timeout=timeout,
         )
     except TimeoutError:
         logger.warning("Sweep verification on %s exceeded %ss", run_id, timeout)
@@ -1919,7 +1931,11 @@ async def _run_sweep(uid: str, run_id: str, scenes: list[dict]) -> dict:
     result = annotate(
         state.get("verdicts"),
         [Claim.model_validate(claim) for claim in claims],
-        ledger_from_room(document),
+        # THE WHOLE CHAIN, not this room alone. The verifier was handed
+        # every room's files and may cite a url it only saw in the parent;
+        # hydrating against one room finds it in neither ledger and
+        # downgrades a correct answer to unverifiable.
+        ledger_from_chain(document for _, document in documents),
         run_ledger,
         searches >= ceiling,
         scene_id=uuid.uuid4().hex[:12],

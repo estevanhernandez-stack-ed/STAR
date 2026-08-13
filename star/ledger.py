@@ -121,9 +121,21 @@ def ledger_from_room(document: dict) -> SourceLedger:
     worse answer than running it without the files.
     """
     ledger = SourceLedger()
+    _record_room(ledger, document)
+    return ledger
+
+
+def _record_room(ledger: SourceLedger, document: dict) -> None:
+    """Walk one stored room's citations into an existing ledger.
+
+    Factored out so `ledger_from_chain` can fill ONE ledger from several rooms
+    without a second copy of this walk, and without either of them reaching
+    into `_entries`. `record()` stays the only thing that decides what counts
+    as a source and how two sightings of a url merge.
+    """
     categories = (document or {}).get("categories")
     if not isinstance(categories, dict):
-        return ledger
+        return
 
     for category, doc in categories.items():
         results = [
@@ -138,4 +150,28 @@ def ledger_from_room(document: dict) -> SourceLedger:
         if results:
             ledger.record(f"room:{category}", results)
 
-    return ledger
+
+def ledger_from_chain(documents) -> SourceLedger:
+    """One ledger holding every source in a story's chain of rooms.
+
+    A check against a room that FOLLOWS another is given the whole chain's
+    files, so the verifier may cite a url it only ever saw in the parent. That
+    url has to be findable when the verdict is hydrated, or `annotate` finds it
+    in neither ledger and star/verdicts.py downgrades a correct answer to
+    unverifiable — telling the reader the source is in neither the room's files
+    nor this check's searches, when it was in the room next door all along.
+
+    Stacking without this makes answers WORSE rather than better, which is a
+    louder failure than the feature simply not working, and it is invisible:
+    the check comes back looking like an honest "we could not settle this".
+
+    Two rooms citing the same page merge into one entry carrying both excerpts,
+    because `record()` already decides that and this does not get its own rules.
+
+    `documents` is an iterable of stored room documents. Order does not matter —
+    a ledger is a lookup, not a list.
+    """
+    merged = SourceLedger()
+    for document in documents or ():
+        _record_room(merged, document)
+    return merged
