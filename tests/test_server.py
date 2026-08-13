@@ -1135,6 +1135,9 @@ def test_every_api_route_requires_auth_except_the_explicitly_open_sse_stream():
                     # one, which this loop would read as "did not require
                     # auth". Exactly the case the comment above describes.
                     "scenes": [{"index": 1, "heading": "INT. X", "text": "x" * 40}],
+                    # The annotation route takes a CSV body and 422s without
+                    # one, which this loop would read as "did not require auth".
+                    "csv": "claim,writer_note\nx,y\n",
                 }
             }
         return {}

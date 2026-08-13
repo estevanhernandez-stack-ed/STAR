@@ -1963,6 +1963,67 @@ async def get_sweep(
     return {"run_id": run_id, **document_to_sweep(document)}
 
 
+class AnnotationRequest(BaseModel):
+    csv: str
+    # Two calls, and the first one changes nothing. The same arming
+    # `delete_room` uses and for the same reason: this writes into a filed
+    # record, and a writer should see what a file will do before it does it.
+    apply: bool = False
+
+
+@app.post("/api/rooms/{run_id}/sweeps/{sweep_id}/annotations")
+async def annotate_sweep(
+    run_id: str,
+    sweep_id: str,
+    req: AnnotationRequest,
+    authorization: str | None = Header(None),
+) -> dict:
+    """Bring a writer's own marks back from a spreadsheet.
+
+    ANNOTATION, NEVER EVIDENCE. A verdict, a source and an excerpt are the
+    department's, hydrated out of a ledger; the one thing that must stay
+    impossible is a room reading as better-sourced than its research made it.
+    A row that edited one has that column ignored and is named in the report.
+    """
+    uid = _require_uid(authorization)
+    if len(req.csv) > config.max_annotation_chars():
+        raise HTTPException(
+            400,
+            f"That file is {len(req.csv)} characters and the ceiling is "
+            f"{config.max_annotation_chars()}. Import the sweep's own export.",
+        )
+
+    document = await asyncio.to_thread(_store.get_sweep, uid, run_id, sweep_id)
+    if document is None:
+        raise HTTPException(404, "Unknown sweep")
+
+    annotations, complaints = exports.read_annotations(req.csv)
+    updated, unmatched = exports.apply_annotations(document, annotations)
+    matched = len(annotations) - len(unmatched)
+
+    if req.apply and matched:
+        try:
+            await asyncio.to_thread(_store.save_sweep, uid, run_id, sweep_id, updated)
+        except Exception:
+            logger.exception("Failed to save annotations on sweep %s", sweep_id)
+            raise HTTPException(
+                502,
+                "The notes were read but could not be filed. Nothing was "
+                "changed. Try again.",
+            ) from None
+
+    return {
+        "applied": bool(req.apply and matched),
+        "matched": matched,
+        # Named rather than counted. Silence here would let a writer annotate
+        # twenty claims, import, find nineteen, and have no way to learn which
+        # one went missing.
+        "unmatched": unmatched,
+        "complaints": complaints,
+        "claims": updated.get("claims") or [],
+    }
+
+
 @app.delete("/api/rooms/{run_id}/sweeps/{sweep_id}")
 async def delete_sweep(
     run_id: str, sweep_id: str, authorization: str | None = Header(None)

@@ -113,6 +113,138 @@ def sweep_to_csv(document: dict) -> str:
     return buffer.getvalue()
 
 
+def unsafe_cell(value: object) -> str:
+    """The inverse of `safe_cell`, for a file coming back in.
+
+    One leading apostrophe comes off, and only one. A writer whose line
+    genuinely begins with an apostrophe — `'61 Impala` is the obvious one in a
+    period script — must not have it eaten on every round trip, so this removes
+    the prefix only where the character after it is one this file would have
+    escaped.
+    """
+    text = "" if value is None else str(value)
+    if text.startswith("'") and text[1:2].startswith(_DANGEROUS):
+        return text[1:]
+    return text
+
+
+# What an import is allowed to bring back. Deliberately short: a writer's
+# decisions, and nothing the department said.
+WRITER_COLUMNS = ("writer_note", "dismissed")
+
+# What it may never bring back, named individually so the refusal can say which
+# one was attempted rather than "some column".
+DEPARTMENT_COLUMNS = ("verdict", "note", "source_title", "source_url", "source_excerpt")
+
+_TRUE = {"1", "true", "yes", "y", "x", "dismissed"}
+
+
+def read_annotations(text: str) -> tuple[dict[str, dict], list[str]]:
+    """A returned CSV, reduced to the writer's own marks. Pure.
+
+    Returns `{claim_text: {writer_note, dismissed}}` and a list of complaints.
+
+    IT NEVER CARRIES A VERDICT, A SOURCE OR AN EXCERPT BACK IN, and that is the
+    whole shape of this feature rather than a validation nicety. Those are the
+    department's, hydrated out of a ledger, and the one thing that must stay
+    impossible is a room reading as better-sourced than its research made it. A
+    row that edited one is refused BY NAME so a writer knows which column was
+    dropped rather than wondering why their change did nothing.
+
+    Rows are matched on claim text, not row order: a spreadsheet gets sorted,
+    and a writer who sorted by verdict before annotating would otherwise have
+    their notes land on the wrong claims.
+
+    A row matching nothing is reported rather than dropped. Silence here would
+    let a writer annotate twenty claims, import, and find nineteen — with no
+    way to learn which.
+    """
+    complaints: list[str] = []
+    annotations: dict[str, dict] = {}
+
+    try:
+        rows = list(csv.DictReader(io.StringIO(text or "")))
+    except csv.Error as exc:  # pragma: no cover - csv rarely raises on read
+        return {}, [f"That file could not be read as CSV: {exc}"]
+
+    if not rows:
+        return {}, ["That file has no rows under its header."]
+
+    header = set(rows[0].keys())
+    if "claim" not in header:
+        return {}, [
+            (
+                "That file has no `claim` column, so there is no way to tell "
+                "which claim a row belongs to. Export a sweep and annotate "
+                "that file."
+            )
+        ]
+
+    for number, row in enumerate(rows, start=2):
+        claim = unsafe_cell(row.get("claim")).strip()
+        if not claim:
+            complaints.append(f"Row {number} names no claim and was skipped.")
+            continue
+
+        edited = [
+            column
+            for column in DEPARTMENT_COLUMNS
+            if column in row and unsafe_cell(row.get(column)).strip()
+        ]
+        note = unsafe_cell(row.get("writer_note")).strip()
+        dismissed = unsafe_cell(row.get("dismissed")).strip().casefold() in _TRUE
+
+        if not note and not dismissed:
+            continue
+
+        # Present and non-empty is not the same as CHANGED — an unmodified
+        # export carries every one of these — so the refusal fires only when a
+        # row also brings something of the writer's. The department's columns
+        # are then ignored rather than the row being thrown away, and the
+        # sentence names them.
+        if edited:
+            complaints.append(
+                f"Row {number} carries {', '.join(edited)}, which the department "
+                "writes and an import never changes. The note was kept; those "
+                "columns were ignored."
+            )
+
+        existing = annotations.setdefault(claim, {"writer_note": "", "dismissed": False})
+        if note and note not in existing["writer_note"]:
+            # A claim is several rows when it has several sources, and a writer
+            # may have annotated more than one of them. Joined rather than
+            # last-wins, because a note they typed is a note they meant.
+            existing["writer_note"] = f"{existing['writer_note']} {note}".strip()
+        existing["dismissed"] = existing["dismissed"] or dismissed
+
+    return annotations, complaints
+
+
+def apply_annotations(document: dict, annotations: dict[str, dict]) -> tuple[dict, list[str]]:
+    """A filed sweep with the writer's marks on it. Pure.
+
+    Returns the new document and the claim texts that matched nothing.
+
+    Verdicts, notes and citations are copied through untouched. The only fields
+    this writes are `writer_note` and `dismissed`, which exist nowhere in what
+    the department produced and cannot be mistaken for it.
+    """
+    document = dict(document or {})
+    wanted = dict(annotations or {})
+    claims = []
+
+    for claim in document.get("claims") or []:
+        claim = dict(claim or {})
+        mark = wanted.pop(str(claim.get("text") or "").strip(), None)
+        if mark:
+            claim["writer_note"] = mark.get("writer_note") or ""
+            claim["dismissed"] = bool(mark.get("dismissed"))
+        claims.append(claim)
+
+    document["claims"] = claims
+    return document, sorted(wanted)
+
+
 def csv_filename(room_title: str, created_at: str) -> str:
     """A filename a writer can find again in a downloads folder.
 

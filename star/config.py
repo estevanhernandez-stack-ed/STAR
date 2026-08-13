@@ -128,6 +128,17 @@ def sweep_timeout_seconds() -> int:
     return int(os.environ.get("STAR_SWEEP_TIMEOUT_SECONDS", "300"))
 
 
+def max_annotation_chars() -> int:
+    """Ceiling on a returned annotation file.
+
+    An export of a 67-claim sweep with its excerpts runs well under 200KB, and
+    this is the one endpoint that takes a file a writer edited elsewhere — so
+    the bound is on what a sweep could plausibly have produced rather than on
+    what a spreadsheet could plausibly save.
+    """
+    return int(os.environ.get("STAR_MAX_ANNOTATION_CHARS", "500000"))
+
+
 def max_question_chars() -> int:
     """Ceiling on one requisitioned question.
 
