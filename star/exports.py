@@ -27,6 +27,12 @@ import io
 _DANGEROUS = ("=", "+", "-", "@", "\t", "\r")
 
 COLUMNS = (
+    # THE SCENE THIS ROW BELONGS TO, first because it is what a reader sorts and
+    # filters on. `scenes` beside it is the claim's whole spread, which is a
+    # different question — "where else does the draft say this" — and a packed
+    # cell reading `13 17 19 20 21 23 24` can answer that one and neither
+    # filters nor sorts.
+    "scene",
     "scenes",
     "claim",
     "claim_type",
@@ -53,23 +59,60 @@ def safe_cell(value: object) -> str:
     return f"'{text}" if text.startswith(_DANGEROUS) else text
 
 
-def sweep_rows(document: dict) -> list[dict]:
-    """A filed sweep, flattened. Pure.
+def _scene_numbers(claim: dict) -> list[int]:
+    """The scenes a claim was placed in, as numbers, deduplicated and ordered.
 
-    One row per claim per source; one row for a claim with none. `scenes` is a
-    space-separated list rather than a comma one, because the file is
-    comma-delimited and a reader should not have to think about which commas
-    are data.
+    Defensive about the type because this reads a STORED document: a sweep
+    filed months ago by an older shape of `sweep.attach` is not something an
+    export gets to crash on, and a scene number that will not parse is better
+    dropped than raised.
+    """
+    found: list[int] = []
+    for value in claim.get("scenes") or []:
+        try:
+            found.append(int(value))
+        except (TypeError, ValueError):
+            continue
+    return sorted(dict.fromkeys(found))
+
+
+def sweep_rows(document: dict) -> list[dict]:
+    """A filed sweep, flattened into PAGE ORDER. Pure.
+
+    One row per scene per claim per source. A claim the draft makes in three
+    scenes is three rows, because the question a writer opens this file to ask
+    is "what is wrong on page 14" — and a claim that answers that question only
+    from inside a packed `13 17 19` cell does not answer it in a spreadsheet.
+    Sorted by scene for the same reason: a script is read in page order and so
+    is the report about it.
+
+    `scenes` stays alongside, carrying the claim's whole spread. That is the
+    other question — "where else does the draft say this" — and it is the one
+    thing the split loses, so it is kept rather than replaced. Space-separated
+    rather than comma, because the file is comma-delimited and a reader should
+    not have to think about which commas are data.
+
+    A claim the sweep could not place in any scene keeps its row with an empty
+    `scene` and sorts to the end. Those are the ones the surface calls "checked
+    but could not place", and dropping them here would quietly shrink the file
+    against the count printed on the page it came from.
+
+    Several rows for one claim is not new — a claim with three sources was
+    always three rows — and `read_annotations` already joins a writer's marks
+    across them rather than letting the last row win.
     """
     document = document or {}
     swept_at = str(document.get("created_at") or "")
     sweep_id = str(document.get("sweep_id") or "")
-    rows: list[dict] = []
+    # (unplaced?, scene, the claim's own order) — sorted at the end. Python's
+    # sort is stable, so rows tying on all three stay in citation order.
+    ordered: list[tuple[int, int, int, dict]] = []
 
-    for claim in document.get("claims") or []:
+    for order, claim in enumerate(document.get("claims") or []):
         claim = claim or {}
+        numbers = _scene_numbers(claim)
         base = {
-            "scenes": " ".join(str(s) for s in (claim.get("scenes") or [])),
+            "scenes": " ".join(str(number) for number in numbers),
             "claim": claim.get("text") or "",
             "claim_type": claim.get("claim_type") or "",
             "verdict": claim.get("verdict") or "",
@@ -77,21 +120,28 @@ def sweep_rows(document: dict) -> list[dict]:
             "swept_at": swept_at,
             "sweep_id": sweep_id,
         }
-        citations = claim.get("citations") or []
-        if not citations:
-            rows.append({**base, "source_title": "", "source_url": "", "source_excerpt": ""})
-            continue
-        for citation in citations:
-            citation = citation or {}
-            rows.append(
-                {
-                    **base,
-                    "source_title": citation.get("title") or "",
-                    "source_url": citation.get("url") or "",
-                    "source_excerpt": citation.get("excerpt") or "",
-                }
-            )
-    return rows
+        sources = [
+            {
+                "source_title": (citation or {}).get("title") or "",
+                "source_url": (citation or {}).get("url") or "",
+                "source_excerpt": (citation or {}).get("excerpt") or "",
+            }
+            for citation in claim.get("citations") or []
+        ] or [{"source_title": "", "source_url": "", "source_excerpt": ""}]
+
+        for number in numbers or [0]:
+            for source in sources:
+                ordered.append(
+                    (
+                        0 if numbers else 1,
+                        number,
+                        order,
+                        {**base, "scene": str(number) if numbers else "", **source},
+                    )
+                )
+
+    ordered.sort(key=lambda row: row[:3])
+    return [row for *_, row in ordered]
 
 
 def sweep_to_csv(document: dict) -> str:
@@ -186,8 +236,14 @@ def read_annotations(text: str) -> tuple[dict[str, dict], list[str]]:
             complaints.append(f"Row {number} names no claim and was skipped.")
             continue
 
-        edited = [
-            column
+        # WHAT THE ROW SAID THE DEPARTMENT SAID, carried rather than judged.
+        # Judging it here is what this function got wrong: presence is not the
+        # same as CHANGE, an unmodified export carries every one of these, and
+        # this file has no copy of the sweep to compare against — so every
+        # ordinary note on an untouched export raised "you tried to edit the
+        # verdict". `apply_annotations` holds the sweep and does the comparing.
+        sent = [
+            (number, column, unsafe_cell(row.get(column)).strip())
             for column in DEPARTMENT_COLUMNS
             if column in row and unsafe_cell(row.get(column)).strip()
         ]
@@ -197,19 +253,10 @@ def read_annotations(text: str) -> tuple[dict[str, dict], list[str]]:
         if not note and not dismissed:
             continue
 
-        # Present and non-empty is not the same as CHANGED — an unmodified
-        # export carries every one of these — so the refusal fires only when a
-        # row also brings something of the writer's. The department's columns
-        # are then ignored rather than the row being thrown away, and the
-        # sentence names them.
-        if edited:
-            complaints.append(
-                f"Row {number} carries {', '.join(edited)}, which the department "
-                "writes and an import never changes. The note was kept; those "
-                "columns were ignored."
-            )
-
-        existing = annotations.setdefault(claim, {"writer_note": "", "dismissed": False})
+        existing = annotations.setdefault(
+            claim, {"writer_note": "", "dismissed": False, "sent": []}
+        )
+        existing["sent"].extend(sent)
         if note and note not in existing["writer_note"]:
             # A claim is several rows when it has several sources, and a writer
             # may have annotated more than one of them. Joined rather than
@@ -220,17 +267,44 @@ def read_annotations(text: str) -> tuple[dict[str, dict], list[str]]:
     return annotations, complaints
 
 
-def apply_annotations(document: dict, annotations: dict[str, dict]) -> tuple[dict, list[str]]:
+def _department_values(claim: dict, column: str) -> set[str]:
+    """Everything the department actually wrote in one column of one claim.
+
+    A set rather than a value, because a claim is several rows when it has
+    several sources and each row carries a different one of them. A returned
+    `source_url` is unchanged if it is ANY of the claim's urls — the writer may
+    have sorted the file, and asking which row it came back on would make the
+    answer depend on the sort.
+    """
+    if column in ("verdict", "note"):
+        return {str(claim.get(column) or "").strip()}
+    field = {"source_title": "title", "source_url": "url", "source_excerpt": "excerpt"}[column]
+    return {str((citation or {}).get(field) or "").strip() for citation in claim.get("citations") or []}
+
+
+def apply_annotations(
+    document: dict, annotations: dict[str, dict]
+) -> tuple[dict, list[str], list[str]]:
     """A filed sweep with the writer's marks on it. Pure.
 
-    Returns the new document and the claim texts that matched nothing.
+    Returns the new document, the claim texts that matched nothing, and the
+    complaints that could only be raised here.
 
     Verdicts, notes and citations are copied through untouched. The only fields
     this writes are `writer_note` and `dismissed`, which exist nowhere in what
     the department produced and cannot be mistaken for it.
+
+    THE DEPARTMENT'S COLUMNS ARE JUDGED HERE rather than in `read_annotations`,
+    because this is the first place that holds what the department actually
+    said. Presence is not change: an unmodified export carries a verdict and a
+    source on every row, and complaining about presence meant every ordinary
+    note on an untouched file came back with "you tried to edit the verdict" —
+    a surface crying wolf on its own happy path. A column is reported only when
+    the value that came back is one the sweep never wrote.
     """
     document = dict(document or {})
     wanted = dict(annotations or {})
+    complaints: list[str] = []
     claims = []
 
     for claim in document.get("claims") or []:
@@ -239,10 +313,24 @@ def apply_annotations(document: dict, annotations: dict[str, dict]) -> tuple[dic
         if mark:
             claim["writer_note"] = mark.get("writer_note") or ""
             claim["dismissed"] = bool(mark.get("dismissed"))
+            # Grouped by row so a reader is sent to the line they typed on,
+            # and sorted so two runs over one file read the same.
+            changed: dict[int, list[str]] = {}
+            for number, column, value in mark.get("sent") or []:
+                if value not in _department_values(claim, column):
+                    changed.setdefault(number, []).append(column)
+            for number in sorted(changed):
+                names = sorted(dict.fromkeys(changed[number]))
+                complaints.append(
+                    f"Row {number} changed {', '.join(names)}, which the department "
+                    "writes and an import never changes. The note was kept; "
+                    f"{'those columns were' if len(names) > 1 else 'that column was'} "
+                    "ignored."
+                )
         claims.append(claim)
 
     document["claims"] = claims
-    return document, sorted(wanted)
+    return document, sorted(wanted), complaints
 
 
 # A ROOM's own research, which is a different question from a sweep's answers.

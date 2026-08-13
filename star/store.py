@@ -238,6 +238,13 @@ def sweep_to_document(result: dict, sweep_id: str, created_at: str) -> dict:
         # and the surfaces drop the line rather than inventing one.
         "room": result.get("room") or {},
         "scenes_read": result.get("scenes_read") or 0,
+        # WHICH scenes, not just how many. Opaque client-computed labels, kept
+        # under exactly the rule `scene_to_document` states for a check's
+        # `scene_key`: web/fountain.js owns what one means and this file owns
+        # nothing but keeping it. Without them a sweep that read a whole draft
+        # left every scene in the strip looking untouched after a reload, and
+        # the writer had no way to tell swept from unswept.
+        "scene_keys": result.get("scene_keys") or [],
         # Both numbers. The difference between them is the one thing a reader
         # cannot work out for themselves, and it is the whole reason a sweep
         # costs less than the same scenes checked one at a time.
@@ -259,6 +266,7 @@ def document_to_sweep(doc: dict) -> dict:
         "created_at": doc.get("created_at") or "",
         "room": doc.get("room") or {},
         "scenes_read": doc.get("scenes_read") or 0,
+        "scene_keys": doc.get("scene_keys") or [],
         "claims_raised": doc.get("claims_raised") or 0,
         "claims": doc.get("claims") or [],
         "search_count": doc.get("search_count") or 0,
@@ -286,6 +294,12 @@ def sweep_summary(doc: dict) -> dict:
         "sweep_id": doc.get("sweep_id") or "",
         "created_at": doc.get("created_at") or "",
         "scenes_read": doc.get("scenes_read") or 0,
+        # The exception to the paragraph above, and worth its weight. This list
+        # is precisely what a pasted draft is compared against to draw its row
+        # of ticks, and the alternative is fetching every filed sweep WHOLE —
+        # four hundred claims and their excerpts — to find out which scenes
+        # they covered. Short opaque strings, one per scene.
+        "scene_keys": doc.get("scene_keys") or [],
         "claims_raised": doc.get("claims_raised") or 0,
         "claim_count": len(doc.get("claims") or []),
         "search_count": doc.get("search_count") or 0,

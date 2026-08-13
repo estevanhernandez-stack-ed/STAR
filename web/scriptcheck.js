@@ -764,7 +764,14 @@ let roomId = null;
 // arrive with the filed list (star/store.py's scene_summary) and the parse is
 // redone whenever the box changes.
 let draftScenes = [];
+// Two sets, because a scene reaches this strip two ways and they are not the
+// same claim. `checkedKeys` means a check was filed on that scene ALONE and
+// can be reopened; `sweptKeys` means a draft sweep read it as part of a whole
+// script. Collapsing them into one would put "checked" over a scene with no
+// check to open, which is the label drift this surface has already paid for
+// once.
 let checkedKeys = new Set();
+let sweptKeys = new Set();
 // The sweep an import would write into, and the CSV text waiting on a second
 // press. Both cleared on a room change and whenever a different file is
 // chosen, so a confirmation can never apply a file the reader has moved on
@@ -867,7 +874,9 @@ function renderDraft() {
     return;
   }
 
-  const done = draftScenes.filter((scene) => checkedKeys.has(sceneKey(scene.text))).length;
+  const keys = draftScenes.map((scene) => sceneKey(scene.text));
+  const done = keys.filter((key) => checkedKeys.has(key)).length;
+  const swept = keys.filter((key) => sweptKeys.has(key)).length;
   els.draft.classList.remove("hidden");
   els.draftCount.replaceChildren(
     document.createTextNode(
@@ -875,23 +884,46 @@ function renderDraft() {
         "Pick one to load it into the box below."
     )
   );
+  // BOTH NUMBERS WHEN THERE ARE BOTH, and they overlap on purpose: a scene
+  // that was swept and then checked on its own is counted in each, because
+  // they are two different things a reader may be looking for. Subtracting the
+  // overlap out of one of them would make the strip disagree with the ticks
+  // beside it, which is the arithmetic a reader can actually see.
   els.draftDone.replaceChildren(
-    document.createTextNode(done ? `${done} already checked against this room.` : "")
+    document.createTextNode(
+      [
+        swept ? `${swept} swept` : "",
+        done ? `${done} checked on ${done === 1 ? "its" : "their"} own` : "",
+      ]
+        .filter(Boolean)
+        .join(", ") + (swept || done ? " against this room." : "")
+    )
   );
 
   els.draftScenes.replaceChildren();
   for (const scene of draftScenes) {
-    const checked = checkedKeys.has(sceneKey(scene.text));
+    const key = sceneKey(scene.text);
+    const checked = checkedKeys.has(key);
+    // A filed check outranks a sweep: it is the stronger record — its own
+    // result, reopenable from the row below — and a scene that has one should
+    // not be labelled with the weaker thing that also happened to it.
+    const swept = !checked && sweptKeys.has(key);
     const btn = el("button", "check-draft-scene");
     btn.type = "button";
     if (checked) btn.dataset.checked = "true";
+    if (swept) btn.dataset.swept = "true";
     // Text nodes, never markup, for the reason at the top of this file: a
     // scene heading is writer-supplied text and this is the surface built
     // around a hostile paste.
     btn.appendChild(el("span", "check-draft-index", String(scene.index)));
     btn.appendChild(el("span", "check-draft-slug", scene.heading));
-    if (checked) {
-      btn.appendChild(el("span", "check-draft-tick", "checked"));
+    // Different words for different facts. "checked" means there is a filed
+    // check to reopen; "swept" means a whole-draft sweep read this scene, and
+    // the answers live in the sweep rather than under this scene.
+    if (checked || swept) {
+      const tick = el("span", "check-draft-tick", checked ? "checked" : "swept");
+      if (swept) tick.dataset.kind = "swept";
+      btn.appendChild(tick);
     }
     btn.addEventListener("click", () => {
       els.input.value = scene.text;
@@ -948,6 +980,13 @@ async function runSweep() {
           index: scene.index,
           heading: scene.heading,
           text: scene.text,
+          // The same label a single check sends, so the strip can mark these
+          // scenes swept after a reload. Computed HERE, by the module that
+          // decides where a scene begins, for the reason star/store.py records
+          // against a check's own key: a second implementation on the server
+          // is how the two sides come to disagree about whether a scene
+          // changed.
+          key: sceneKey(scene.text),
         })),
       }),
     });
@@ -1159,7 +1198,25 @@ async function loadFiledSweeps() {
     // error worth a banner when the surface's actual job still works.
     return;
   }
-  if (room !== roomId || !sweeps.length) return;
+  if (room !== roomId) return;
+
+  // Which scenes the sweeps covered, unioned across every sweep filed on this
+  // room. A writer who swept act one last week and act two today has both
+  // marked, and re-sweeping the same draft changes nothing because the keys
+  // are identical.
+  //
+  // Before the row is drawn, and before the `!sweeps.length` return below: a
+  // room whose sweeps were all deleted has to clear the ticks, not keep them.
+  sweptKeys = new Set(
+    sweeps.flatMap((summary) =>
+      (Array.isArray(summary?.scene_keys) ? summary.scene_keys : [])
+        .map((key) => String(key || ""))
+        .filter(Boolean)
+    )
+  );
+  renderDraft();
+
+  if (!sweeps.length) return;
 
   els.sweptList.replaceChildren();
   for (const summary of sweeps) {
@@ -1424,6 +1481,13 @@ function clearCheck({ keepScene }) {
   els.sweepResult.classList.add("hidden");
   els.sweptRow.classList.add("hidden");
   els.sweptList.replaceChildren();
+  // Both sets, and this is a fix rather than housekeeping. `checkedKeys` was
+  // never cleared here, and neither loader empties it — each returns early on
+  // a room with nothing filed. So opening a room with no checks left the
+  // PREVIOUS room's ticks standing over this room's draft, telling a writer
+  // scenes were done against a room that had never seen them.
+  checkedKeys = new Set();
+  sweptKeys = new Set();
   openSweepId = null;
   pendingAnnotations = null;
   els.importRow.classList.add("hidden");

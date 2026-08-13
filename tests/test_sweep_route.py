@@ -39,6 +39,12 @@ SCENES = [
     {"index": 3, "heading": "INT. CLUB — NIGHT", "text": "INT. CLUB — NIGHT\n\nA cassette deck."},
 ]
 
+# The same three scenes carrying the opaque label the browser computes for
+# each. Its own constant because most of this file predates the field and does
+# not care about it, and the tests that DO care must not be reading a draft the
+# rest of the file could quietly change out from under them.
+KEYED = [{**scene, "key": f"k{scene['index']}"} for scene in SCENES]
+
 EXTRACTED = {
     1: [{"text": "a '61 Impala", "claim_type": "object"}],
     2: [{"text": "the '61 Impala", "claim_type": "object"}],
@@ -323,7 +329,9 @@ def test_a_filed_sweep_reads_back_as_it_returned():
     client = TestClient(server.app)
 
     with sweeping(store):
-        ran = post(client).json()
+        # KEYED rather than SCENES so the scene-key assertion below is not two
+        # empty lists agreeing with each other.
+        ran = post(client, scenes=KEYED).json()
         listed = client.get(f"/api/rooms/{ROOM}/sweeps", headers=AUTH).json()["sweeps"]
         again = client.get(
             f"/api/rooms/{ROOM}/sweeps/{ran['sweep_id']}", headers=AUTH
@@ -338,6 +346,87 @@ def test_a_filed_sweep_reads_back_as_it_returned():
     )
     assert again["claims"] == ran["claims"], "every verdict, source and scene number"
     assert again["search_count"] == ran["search_count"]
+    assert again["scene_keys"] == ran["scene_keys"], (
+        "including which scenes it read. Carried on the single read as well as "
+        "the list, because this is the faithful shape of the stored document "
+        "and a field that only one of the two reads returns is a field that "
+        "quietly disappears from the other"
+    )
+
+
+def test_a_sweep_records_which_scenes_it_read_not_only_how_many():
+    """So the draft strip can say a scene was already swept.
+
+    `scenes_read` is a count, and a count cannot mark a row of ticks. Without
+    the keys, a sweep that read a whole screenplay left all 24 of its scenes
+    looking untouched the moment the page reloaded — the writer's own record of
+    what they had covered lasted exactly as long as the tab.
+    """
+    store, client_data = a_store()
+    store.save(UID, ROOM, filed_room())
+
+    with sweeping(store):
+        client = TestClient(server.app)
+        body = post(client, scenes=KEYED).json()
+        listed = client.get(f"/api/rooms/{ROOM}/sweeps", headers=AUTH).json()["sweeps"]
+
+    assert body["scene_keys"] == ["k1", "k2", "k3"]
+    assert client_data.data[f"users/{UID}/rooms/{ROOM}/sweeps/{body['sweep_id']}"][
+        "scene_keys"
+    ] == ["k1", "k2", "k3"], "filed, so a reload gets them back"
+    assert listed[0]["scene_keys"] == ["k1", "k2", "k3"], (
+        "and carried on the LIST, which is what the strip compares a draft "
+        "against — the alternative is fetching every sweep whole, four hundred "
+        "claims and their excerpts, to draw a row of ticks"
+    )
+
+
+def test_a_scene_that_raised_no_claim_was_still_read():
+    """EVERY scene sent, not only the productive ones. A scene of pure dialogue
+    asserts nothing about the world and comes back with no claims; marking only
+    the scenes that raised one would tell a writer their quiet scenes had been
+    skipped, which is the opposite of what happened."""
+    store, _ = a_store()
+    store.save(UID, ROOM, filed_room())
+    quiet = [*KEYED, {"index": 4, "heading": "INT. TARDIS", "text": "Just talking.", "key": "k4"}]
+
+    with sweeping(store):
+        body = post(TestClient(server.app), scenes=quiet).json()
+
+    assert "k4" in body["scene_keys"]
+    assert not any(4 in (claim.get("scenes") or []) for claim in body["claims"]), (
+        "and it genuinely raised nothing — this is the case, not a coincidence"
+    )
+
+
+def test_a_repeated_scene_is_one_key_and_a_long_one_is_cut():
+    """The key is client-supplied text that gets stored and handed back, so it
+    is bounded here the way the check route bounds its own."""
+    store, _ = a_store()
+    store.save(UID, ROOM, filed_room())
+    odd = [
+        {"index": 1, "heading": "A", "text": "INT. A\n\nOne.", "key": "same"},
+        {"index": 2, "heading": "B", "text": "INT. B\n\nTwo.", "key": "same"},
+        {"index": 3, "heading": "C", "text": "INT. C\n\nThree.", "key": "x" * 200},
+    ]
+
+    with sweeping(store):
+        body = post(TestClient(server.app), scenes=odd).json()
+
+    assert body["scene_keys"] == ["same", "x" * 64]
+
+
+def test_a_sweep_sent_without_keys_still_works():
+    """An older browser tab, or the agent door. No keys, no ticks, nothing
+    broken — the strip simply has nothing to mark, which is where it was."""
+    store, _ = a_store()
+    store.save(UID, ROOM, filed_room())
+
+    with sweeping(store):
+        body = post(TestClient(server.app)).json()
+
+    assert body["scene_keys"] == []
+    assert body["scenes_read"] == 3, "the sweep itself is unaffected"
 
 
 def test_a_filed_sweep_can_be_deleted_and_takes_its_quotations_with_it():

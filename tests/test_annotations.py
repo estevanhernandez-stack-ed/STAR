@@ -57,9 +57,9 @@ def test_a_writers_note_comes_back_and_nothing_else_moves():
     assert marks["Kaiserkeller"]["writer_note"] == "Checked with the club — keep"
     assert marks["turning it up to eleven"]["dismissed"] is True
 
-    updated, unmatched = apply_annotations(a_sweep(), marks)
+    updated, unmatched, complaints = apply_annotations(a_sweep(), marks)
 
-    assert unmatched == []
+    assert unmatched == [] and complaints == []
     kaiser = updated["claims"][0]
     assert kaiser["writer_note"] == "Checked with the club — keep"
     assert kaiser["verdict"] == "confirmed", "the verdict is untouched"
@@ -76,10 +76,10 @@ def test_an_import_cannot_introduce_a_verdict_or_a_source():
     """
     marks, complaints = read_annotations(
         "claim,writer_note,verdict,source_url,source_excerpt\n"
-        "Kaiserkeller,Keep it,confirmed,https://evil.example,Definitely true\n"
+        "Kaiserkeller,Keep it,anachronism,https://evil.example,Definitely true\n"
     )
 
-    updated, _ = apply_annotations(a_sweep(), marks)
+    updated, _, edits = apply_annotations(a_sweep(), marks)
     kaiser = updated["claims"][0]
 
     assert kaiser["writer_note"] == "Keep it", "the writer's own mark lands"
@@ -87,10 +87,65 @@ def test_an_import_cannot_introduce_a_verdict_or_a_source():
     assert [c["url"] for c in kaiser["citations"]] == ["https://a.example"], (
         "no url a spreadsheet supplied is anywhere in this room"
     )
-    assert any("verdict" in c and "source_url" in c for c in complaints), (
-        "and the refusal names the columns, so a writer knows which change was "
-        "dropped rather than wondering why it did nothing"
+    assert complaints == [], "the file itself was readable; nothing to say about its rows"
+    assert any("verdict" in c and "source_url" in c and "Row 2" in c for c in edits), (
+        "and the refusal names the columns AND the row, so a writer knows which "
+        "change was dropped rather than wondering why it did nothing"
     )
+
+
+def test_a_note_on_an_untouched_row_is_not_accused_of_editing_it():
+    """THE HAPPY PATH, and it used to be an accusation.
+
+    An export carries a verdict and a source on every row. A writer types a
+    note into one of those rows and imports it — which is the entire workflow —
+    and the old check, which could only see that the columns were PRESENT,
+    answered "Row 2 carries verdict, note, source_title, source_url,
+    source_excerpt, which the department writes". Nothing had been changed. A
+    surface that cries wolf on its own happy path teaches a reader to ignore
+    the one complaint that matters.
+    """
+    marked = sweep_to_csv(a_sweep()).replace("sweep_id\r\n", "sweep_id,writer_note\r\n", 1)
+    marked = marked.replace("sw1\r\n", "sw1,Ask the club\r\n", 1)
+
+    marks, complaints = read_annotations(marked)
+    _, unmatched, edits = apply_annotations(a_sweep(), marks)
+
+    assert marks["Kaiserkeller"]["writer_note"] == "Ask the club"
+    assert complaints == [] and unmatched == []
+    assert edits == [], "the row carried the department's columns, and changed none of them"
+
+
+def test_a_source_moved_to_another_row_is_not_a_change():
+    """A spreadsheet gets sorted, and a claim with two sources is two rows. A
+    url that came back on a different row of the same claim is still a url that
+    claim carries, and asking WHICH row would make the answer depend on how the
+    writer sorted the file."""
+    document = sweep_to_document(
+        {
+            "claims": [
+                {
+                    "text": "Kaiserkeller",
+                    "verdict": "confirmed",
+                    "scenes": [13],
+                    "citations": [
+                        {"url": "https://a.example", "title": "A", "excerpt": "one"},
+                        {"url": "https://b.example", "title": "B", "excerpt": "two"},
+                    ],
+                }
+            ]
+        },
+        "sw1",
+        "2026-08-12T22:00:00Z",
+    )
+    marks, _ = read_annotations(
+        "claim,source_url,source_title,writer_note\n"
+        "Kaiserkeller,https://b.example,A,Swapped round by a sort\n"
+    )
+
+    _, _, edits = apply_annotations(document, marks)
+
+    assert edits == []
 
 
 def test_an_unmodified_export_re_imported_complains_about_nothing():
@@ -110,7 +165,7 @@ def test_a_row_matching_no_claim_is_named_rather_than_dropped():
         "claim,writer_note\nKaiserkeller,Fine\nA claim that was never here,Also fine\n"
     )
 
-    _, unmatched = apply_annotations(a_sweep(), marks)
+    _, unmatched, _ = apply_annotations(a_sweep(), marks)
 
     assert unmatched == ["A claim that was never here"]
 
@@ -122,7 +177,7 @@ def test_notes_are_matched_on_claim_text_and_not_on_row_order():
         "claim,writer_note\nturning it up to eleven,Cut\nKaiserkeller,Keep\n"
     )
 
-    updated, _ = apply_annotations(a_sweep(), marks)
+    updated, _, _ = apply_annotations(a_sweep(), marks)
 
     assert updated["claims"][0]["writer_note"] == "Keep", "Kaiserkeller is still first"
     assert updated["claims"][1]["writer_note"] == "Cut"

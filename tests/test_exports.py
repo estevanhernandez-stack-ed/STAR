@@ -15,8 +15,10 @@ from star import server
 from star.exports import (
     COLUMNS,
     ROOM_COLUMNS,
+    apply_annotations,
     chain_to_csv,
     csv_filename,
+    read_annotations,
     room_to_csv,
     safe_cell,
     sweep_rows,
@@ -68,11 +70,56 @@ def test_a_claim_with_two_sources_is_two_rows():
     that.
     """
     rows = parsed(sweep_to_csv(a_sweep()))
+    scene13 = [r for r in rows if r["scene"] == "13"]
 
-    assert len(rows) == 3, "two sources plus one sourceless claim"
-    assert [r["source_url"] for r in rows[:2]] == ["https://a.example/k", "https://b.example/k"]
-    assert rows[0]["claim"] == rows[1]["claim"] == "Kaiserkeller", "sharing their claim"
-    assert rows[0]["verdict"] == "confirmed"
+    assert len(scene13) == 2, "one row per source, within the scene"
+    assert [r["source_url"] for r in scene13] == ["https://a.example/k", "https://b.example/k"]
+    assert scene13[0]["claim"] == scene13[1]["claim"] == "Kaiserkeller", "sharing their claim"
+    assert scene13[0]["verdict"] == "confirmed"
+
+
+def test_a_claim_the_draft_makes_twice_is_a_row_in_each_scene():
+    """THE SPLIT. A packed `13 17` cell cannot answer "what is wrong on page
+    17", which is the question a writer opens this file with. The claim is
+    written into both scenes, and `scenes` still carries the whole spread so
+    the other question — where else does the draft say this — survives it."""
+    rows = parsed(sweep_to_csv(a_sweep()))
+
+    assert len(rows) == 5, "Kaiserkeller twice over two sources, plus Ta. once"
+    assert [r["scene"] for r in rows] == ["5", "13", "13", "17", "17"], (
+        "and in PAGE ORDER, because a script is read in page order and so is "
+        "the report about it"
+    )
+    for row in rows:
+        if row["claim"] == "Kaiserkeller":
+            assert row["scenes"] == "13 17", "the whole spread, on every one of its rows"
+
+
+def test_a_claim_the_sweep_could_not_place_keeps_its_row():
+    """Empty scene, and last. These are the ones the surface calls "checked but
+    could not place"; dropping them here would quietly shrink the file against
+    the count printed on the page it came from."""
+    document = a_sweep(
+        claims=[
+            {"text": "Placed", "verdict": "confirmed", "scenes": [2], "citations": []},
+            {"text": "Adrift", "verdict": "confirmed", "scenes": [], "citations": []},
+        ]
+    )
+    rows = parsed(sweep_to_csv(document))
+
+    assert [r["claim"] for r in rows] == ["Placed", "Adrift"]
+    assert rows[-1]["scene"] == "" and rows[-1]["scenes"] == ""
+
+
+def test_a_scene_number_that_will_not_parse_does_not_take_the_export_down():
+    """This reads a STORED document. A sweep filed by an older shape of
+    `sweep.attach` is not something a download gets to crash on."""
+    document = a_sweep(
+        claims=[{"text": "Odd", "verdict": "confirmed", "scenes": [3, None, "x"], "citations": []}]
+    )
+    rows = parsed(sweep_to_csv(document))
+
+    assert [r["scene"] for r in rows] == ["3"]
 
 
 def test_a_claim_nobody_could_answer_still_gets_a_row():
@@ -90,6 +137,31 @@ def test_the_header_is_the_shape_the_importer_expects():
     assert list(rows[0].keys()) == list(COLUMNS)
     assert "sweep_id" in COLUMNS, "so an import can find the sweep it belongs to"
     assert "scenes" in COLUMNS, "and a reader can see which pages to open"
+    assert COLUMNS[0] == "scene", "the column a reader sorts and filters on, first"
+
+
+def test_the_split_does_not_reach_the_import():
+    """A claim written into three scenes is three rows carrying one claim text,
+    and an import keys on claim text. Several rows for one claim is not new —
+    a claim with three sources was always three rows — and the join below is
+    the behaviour that already handled it."""
+    document = a_sweep()
+    rows = list(csv.DictReader(io.StringIO(sweep_to_csv(document))))
+    out = io.StringIO()
+    writer = csv.DictWriter(out, fieldnames=[*COLUMNS, "writer_note"], lineterminator="\r\n")
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({**row, "writer_note": "cut this" if row["scene"] == "17" else ""})
+
+    annotations, complaints = read_annotations(out.getvalue())
+    applied, missing, edits = apply_annotations(document, annotations)
+
+    assert complaints == [] and missing == [] and edits == []
+    assert len(applied["claims"]) == 2, "two claims, not five"
+    marked_claim = next(c for c in applied["claims"] if c["text"] == "Kaiserkeller")
+    assert marked_claim["writer_note"] == "cut this", (
+        "written once, from whichever of its scene rows the writer typed in"
+    )
 
 
 def test_a_cell_that_would_run_as_a_formula_is_neutralised():

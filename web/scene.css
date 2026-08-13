@@ -936,6 +936,15 @@
   color: var(--pencil-text);
 }
 
+/* A scene a whole-draft sweep read, which is a weaker claim than a filed
+   check and reads as one. Quieter than the aniline tick above, and NOT
+   --pencil-text: that token measures 2.32:1 on onionskin, and this is a word
+   a reader has to read rather than sense. Same mix the index above uses,
+   which was measured at 4.59:1. */
+.check-draft-tick[data-kind="swept"] {
+  color: color-mix(in srgb, var(--ink) 65%, var(--onionskin));
+}
+
 /* THE SWEEP — every claim a draft makes, asked once.
  *
  *  The one control on this surface that spends without a scene being chosen,

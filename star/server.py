@@ -1890,6 +1890,22 @@ async def _verify_claims(claims: list[dict], room_files: str, run_ledger: Source
             logger.exception("Failed to drop a sweep verification session")
 
 
+def _scene_keys(scenes: list[dict]) -> list[str]:
+    """Every scene this sweep read, by the browser's own name for it.
+
+    EVERY SCENE SENT, not only the ones that raised a claim. A scene of pure
+    dialogue asserts nothing about the world and comes back with no claims, and
+    it was still read — marking only the productive ones would tell a writer
+    their quiet scenes were skipped, which is the opposite of what happened.
+    `budget_exhausted` is what says the VERIFICATION ran short; extraction
+    covers the whole draft or the sweep fails.
+
+    Deduplicated and order-preserving: a draft that repeats a scene verbatim
+    sends one key twice, and the strip only ever asks whether a key is present.
+    """
+    return list(dict.fromkeys(str(scene.get("key") or "") for scene in scenes if scene.get("key")))
+
+
 async def _run_sweep(uid: str, run_id: str, scenes: list[dict]) -> dict:
     """Every claim a draft makes, asked once, against one room.
 
@@ -1959,6 +1975,7 @@ async def _run_sweep(uid: str, run_id: str, scenes: list[dict]) -> dict:
         return {
             "run_id": run_id,
             "scenes_read": len(scenes),
+            "scene_keys": _scene_keys(scenes),
             "claims_raised": raised,
             "claims": [],
             "search_count": 0,
@@ -2018,6 +2035,7 @@ async def _run_sweep(uid: str, run_id: str, scenes: list[dict]) -> dict:
         "sweep_id": uuid.uuid4().hex[:12],
         "created_at": datetime.now(timezone.utc).isoformat(),  # noqa: UP017
         "scenes_read": len(scenes),
+        "scene_keys": _scene_keys(scenes),
         # Both numbers, because the difference between them is the one thing a
         # reader cannot work out for themselves and the whole reason a sweep
         # costs less than the same scenes one at a time.
@@ -2139,7 +2157,12 @@ async def annotate_sweep(
         raise HTTPException(404, "Unknown sweep")
 
     annotations, complaints = exports.read_annotations(req.csv)
-    updated, unmatched = exports.apply_annotations(document, annotations)
+    # Both lists, in the order they are raised: what the FILE was wrong about
+    # (unreadable rows, no claim named), then what it tried to change. The
+    # second can only be decided against the stored sweep, which is why it
+    # comes back from apply rather than from read.
+    updated, unmatched, edits = exports.apply_annotations(document, annotations)
+    complaints = complaints + edits
     matched = len(annotations) - len(unmatched)
 
     if req.apply and matched:
@@ -2223,6 +2246,12 @@ class SweepScene(BaseModel):
     index: int = 0
     heading: str = ""
     text: str
+    # The same opaque client-computed label a single check carries, and stored
+    # under the same rule: web/fountain.js owns what it means and this side
+    # owns nothing but keeping it. It is what lets the draft strip say a scene
+    # was already swept — without it, a sweep that read all 24 scenes leaves
+    # every one of them looking untouched the moment the page reloads.
+    key: str = ""
 
 
 class SweepRequest(BaseModel):
@@ -2241,7 +2270,14 @@ async def create_sweep(
     # second answer to "where does a scene begin", and the writer would be
     # picking scenes out of one list while the department checked another.
     scenes = [
-        {"index": s.index, "heading": s.heading, "text": s.text.strip()}
+        {
+            "index": s.index,
+            "heading": s.heading,
+            "text": s.text.strip(),
+            # Bounded like the check route bounds its own, because this is
+            # client-supplied text that gets stored and handed back.
+            "key": s.key.strip()[:64],
+        }
         for s in req.scenes
         if s.text.strip()
     ]
