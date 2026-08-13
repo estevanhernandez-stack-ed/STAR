@@ -155,3 +155,108 @@ already stored.
 
 Row count goes up — the file you sent has 61 rows and the same sweep will
 export around 80, because eleven claims appear in more than one scene.
+
+
+---
+
+# The second round, after the split — sweep `26881297a20d`, 13:35
+
+Four files, downloaded after `star-00046`. Everything I changed is correct in
+them. What I did not change moved on its own, and the movement is worth
+reading.
+
+## The columns, verified row by row
+
+**Sweep file.** `scene, scenes, claim, claim_type, verdict, note, source_title,
+source_url, source_excerpt, swept_at, sweep_id` — `scene` first, `scenes`
+second.
+
+- **80 rows**, up from 61. Exactly the inflation predicted, and the reason is
+  visible: eleven claims appear in more than one scene.
+- **Page order holds.** Scenes run 1, 2, 3, 5, 6, 7, 8, 9, 11, 13, 14, 15, 16,
+  17, 18, 19, 20, 21, 22, 23, 24. Scenes 4, 10 and 12 are absent because they
+  raised no claims — the TARDIS scenes, which assert nothing about 1958.
+- **The split is right on every multi-scene claim.** `Kaiserkeller` carries
+  `scenes = "13 17 19 20 21 23 24"` and appears as seven rows, one at each.
+  `Top Ten` (8 9 13) → three rows. `Liverpool` (1 5 21) → three. `HAMBURG`
+  (15 17 24) → three. `VESPA`, `G-sharp`, `RORY STORM AND THE HURRICANES` and
+  `THE SENIORS` all land where their `scenes` cell says.
+
+**Story file.** `continues` is present and correct: every Hamburg row carries
+`01c41bcf266a`, every Liverpool row carries empty. Hamburg first, Liverpool
+second — nearest first. **That file will import as two rooms, already linked.**
+
+**Research file (Hamburg alone).** Same columns, and `continues` names
+`01c41bcf266a` — a room that is not in the file. Importing it on its own will
+file one room, unlinked, with the complaint saying so by name. Working as
+designed; worth knowing before you see the message.
+
+**One thing the story file proves that a fixture could not.**
+`grokipedia.com/page/liverpool_city_police` is cited by BOTH rooms and appears
+as two rows, not one. That is the no-deduplication rule doing its job: a source
+carrying two rooms is a fact about the research.
+
+## The accuracy moved in both directions
+
+**Genuinely better than the 02:14 sweep:**
+
+- **`Empire`** now cites `arthurlloyd.co.uk`'s Liverpool Empire Theatre page —
+  the correct source, and the exact row that was the sharpest example of the
+  defect last time.
+- **`"Raunchy."`** → *Raunchy (instrumental)* on Wikipedia. Correct.
+- **`Some Other Guy` → ANACHRONISM**, citing the Wikipedia entry showing a 1962
+  release against a 1960 scene. **That is a new, correct catch with the right
+  page under it** — and in the earlier sweep the same claim came back
+  `confirmed` against the filler.
+- `turning it up to eleven`, `Candid Camera`, `GERMAN POLICE MOTORCYCLE` and
+  `drums` all cite pages that actually hold them up.
+
+**Worse than the 02:14 sweep:**
+
+- **`1959 Standard Vanguard Estate`** now cites a **Ford Thames Pickup**
+  auction listing. The earlier sweep cited the Standard Vanguard Wikipedia
+  entry, which was right. This one is a different vehicle from a different
+  manufacturer.
+- **`DALEK`**, the anachronism the whole demo turns on, cites **Penny Lane**.
+  Last time it cited the minibus. Different nonsense, same nonsense.
+- **A second filler emerged.** Alongside the Beatles-in-Hamburg minibus
+  passage, the *Penny Lane* Wikipedia excerpt now carries eight rows:
+  `Taj Mahal`, `DALEK`, `Do not pass Go`, `April. Judea.`, `A GOLDEN RECORD`,
+  `Voyager`, `Out past the edge of the solar system`, `Carrying music`.
+
+**The rate did not move.** 23 of 80 rows carry the minibus passage and 8 carry
+Penny Lane: **31 of 80, 39%**. The earlier sweep was 23 of 61, 38%. Two
+independent sweeps, the same fraction, different claims — which says this is
+the pipeline's steady state and not a bad night.
+
+## And the notes went away
+
+Every `confirmed` row in this sweep has an **empty `note`**. The 02:14 sweep
+wrote one on each — "Eyeglasses made of horn or tortoise shell were standard
+personal items in the 1950s". Only the three anachronisms carry notes now, and
+those three are excellent.
+
+Not caused by anything shipped today: `sweep_rows` passes `note` through
+untouched, and no code between the verifier and the file touches it. It is
+model variance between two runs of the same prompt. It matters anyway — a
+`confirmed` verdict with **no note and a wrong source** gives a reader nothing
+at all to check.
+
+## The diagnosis is now one sentence
+
+`star/agents/script_check.py` tells the verifier: *"In the sources field list
+only URLs you actually saw, either in `<room_files>` or in a parallel_search
+result."*
+
+**That binds the URL to SEEN, not to SUPPORTS.** The model is obeying the
+instruction it was given. Every filler citation in both sweeps is a page the
+verifier genuinely read on that run — it just is not the page that holds the
+claim up. The rule the prompt never states is the one a receipt depends on:
+*the URL you list must be the page that settles THIS claim, and if no page you
+read settles it, the verdict is `unverifiable`.*
+
+The neighbouring paragraph already makes exactly this argument for the verdict
+("your certainty is not a source... a claim you are sure about with nothing
+behind it is thrown out rather than stamped"). It was never extended to the
+citation. A claim confirmed against a page that does not mention it is the same
+failure the paragraph was written to stop, one field to the right.
