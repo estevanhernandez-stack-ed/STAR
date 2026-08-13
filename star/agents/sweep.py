@@ -47,7 +47,7 @@ def extract_state(scene: str) -> dict:
     return {"scene": scene}
 
 
-def verify_state(claims: object, room_files: str = "") -> dict:
+def verify_state(claims: object, room_files: str = "", era: str = "") -> dict:
     """State for the one verification a sweep runs.
 
     `claims` is the deduped set, already gathered across every scene. The
@@ -63,5 +63,8 @@ def verify_state(claims: object, room_files: str = "") -> dict:
     return {
         "claims": claims,
         "room_files": room_files,
+        # Both builders feed the SAME verifier agent, so the era has to arrive
+        # by both roads or a sweep judges by a standard a scene check does not.
+        "era": era,
         "search_budget": config.max_searches_per_sweep(),
     }

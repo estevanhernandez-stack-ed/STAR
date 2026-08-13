@@ -1740,6 +1740,30 @@ def _chain_files(documents: list[tuple[str, dict]]) -> str:
     return "\n\n".join(blocks)
 
 
+def _chain_era(documents: list[tuple[str, dict]]) -> str:
+    """The story's own span, as the verifier should be told it. Pure.
+
+    One line per room, because a chain is not one era. A Liverpool room set in
+    1958 and a Hamburg room set in 1960-62 are one story and two spans, and
+    collapsing them to a single range would hand the desk exactly the thing
+    this whole change exists to take away: a wider window than any scene
+    actually sits in.
+
+    Empty when nothing names an era — a build that was interrupted before its
+    story profile was written has none, and `{era?}` in the prompt degrades to
+    "nobody told me" rather than to a guess.
+    """
+    lines = []
+    for _run_id, document in documents or []:
+        profile = (document or {}).get("story_profile") or {}
+        era = str(profile.get("era") or "").strip()
+        if not era:
+            continue
+        title = str(profile.get("title") or "").strip()
+        lines.append(f"{title} — {era}" if title else era)
+    return "\n".join(lines)
+
+
 def _room_files(document: dict) -> str:
     """Assemble a stored room's own research for the verifier's prompt.
 
@@ -1994,7 +2018,7 @@ async def _run_check(
     session = await _check_runner.session_service.create_session(
         app_name=_CHECK_APP,
         user_id=_CHECK_USER,
-        state=check_state(scene, room_files),
+        state=check_state(scene, room_files, _chain_era(documents)),
     )
     try:
         try:
@@ -2370,7 +2394,9 @@ async def _extract_claims(scene: str) -> list[dict]:
             logger.exception("Failed to drop a sweep extraction session")
 
 
-async def _verify_claims(claims: list[dict], room_files: str, run_ledger: SourceLedger) -> dict:
+async def _verify_claims(
+    claims: list[dict], room_files: str, run_ledger: SourceLedger, era: str = ""
+) -> dict:
     """The one verification a sweep runs, over the whole deduped set.
 
     The ledger is fed here, by the server, out of `event.get_function_responses()`
@@ -2381,7 +2407,7 @@ async def _verify_claims(claims: list[dict], room_files: str, run_ledger: Source
     session = await runner.session_service.create_session(
         app_name=agent_sweep.VERIFY_APP,
         user_id=agent_sweep.USER,
-        state=agent_sweep.verify_state({"claims": claims}, room_files),
+        state=agent_sweep.verify_state({"claims": claims}, room_files, era),
     )
     try:
         message = types.Content(
@@ -2512,7 +2538,9 @@ async def _run_sweep(uid: str, run_id: str, scenes: list[dict]) -> dict:
     run_ledger = SourceLedger()
     try:
         state = await asyncio.wait_for(
-            _verify_claims(claims, _chain_files(documents), run_ledger),
+            _verify_claims(
+                claims, _chain_files(documents), run_ledger, _chain_era(documents)
+            ),
             timeout=timeout,
         )
     except TimeoutError:

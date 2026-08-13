@@ -124,6 +124,18 @@ verifier = Agent(
         # against it still runs on fresh search alone. A missing key must
         # degrade to "the files answered nothing", not abort the check.
         "<room_files>\n{room_files?}\n</room_files>\n\n"
+        # THE ERA, which this desk judged by and was never told. Its own
+        # standard below is whether a claim holds "for this story's era and
+        # place", and until 2026-08-13 `check_state` passed the scene, the
+        # files and a search budget — the term the whole standard rests on was
+        # undefined for the desk applying it. So it inferred the year from the
+        # slugline and from dates inside the room's own findings, and when
+        # those disagreed nothing arbitrated.
+        #
+        # '?' for the same reason <room_files> has one: a room whose build was
+        # interrupted has no story profile, and a check against it must degrade
+        # to "nobody told me the era" rather than abort.
+        "<story_era>\n{era?}\n</story_era>\n\n"
         "Work the room's files first. They were researched for this story, "
         "they are already paid for, and a claim they settle needs no search at "
         "all. Call the parallel_search tool for every claim the files do not "
@@ -143,6 +155,25 @@ verifier = Agent(
         # and producing a receipt indistinguishable from a researched one. Every
         # other guard on the import path holds; this was the one place the
         # evidence gets USED, and it could not see the brand.
+        # A RANGE IS NOT A DATE, and this is the sentence the AC30 got past.
+        # Measured 2026-08-13: a scene headed NIGHT (1958) said "a Vox AC30
+        # amplifier". The AC30 shipped late 1959 into 1960 — the 1958 amp is
+        # the AC15 — and the room held a finding written to the whole era,
+        # "British musicians accessed Vox valve amplifiers in the late 1950s".
+        # The scene's year sat inside the finding's span, the desk called the
+        # overlap a match, and stamped CONFIRMED. That is the tool's own
+        # argument for itself — right in 1958, wrong in 1960 — running
+        # backwards.
+        "A SPAN IS NOT A DATE. A room's era covers years, and a finding "
+        "written to that era is true somewhere inside it rather than "
+        "throughout it. When a scene names a year and the evidence names a "
+        "span containing it, that is not support: it is a question you have "
+        "not answered yet. Ask whether the thing was true IN THAT YEAR — a "
+        "product released in 1960 is an anachronism in a 1958 scene however "
+        "neatly 1958 sits inside 'the late fifties'. Search when the files "
+        "only give you a span. If the search still only gives a span, the "
+        "verdict is unverifiable and the note says the sources gave a range "
+        "where the scene needed a year.\n\n"
         "IF <room_files> CARRIES A PROVENANCE BANNER saying the room was "
         "imported rather than researched, then nothing under that banner is a "
         "source. It is a claim somebody typed, and a claim cannot verify "
@@ -240,7 +271,7 @@ check_scene = SequentialAgent(
 )
 
 
-def check_state(scene: str, room_files: str = "") -> dict:
+def check_state(scene: str, room_files: str = "", era: str = "") -> dict:
     """The session state one check runs on.
 
     The scene travels in state rather than as the run's user message so that
@@ -260,5 +291,8 @@ def check_state(scene: str, room_files: str = "") -> dict:
     return {
         "scene": scene,
         "room_files": room_files,
+        # The story's own span, named rather than inferred. See the <story_era>
+        # note in the verifier's instruction for what it cost to leave out.
+        "era": era,
         "search_budget": config.max_searches_per_check(),
     }
