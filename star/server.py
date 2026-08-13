@@ -1758,10 +1758,27 @@ def _room_files(document: dict) -> str:
     `ledger_from_room` is empty, because both are built from the same
     citations, so "the room's files were empty" is a single fact rather than
     two that can disagree.
+
+    AN IMPORTED ROOM SAYS SO HERE, and until 2026-08-13 it did not. The import
+    brand was on every surface a person reads and on none that the verifier
+    does: this function printed a typed-in fact and a researched one in the
+    same shape, with the same grammar, and the verifier had no way to tell them
+    apart. An agent walking the door proved what that costs — it typed "the Vox
+    AC30 was accessible to British musicians in the late 1950s" into a
+    spreadsheet, imported it, and got a 1958 scene stamped CONFIRMED against
+    it, citing the room, with no search spent.
+
+    That is the one thing this department exists to make impossible. Every
+    other guard on the import path says the same sentence in its own words —
+    `import_rooms` refuses to let the brand come off, the source count is
+    counted rather than read, a bible is refused on arrival — and the guard
+    stopped exactly where the evidence gets used.
     """
     categories = (document or {}).get("categories")
     if not isinstance(categories, dict):
         return ""
+
+    imported = str((document or {}).get("imported_at") or "").strip()
 
     blocks: list[str] = []
     for category, doc in categories.items():
@@ -1783,6 +1800,23 @@ def _room_files(document: dict) -> str:
                     lines.append(f'    {title}: "{excerpt}"')
         if lines:
             blocks.append("\n".join([category.upper().replace("_", " "), *lines]))
+
+    if not blocks:
+        return ""
+
+    if imported:
+        # ABOVE the files rather than beside each line. A per-line marker is
+        # something a long prompt learns to skip; a banner is the first thing
+        # read about the block and stays true for every line under it.
+        blocks.insert(
+            0,
+            "PROVENANCE OF THESE FILES\n"
+            f"This room was IMPORTED from a spreadsheet on {imported[:10]}, not "
+            "researched. Nobody here ran a search for any of it, and nothing "
+            "below was checked when it arrived — a person typed the facts and "
+            "the addresses, and either could be invented. Treat every line "
+            "under this as a claim somebody made, not as a source.",
+        )
 
     return "\n\n".join(blocks)
 

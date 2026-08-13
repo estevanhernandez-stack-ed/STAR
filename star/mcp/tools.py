@@ -782,8 +782,12 @@ TOOLS: tuple[dict, ...] = (
             "character count, the row count, the column names and the first "
             "few rows — enough to know the file is right. `file` returns the "
             "whole text, and is for handing to something that writes files.\n\n"
-            "The CSV imports back through `import_rooms`, in this account or "
-            "anybody else's. That round trip is what these files are for.\n\n"
+            "A `research` or `story` file imports back through `import_rooms`, "
+            "in this account or anybody else's. **A `sweep` file does not** — "
+            "it goes back through `import_notes`, into the sweep it came from. "
+            "Sending a sweep through `import_rooms` would file its claims as "
+            "though they were researched findings, which is the one thing this "
+            "department refuses to let happen.\n\n"
             "Costs nothing, spends no searches, and is never rate-limited."
         ),
         "inputSchema": {
@@ -2437,8 +2441,9 @@ async def _export_room(arguments: dict, calls: Calls, identity) -> dict:
         return _payload(
             f"`{export['filename']}`, {len(export['text'])} characters. This "
             "is the whole file — hand it to something that writes files rather "
-            "than reading it as prose. It imports back through `import_rooms` "
-            "in this account or anybody else's."
+            "than reading it as prose. A research or story file imports back "
+            "through `import_rooms`; a sweep goes back through `import_notes`, "
+            "into the sweep it came from."
             if kind != "bible"
             else (
                 f"`{export['filename']}`, {len(export['text'])} characters of "

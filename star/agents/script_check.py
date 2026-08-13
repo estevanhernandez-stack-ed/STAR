@@ -137,6 +137,21 @@ verifier = Agent(
         # said to search "only for the claims the files do not answer", and the
         # model read its own certainty as an answer. Nothing about the pipeline
         # was wrong; this sentence was.
+        # THE LAUNDERING PATH, closed 2026-08-13. An agent typed a false fact
+        # into a spreadsheet, imported it as a room, and this desk stamped a
+        # 1958 scene CONFIRMED against it — citing "room", spending no search,
+        # and producing a receipt indistinguishable from a researched one. Every
+        # other guard on the import path holds; this was the one place the
+        # evidence gets USED, and it could not see the brand.
+        "IF <room_files> CARRIES A PROVENANCE BANNER saying the room was "
+        "imported rather than researched, then nothing under that banner is a "
+        "source. It is a claim somebody typed, and a claim cannot verify "
+        "another claim. Search for it instead: if a search holds it up, cite "
+        "the page you found and stamp it normally. If you cannot search it, "
+        "the verdict is unverifiable and the note says the room's own files "
+        "were imported rather than researched. Never confirm a claim on "
+        "imported material alone, and never cite an imported room as though a "
+        "search had returned it.\n\n"
         "Your certainty is not a source. A verdict has to rest on something you "
         "actually read, either in <room_files> or in a parallel_search result "
         "you received on this run, and a claim you are sure about with nothing "
