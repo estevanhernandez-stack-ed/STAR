@@ -622,6 +622,14 @@ assert.match(
 );
 assert.match(
   ids["check-import-result"].textContent,
+  /1 row named a claim this sweep does not hold, and was skipped/,
+  "AGREED WITH THE COUNT. It shipped reading '1 row ... and were skipped', and " +
+    "one row is the ordinary case: a writer fixes a typo in the claim column " +
+    "and that single row stops matching. This is the sentence a reader is " +
+    "holding while they decide whether this desk is careful"
+);
+assert.match(
+  ids["check-import-result"].textContent,
   /carries verdict, which the department writes/,
   "and the refusal names the column it kept for itself"
 );
@@ -661,6 +669,41 @@ assert.equal(
     "file change would write something the reader never saw a preview of"
 );
 assert.match(last.csv, /A DIFFERENT note/, "and it is the new file being read");
+
+/* 4f-bis — and the same sentence with more than one row. --------------- */
+//
+// Both halves, because a "fix" that hard-codes the singular reads correctly on
+// the case above and wrongly on every other. The noun moves too: one row named
+// A CLAIM, several named CLAIMS.
+
+globalThis.__fetch = async (url, options) => {
+  const method = (options?.method || "GET").toUpperCase();
+  if (method === "POST" && url.includes("/annotations")) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        applied: false,
+        matched: 2,
+        unmatched: ["A claim that was never here", "Nor was this one"],
+        complaints: [],
+        claims: [],
+      }),
+    };
+  }
+  return { ok: true, status: 200, json: async () => ({ sweeps: [], claims: [], scenes: [] }) };
+};
+
+chooseFile("claim,writer_note\na Gibson,Two strangers in the file\n");
+await ids["check-import-btn"].press();
+await new Promise((r) => setTimeout(r, 0));
+
+assert.match(
+  ids["check-import-result"].textContent,
+  /2 rows named claims this sweep does not hold, and were skipped/,
+  "plural noun AND plural verb"
+);
+assert.match(ids["check-import-result"].textContent, /Nor was this one/, "both are named");
 
 /* 4g — a LIVE sweep offers no import, because there is nothing to write into. */
 //

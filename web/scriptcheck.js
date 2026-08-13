@@ -1155,12 +1155,17 @@ function renderImport(payload, { applying, text }) {
   // Named rather than counted. Silence here would let a writer annotate twenty
   // claims, import, and find nineteen with no way to learn which.
   if (unmatched.length) {
+    // Agreed with the count, because one row is the ordinary case — a writer
+    // fixes a typo in the claim column and that single row stops matching. It
+    // read "1 row ... and were skipped", which is the sentence a reader is
+    // holding when they decide whether this desk is careful.
+    const one = unmatched.length === 1;
     body.appendChild(
       el(
         "p",
         "import-unmatched",
-        `${plural(unmatched.length, "row")} named a claim this sweep does not ` +
-          "hold, and were skipped:"
+        `${plural(unmatched.length, "row")} named ${one ? "a claim" : "claims"} ` +
+          `this sweep does not hold, and ${one ? "was" : "were"} skipped:`
       )
     );
     const list = el("ul", "import-list");
