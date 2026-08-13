@@ -174,10 +174,36 @@ def requested_scope(requested: object, client_scope: str) -> str | None:
     reader approving a screen is approving what the screen said, so anything
     the screen can say has to already be true.
 
-    None means refuse the authorization request outright, which is
-    `invalid_scope` on the wire. Silently narrowing instead would draw a screen
-    granting less than the client asked for, and the client would then fail at
-    its first call with a 403 naming a scope its own registration says it has.
+    NARROWED, NOT REFUSED, and that is a correction. This returned None for any
+    request that was not a subset of the registration, and the reasoning was
+    that silently narrowing would draw a screen granting less than the client
+    asked for, leaving it to fail at its first call with a 403 naming a scope
+    its own registration says it has.
+
+    That trade was measured against the wrong failure. On 2026-08-13 the
+    claude.ai connector could not be attached at all: its client-id metadata
+    document names no `scope`, so `clients._scope` registers it for
+    SCOPES_DEFAULT — read and write, deliberately not delete — while its
+    authorization request asks for all three scopes this server ADVERTISES in
+    `/.well-known/oauth-authorization-server`. A client that reads the
+    discovery document and asks for what it says was refused outright, and the
+    reader saw "Authorization with the MCP server failed" with no way forward.
+    The discovery document offering three and the registration default granting
+    two is this server's own arrangement; making that contradiction the
+    client's problem was the defect.
+
+    So: the intersection, which RFC 6749 §3.3 expressly permits — a server may
+    fully or partially ignore a requested scope and issue a narrower one. A 403
+    on a tool the client thought it had is a far better failure than a
+    connector that cannot be added. Both halves are told what was actually
+    granted: the consent screen prints it before a human approves anything, and
+    the token response carries `scope`.
+
+    It can only ever SHRINK. An intersection cannot introduce a scope the
+    registration lacks, which is the property the old refusal was protecting
+    and the one thing that must not change. An empty intersection is still
+    None: there is nothing to grant, and a screen offering nothing is not a
+    question worth asking.
 
     An empty or absent request gets everything the client registered for. That
     is RFC 6749's default, and it is safe for the same reason the registration
@@ -185,13 +211,13 @@ def requested_scope(requested: object, client_scope: str) -> str | None:
     """
     available = set(client_scope.split())
     if requested is None or requested == "":
-        return SCOPE_SEPARATOR.join(sorted(available))
+        return SCOPE_SEPARATOR.join(sorted(available)) or None
     if not isinstance(requested, str):
         return None
-    asked = set(requested.split())
-    if not asked or not asked <= available:
+    granted = set(requested.split()) & available
+    if not granted:
         return None
-    return SCOPE_SEPARATOR.join(sorted(asked))
+    return SCOPE_SEPARATOR.join(sorted(granted))
 
 
 def expired(expires_at: object, now: datetime) -> bool:

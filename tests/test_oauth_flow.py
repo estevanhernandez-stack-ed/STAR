@@ -179,6 +179,83 @@ def test_the_whole_flow_ends_with_a_token_that_opens_the_door(door):
     assert [t["name"] for t in opened.json()["result"]["tools"]] == list(tools._ORDER)
 
 
+def test_a_client_asking_for_every_advertised_scope_reaches_the_consent_screen(door):
+    """THE CONNECTOR THAT COULD NOT BE ATTACHED, as the request that arrived.
+
+    Logged 2026-08-13 16:00:16Z. The claude.ai connector reads
+    `/.well-known/oauth-authorization-server`, sees `scopes_supported` name
+    three, and asks for all three. Its client-id metadata document names no
+    `scope`, so it is registered for SCOPES_DEFAULT — read and write,
+    deliberately not delete. The old outright refusal turned that into a 303
+    carrying `error=invalid_scope` back to the callback, and a reader who had
+    done nothing wrong was told "Authorization with the MCP server failed".
+
+    The discovery document offering three and the registration default granting
+    two is this server's own arrangement. Making that contradiction the
+    client's problem was the defect; the intersection is the fix.
+    """
+    _, challenge = _pkce()
+    client_id = _register(door, scope="rooms:read rooms:write").json()["client_id"]
+
+    sent = _authorize(
+        door, client_id, challenge, scope="rooms:read rooms:write rooms:delete"
+    )
+
+    assert sent.status_code == 303
+    location = sent.headers["location"]
+    assert location.startswith("/consent.html?"), (
+        f"a human should be asked, and instead the flow ended at {location}"
+    )
+    assert _query(location)["scope"] == "rooms:read rooms:write", (
+        "and the screen prints what will ACTUALLY be granted, so approving it "
+        "approves something true"
+    )
+
+
+def test_a_client_that_shares_no_scope_at_all_is_still_refused(door):
+    """Narrowing is not surrender. An empty intersection has nothing to put on
+    a consent screen, and drawing one anyway would ask a reader to approve a
+    grant that authorises nothing."""
+    _, challenge = _pkce()
+    client_id = _register(door, scope="rooms:read").json()["client_id"]
+
+    sent = _authorize(door, client_id, challenge, scope="rooms:delete")
+
+    assert sent.status_code == 303
+    back = _query(sent.headers["location"])
+    assert back["error"] == "invalid_scope"
+
+
+def test_the_narrowed_grant_is_what_the_token_actually_carries(door):
+    """The client is told what it got. A narrowed grant that reported itself as
+    the full request would send an agent to call `delete_room` believing it
+    holds a scope it does not — which is the failure the old refusal was
+    written to avoid, arriving one step later and silently."""
+    verifier, challenge = _pkce()
+    client_id = _register(door, scope="rooms:read rooms:write").json()["client_id"]
+    handed_off = _query(
+        _authorize(
+            door, client_id, challenge, scope="rooms:read rooms:write rooms:delete"
+        ).headers["location"]
+    )
+    code = _query(_approve(door, handed_off["state_key"]).json()["redirect_to"])["code"]
+
+    grant = door.post(
+        "/oauth/token",
+        data={
+            "grant_type": "authorization_code",
+            "code": code,
+            "client_id": client_id,
+            "redirect_uri": REDIRECT,
+            "code_verifier": verifier,
+            "resource": RESOURCE,
+        },
+    ).json()
+
+    assert grant["scope"] == "rooms:read rooms:write"
+    assert "rooms:delete" not in grant["scope"]
+
+
 def test_the_wrong_verifier_cannot_redeem_a_real_code(door):
     """PKCE, doing the one job it exists for.
 

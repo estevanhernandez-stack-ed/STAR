@@ -1262,10 +1262,11 @@ def test_a_token_carrying_only_some_oauth_fields_is_treated_as_oauth():
     assert isinstance(outcome, validate.Denied)
 
 
-def test_a_request_for_a_scope_the_client_never_registered_is_refused_outright():
+def test_a_request_for_more_than_the_client_registered_is_narrowed_to_what_it_holds():
     """The ceiling on what the consent screen may offer. A reader approving a
     screen is approving what the screen said, so anything the screen can print
-    has to already be true."""
+    has to already be true — and the way to keep that true is to print the
+    intersection rather than to refuse the request."""
     assert validate.requested_scope("rooms:read", "rooms:read rooms:write") == "rooms:read"
     assert validate.requested_scope("rooms:write rooms:read", "rooms:read rooms:write") == (
         "rooms:read rooms:write"
@@ -1274,13 +1275,53 @@ def test_a_request_for_a_scope_the_client_never_registered_is_refused_outright()
     # default and is safe because the consent screen is the ceiling.
     assert validate.requested_scope(None, "rooms:read") == "rooms:read"
     assert validate.requested_scope("", "rooms:read") == "rooms:read"
-    # Narrowing silently instead of refusing would draw a screen granting less
-    # than the client asked for, and the client would fail at its first call
-    # with a 403 naming a scope its own registration says it has.
-    assert validate.requested_scope("rooms:write", "rooms:read") is None
+    # THE CASE THAT COULD NOT ATTACH. A client registered for the two
+    # non-destructive scopes, asking for all three this server advertises.
+    assert validate.requested_scope(
+        "rooms:read rooms:write rooms:delete", "rooms:read rooms:write"
+    ) == "rooms:read rooms:write"
+    assert validate.requested_scope("rooms:write", "rooms:read") is None, (
+        "and an empty intersection is still a refusal: there is nothing to "
+        "grant, and a screen offering nothing is not a question worth asking"
+    )
     assert validate.requested_scope("rooms:publish", "rooms:read rooms:write") is None
     assert validate.requested_scope(17, "rooms:read") is None
     assert validate.requested_scope("rooms:read", "") is None
+
+
+def test_a_client_registered_for_nothing_gets_nothing_rather_than_an_empty_grant():
+    """Reachable, and it used to return "" rather than None.
+
+    `clients._scope` maps an ABSENT scope field to SCOPES_DEFAULT, but a field
+    holding only whitespace is a string with no unknown scopes in it, so it
+    registers as the empty string. Asking for nothing against that registration
+    returned "", which is not None — and `oauth_authorize` refuses only on
+    None, so the flow went on to draw a consent screen for a grant authorising
+    nothing and mint a token to match.
+    """
+    assert validate.requested_scope(None, "") is None
+    assert validate.requested_scope("", "   ") is None
+    assert validate.requested_scope("rooms:read", "   ") is None
+
+
+def test_narrowing_can_only_ever_shrink():
+    """The property the old outright refusal was protecting, and the one thing
+    about this function that must not change. An intersection cannot introduce
+    a scope a client's registration lacks — no ordering of the arguments, and
+    no request, makes it grant something that was not already on both sides."""
+    registered = "rooms:read"
+    for asked in (
+        "rooms:delete",
+        "rooms:read rooms:delete",
+        "rooms:read rooms:write rooms:delete",
+        "rooms:write",
+        "",
+        None,
+    ):
+        granted = validate.requested_scope(asked, registered)
+        if granted is None:
+            continue
+        assert set(granted.split()) <= set(registered.split()), asked
 
 
 def test_each_tool_maps_to_the_scope_its_description_already_implies():
