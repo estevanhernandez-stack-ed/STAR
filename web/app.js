@@ -80,6 +80,20 @@ const bibleSurface = $("bible-surface");
 const bibleBtn = $("bible-btn");
 const checkSurface = $("check-panel");
 const checkBtn = $("check-btn");
+
+/* What each toggle says when its surface is CLOSED, read off the markup once
+ * rather than written here a second time.
+ *
+ * It was written twice, and it drifted the moment the surface grew. The check
+ * panel learned to take a whole draft, index.html was updated to say so, and
+ * the button went on offering "Check a scene" because this file held its own
+ * copy of the string — a reader looking for the sweep had no reason to open
+ * the one place it lives. The markup is the label's home; this only remembers
+ * what it said so the open state can put it back. */
+const CLOSED_LABEL = {
+  bible: bibleBtn.textContent.trim(),
+  check: checkBtn.textContent.trim(),
+};
 const docketBody = $("docket-body");
 
 let searchCount = 0;
@@ -443,9 +457,9 @@ function setRoomMode(mode) {
   // braces, because a control whose only feedback is an ARIA attribute is a
   // control most people cannot see change.
   bibleBtn.setAttribute("aria-expanded", mode === "bible" ? "true" : "false");
-  bibleBtn.textContent = mode === "bible" ? "Back to the drawers" : "The bible";
+  bibleBtn.textContent = mode === "bible" ? "Back to the drawers" : CLOSED_LABEL.bible;
   checkBtn.setAttribute("aria-expanded", mode === "check" ? "true" : "false");
-  checkBtn.textContent = mode === "check" ? "Back to the drawers" : "Check a scene";
+  checkBtn.textContent = mode === "check" ? "Back to the drawers" : CLOSED_LABEL.check;
 
   // The list of checks already filed on this room costs a request, so it is
   // fetched when the mode is opened rather than on every room paint. A reader
