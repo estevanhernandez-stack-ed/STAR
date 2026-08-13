@@ -135,3 +135,99 @@ One live sweep, on a scene built for it:
   worth building.
 
 Three claims, one sweep, one slot of the hourly window.
+
+---
+
+# The validation ran. Option A failed, and the failure names the real root.
+
+Sweep `2ba53f31dab2`, live on `star-00061-wpw`, against the **researched** room
+`1fd837bdd99e`. Three scenes, 8 claims raised, 7 distinct, **7 confirmed, 0
+anachronism, 0 unverifiable, 0 searches spent.**
+
+## The result, verbatim
+
+```
+text:    "Vox AC30 amplifier"
+verdict: confirmed
+note:    "Introduced in 1959 by Vox as a higher-wattage valve combo amplifier."
+scenes:  [1, 2]
+```
+
+Scene 1 is headed `NIGHT (1958)`. Scene 2 is `NIGHT (1961)`.
+
+**The desk found the right fact and cited the right page.** Its own note says
+1959. The source it pulled even carries the sentence "In early 1958, JMI
+released its first-ever guitar amplifier, the EL84-powered Vox AC15." It had
+everything it needed and stamped `confirmed` anyway.
+
+## Why Option A could not have worked
+
+`star/sweep.py`'s `gather` collapses claims to a distinct set and hands back a
+map from each claim to **every scene index it appeared in**. One claim, one
+verdict, many scenes. So "Vox AC30 amplifier" in a 1958 scene and a 1961 scene
+is **one claim with one stamp**, and there is no shape in the data for
+"anachronism in scene 1, confirmed in scene 2."
+
+`sweep_draft`'s own description says:
+
+> It also catches what no number of scene checks can: an object that is right
+> in 1958 and wrong in 1960 is wrong in neither scene alone.
+
+**That is the tool's headline argument for itself, and its data model cannot
+express it.** The claim it describes is exactly the one this sweep got wrong.
+
+The era I passed is the STORY's span, not the SCENE's year, and
+`verify_state`'s docstring says plainly that the verifier "is told nothing
+about scenes and should not be". So the span rule never fired: the desk was
+never shown a conflict, because from where it sits there is no scene 1 — only
+a claim that appears somewhere in a story running 1958 to 1962.
+
+## And it gave the rubber stamp new words
+
+Two claims came back confirmed *on the era itself*:
+
+- `"1961"` — *"Key year within the 1958–1962 era…"*
+- `"1958"` — *"Opening year of the 1958–1962 story era."*
+
+The era arrived as a **justification** rather than a **constraint**. That
+pattern predates this change (an earlier sweep confirmed `"1960"` with the note
+"Year setting"), but handing the desk the span gave it a cleaner sentence for
+doing the same thing.
+
+## The real root, and the real fix
+
+**The dedup key is the defect.** `gather` keys on normalised claim text alone.
+Two scenes in different years asserting the same object are one claim.
+
+The fix is to make the year part of the identity:
+
+1. **Parse a year per scene.** Nothing does this today. A slugline year
+   (`NIGHT (1958)`) is the cheap case; a draft that never writes one falls back
+   to the room's era, which is what the desk already had.
+2. **Key the dedup on `(claim text, scene year)`** when the years differ. The
+   AC30 then arrives as two claims and can take two verdicts.
+3. **Tell the verifier the year for the claim it is judging**, which is only
+   possible once (2) makes "the year" a single value per claim.
+
+Then the span rule already shipped becomes reachable, and the tool's headline
+argument becomes true.
+
+## What this costs
+
+Bigger than Option A and smaller than Option B. It touches `star/sweep.py`'s
+`gather`, the scene splitter that would supply the year, and the claim record —
+which the CSV export, the import matcher and the scene strip all read, because
+a claim that now carries a year has a new column.
+
+**Validated by the same three-claim sweep**, which is now a fixture rather than
+a guess: AC30 in 1958 must not confirm, AC30 in 1961 must, and the Liverpool
+Empire must still confirm on the files with no search.
+
+## Standing state, honestly
+
+- Import laundering: **shut** (`star-00059`).
+- The import brand on `get_room`: **shut** (`star-00060`).
+- Era reaching the desk and the span rule: **shipped** (`star-00061`), and it
+  does not fix the case it was built for.
+- The AC30 in a 1958 scene: **still confirms.** A demo that sweeps a draft
+  spanning years can still show a wrong green stamp.
