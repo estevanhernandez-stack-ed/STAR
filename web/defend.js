@@ -140,9 +140,10 @@ function render(card) {
       quotations are here so you can make it.${
         sources.some((s) => s?.user_written)
           ? ` Where an address says it is a forum or comment page it is marked
-             above; that is read off the url alone, so a page anyone can post
-             to whose address does not say so carries no mark, and the absence
-             of one is not evidence of an editor.`
+             above and listed last; that is read off the url alone, so a page
+             anyone can post to whose address does not say so carries no mark,
+             and the absence of one is not evidence of an editor. Nothing is
+             left out — the room holds these in the order they were found.`
           : ""
       }</p>
     <button type="button" class="defence-print">Print this sheet</button>

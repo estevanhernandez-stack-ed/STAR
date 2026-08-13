@@ -1568,9 +1568,13 @@ async def test_defend_claim_says_when_a_source_is_a_page_anyone_can_post_to():
     card = carried(result)
     text = said(result)
 
-    assert [source["user_written"] for source in card["sources"]] == [True, False], (
-        "the forum, and not the auction house — a false mark tells a writer to "
-        "distrust a source that was fine"
+    assert [source["title"] for source in card["sources"]] == [
+        "Bonhams",
+        "Beatle Boots | Fab Forum",
+    ], "the auction house leads, though the forum was filed first"
+    assert [source["user_written"] for source in card["sources"]] == [False, True], (
+        "and the mark lands on the forum and not on the auction house — a "
+        "false mark tells a writer to distrust a source that was fine"
     )
     assert "forum or comment page" in text
     assert "not the site's own reporting" in text

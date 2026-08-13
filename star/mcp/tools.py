@@ -1826,9 +1826,12 @@ async def _defend_claim(arguments: dict, calls: Calls, identity) -> dict:
             + ". The quotation is a post somebody made there, not the site's "
             "own reporting, and it is worth saying so before this goes in "
             "front of anyone. That is not a verdict on it: a forum thread is "
-            "often the only place a detail survives. Read off the url, so a "
-            "page anyone can post to whose address does not say so is not "
-            "marked here — absence of this note is not evidence of an editor."
+            "often the only place a detail survives. Such sources are listed "
+            "LAST above, so what leads this card is a page with an editor "
+            "where the finding has one; the room itself holds them in the "
+            "order they were found. Read off the url, so a page anyone can "
+            "post to whose address does not say so is not marked here — "
+            "absence of this note is not evidence of an editor."
         )
     if card["unsourced_urls"]:
         count = len(card["unsourced_urls"])

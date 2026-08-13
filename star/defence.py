@@ -119,6 +119,42 @@ def locate(result: dict, fact: str) -> tuple[str, dict] | None:
     return contained[0] if len(contained) == 1 else None
 
 
+def _ordered_sources(citations: list) -> list[dict]:
+    """This finding's sources, pages with an editor first.
+
+    THE ONE PLACE THIS FILE PUTS ONE SOURCE ABOVE ANOTHER, and it is worth
+    being exact about what is being claimed. It is not that a forum is worse: a
+    forum thread is frequently the only place a detail survives, and two facts
+    in this account stand on one and stand. It is that a card is read from the
+    top by somebody who is already sceptical, and opening on a stranger's post
+    when an auction house record is three inches below it argues the writer's
+    case badly with the writer's own evidence. The Beatles boots card did
+    exactly that: a fan's complaint about boot sizing led, and Bonhams came
+    third.
+
+    STABLE, so filing order survives inside each group. The researcher's order
+    is the only ordering anything else in this project uses, and scrambling it
+    for a tidier sheet would make the card disagree with the drawer about a
+    room nobody changed.
+
+    Nothing is hidden or dropped — every source still prints, and the marked
+    ones still say what they are. This moves them; the reader decides what that
+    is worth.
+    """
+    sources = [
+        {
+            "url": (citation or {}).get("url") or "",
+            "title": (citation or {}).get("title") or "",
+            "excerpt": (citation or {}).get("excerpt") or "",
+            # Read off the address, never off the text. See the note above
+            # `address_is_user_written`.
+            "user_written": address_is_user_written((citation or {}).get("url") or ""),
+        }
+        for citation in citations
+    ]
+    return sorted(sources, key=lambda source: source["user_written"])
+
+
 def card(result: dict, category: str, finding: dict, run_id: str) -> dict:
     """One located finding, in the shape both doors render."""
     profile = result.get("story_profile") or {}
@@ -147,22 +183,7 @@ def card(result: dict, category: str, finding: dict, run_id: str) -> dict:
         # owed: it says the room was interrogated on this exact point.
         "filed_by": "requisition" if requisition else "build",
         "requisition": requisition,
-        "sources": [
-            {
-                "url": (citation or {}).get("url") or "",
-                "title": (citation or {}).get("title") or "",
-                "excerpt": (citation or {}).get("excerpt") or "",
-                # Read off the address, never off the text. See the note above
-                # `address_is_user_written`: the point is to stop a writer
-                # handing over a stranger's forum post believing it is the
-                # site's own reporting, without this file ever ranking one
-                # source against another.
-                "user_written": address_is_user_written(
-                    (citation or {}).get("url") or ""
-                ),
-            }
-            for citation in finding.get("citations") or []
-        ],
+        "sources": _ordered_sources(finding.get("citations") or []),
         # Kept and named rather than dropped. A url the researcher wrote that
         # no search result carried is not a source, and the one place it must
         # not silently vanish is the sheet someone is about to cite from.

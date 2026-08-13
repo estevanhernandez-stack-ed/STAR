@@ -593,6 +593,61 @@ def test_an_address_is_marked_user_written_only_when_it_says_so():
         assert not address_is_user_written(url), url
 
 
+def test_a_card_leads_with_a_page_that_had_an_editor():
+    """The one place this module puts one source above another.
+
+    Not a claim that a forum is worse — two facts in this account stand on one
+    and stand. A card is read from the top by somebody already sceptical, and
+    opening on a stranger's post while an auction house record sits three
+    inches below argues the writer's case badly with the writer's own evidence.
+    """
+    from star.defence import card
+
+    result = {
+        "created_at": "2026-08-09T12:00:00Z",
+        "story_profile": {"title": "The Substitute Sync"},
+    }
+    finding = {
+        "fact": "Beatle boots were made by Anello & Davide.",
+        "citations": [
+            {"url": "https://www.beatlesbible.com/forum/beatle-boots/", "title": "Forum"},
+            {"url": "https://therake.com/stories/the-beatle-boot", "title": "The Rake"},
+            {"url": "https://www.bonhams.com/auction/19801/lot/304/", "title": "Bonhams"},
+        ],
+    }
+
+    sources = card(result, "objects_props", finding, "abc")["sources"]
+
+    assert [s["title"] for s in sources] == ["The Rake", "Bonhams", "Forum"]
+    assert len(sources) == 3, "moved, never dropped — every source still prints"
+    assert [s["user_written"] for s in sources] == [False, False, True]
+
+
+def test_reordering_a_card_keeps_the_order_the_room_filed_them_in():
+    """Stable, because the researcher's order is the only ordering anything
+    else in this project uses. A tidier sheet is not worth the card and the
+    drawer disagreeing about a room nobody changed."""
+    from star.defence import card
+
+    finding = {
+        "fact": "F.",
+        "citations": [
+            {"url": "https://b.example/two", "title": "B"},
+            {"url": "https://a.example/one", "title": "A"},
+            {"url": "https://forum.example/t/1", "title": "Forum one"},
+            {"url": "https://c.example/three", "title": "C"},
+            {"url": "https://www.reddit.com/r/x/comments/1/", "title": "Forum two"},
+        ],
+    }
+
+    sources = card({}, "setting", finding, "abc")["sources"]
+
+    assert [s["title"] for s in sources] == ["B", "A", "C", "Forum one", "Forum two"], (
+        "the editorial three keep the order they were filed in, and so do the "
+        "two that moved"
+    )
+
+
 def test_the_defence_endpoint_and_the_agent_door_answer_from_one_function():
     """The property that makes the printed sheet trustworthy.
 
