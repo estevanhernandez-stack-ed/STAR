@@ -231,3 +231,88 @@ Empire must still confirm on the files with no search.
   does not fix the case it was built for.
 - The AC30 in a 1958 scene: **still confirms.** A demo that sweeps a draft
   spanning years can still show a wrong green stamp.
+
+---
+
+# The decisive experiment: it is not the dedup, and the era made it worse
+
+Sweep `0b65b4d842a1`. **One scene**, one claim, no dedup possible.
+
+```
+text:    "Vox AC30 amplifier"
+verdict: confirmed
+note:    "Introduced in 1959 by British manufacturer Vox, fitting the 1958–1962 era."
+scenes:  [1]
+```
+
+Scene 1 is headed `NIGHT (1958)`.
+
+## What the note proves
+
+The desk's reasoning is written down in its own words: the AC30 is **1959**,
+the era is **1958-1962**, 1959 is inside it, therefore confirmed. **It compared
+the object's date to the ERA and never to the SCENE'S YEAR.** The slugline says
+1958 and played no part.
+
+So the previous diagnosis was wrong. The dedup collapse is real and still worth
+fixing, but it is **not** what produces the wrong verdict — a single scene with
+nothing to collapse produces it too.
+
+## And the era I shipped today is the instrument
+
+Three sweeps, three notes, all reasoning from the span:
+
+- `"1961"` — *"Key year within the 1958–1962 era…"*
+- `"1958"` — *"Opening year of the 1958–1962 story era."*
+- `"Vox AC30 amplifier"` — *"…fitting the 1958–1962 era."*
+
+Option A handed the desk the **widest window in the building** and it did the
+obvious thing with it: checked membership. That is the exact error the span
+rule in the same prompt forbids, committed using the span that same change
+supplied. The rule did not fire because nothing looked like a conflict — the
+desk was not comparing a span to a year, it was comparing a year to a span and
+finding it fit.
+
+**This is worse than neutral and I should say so plainly: the change gave a
+pre-existing rubber stamp a better justification.** The pattern predates it —
+an earlier sweep confirmed `"1960"` with the note "Year setting" — but the era
+turned a vague stamp into a reasoned one.
+
+## The real fix, and it is narrower than either earlier option
+
+**The desk needs the scene's year, and the era needs demoting.**
+
+The server already holds every scene's text at the point it matters.
+`server.py`'s `one(scene)` reads `scene["text"]` and `scene["index"]` and
+throws the text away after extraction. **Nothing in the codebase parses a year
+from a scene** — checked.
+
+1. **`sweep.scene_year(text)`** — pure Python, no model call. A four-digit year
+   from the slugline first, then the scene's opening lines. Absent, inherit the
+   previous scene's: drafts state a year once and carry it, which is what a
+   human reader does.
+2. **`one()` returns `(index, year, claims)`**, and `gather` keys on
+   `(normalised text, year)`. The AC30 in 1958 and in 1961 become two claims
+   and can take two verdicts — which is what `sweep_draft`'s headline argument
+   promises and its data model currently forbids.
+3. **The claim carries its year into `<claims>`**, so the desk compares against
+   a year rather than a span.
+4. **Demote the era in the prompt.** It bounds the story; it is never a licence
+   for a scene. As it stands it is the widest date in the room and the desk
+   reaches for it.
+
+**I was wrong in the scope above when I called the year approach "too wide for
+the time left."** That was true of stamping the year in the extractor's schema.
+It is not true of parsing it server-side from text already in hand: it touches
+`star/sweep.py`, one call site, and the prompt. No model schema change, no
+export column, no import change.
+
+## Until that ships
+
+The live service reasons from the era. **The safest interim state is not the
+one deployed** — either the era comes back out, or the prompt says outright
+that an era is never evidence for a scene's year. The second is one paragraph
+and keeps the plumbing the real fix needs.
+
+Validated by the same three-claim fixture, which is now a regression test
+rather than a guess.
