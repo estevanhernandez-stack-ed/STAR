@@ -88,16 +88,71 @@ def a_post(csv_text: str, apply: bool = False):
     return response, client_data.data[STORED.format(uid=UID, room=ROOM)]
 
 
-def test_a_file_from_another_sweep_is_refused_by_name():
-    """And BOTH ids are in the message. "Wrong sweep" leaves a writer holding
-    two sweeps filed on one room with no way to tell which file is which."""
+def test_a_file_from_a_sweep_not_on_this_room_says_so():
+    """A different answer from "open the other one", and it has to be. The
+    writer cannot open a sweep that is not filed here, and pointing at one
+    would be a lie about a button that is not on the screen."""
     response, _ = a_post("claim,sweep_id,writer_note\nKaiserkeller,sw-other,keep it\n")
 
     assert response.status_code == 400
     body = response.json()["detail"]
-    assert "sw-other" in body, body
-    assert "sw1" in body, body
+    assert "not filed on this room" in body, body
     assert "Nothing was changed" in body, body
+
+
+def test_the_refusal_names_the_other_sweep_the_way_the_picker_does():
+    """NOT BY ID. The reader has never seen a sweep id — the picker draws each
+    filed sweep as "24 scenes · 64 claims · 13 AUG 2026 13:35" and an id
+    appears on no surface of this app. The first version of this message named
+    one, which sent a writer looking for a string written nowhere they could
+    look. So the message has to carry the same three fields the button does.
+    """
+    store, _ = a_store()
+    store.save(UID, ROOM, filed_room())
+    store.save_sweep(UID, ROOM, "sw1", sweep_to_document(SWEEP, "sw1", "2026-08-13T13:35:00Z"))
+    # The sweep the file actually came from, also filed on this room.
+    other = sweep_to_document(SWEEP, "sw-older", "2026-08-13T11:41:00Z")
+    other["scenes_read"] = 24
+    store.save_sweep(UID, ROOM, "sw-older", other)
+
+    with mock.patch("star.server.verify_token", return_value=UID), \
+            mock.patch("star.server._store", store):
+        response = TestClient(server.app).post(
+            f"/api/rooms/{ROOM}/sweeps/sw1/annotations",
+            json={"csv": "claim,sweep_id,writer_note\nKaiserkeller,sw-older,keep it\n"},
+            headers=AUTH,
+        )
+
+    assert response.status_code == 400
+    body = response.json()["detail"]
+    assert "24 scenes" in body, body
+    assert "2 claims" in body, body
+    assert "2026-08-13 11:41" in body, body
+    assert "sw-older" not in body, f"the id is not a handle the reader has: {body}"
+
+
+def test_one_scene_and_one_claim_are_not_pluralised():
+    """The message is read next to a button that says "1 scene · 1 claim", and
+    a sentence that says "1 scenes" beside it reads like a different sweep."""
+    store, _ = a_store()
+    store.save(UID, ROOM, filed_room())
+    store.save_sweep(UID, ROOM, "sw1", sweep_to_document(SWEEP, "sw1", "2026-08-13T13:35:00Z"))
+    one = {"room": SWEEP["room"], "claims": SWEEP["claims"][:1]}
+    other = sweep_to_document(one, "sw-older", "2026-08-13T11:41:00Z")
+    other["scenes_read"] = 1
+    store.save_sweep(UID, ROOM, "sw-older", other)
+
+    with mock.patch("star.server.verify_token", return_value=UID), \
+            mock.patch("star.server._store", store):
+        body = TestClient(server.app).post(
+            f"/api/rooms/{ROOM}/sweeps/sw1/annotations",
+            json={"csv": "claim,sweep_id,writer_note\nKaiserkeller,sw-older,keep it\n"},
+            headers=AUTH,
+        ).json()["detail"]
+
+    assert "1 scene ·" in body, body
+    assert "1 scenes" not in body, body
+    assert "1 claim ·" in body or "1 claim " in body, body
 
 
 def test_nothing_is_filed_from_a_file_belonging_elsewhere():

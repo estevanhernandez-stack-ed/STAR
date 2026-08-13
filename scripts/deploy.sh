@@ -94,6 +94,17 @@ fi
 #
 # --timeout must exceed STAR_RUN_TIMEOUT_SECONDS (600), because the SSE
 # stream is itself a request and stays open for the whole build.
+# Cloud Build's default timeout is ten minutes and this image builds in eight
+# to nine, so the margin was one slow layer wide. It ran out on 2026-08-13 and
+# the deploy came back `EXPIRED: ` with nothing after the colon — a message
+# that reads like a broken build rather than a clock, which cost a retry to
+# tell apart. Twenty-five minutes is not tuning, it is putting the ceiling far
+# enough above the work that hitting it means something is actually wrong.
+#
+# `gcloud run deploy --source` has no build-timeout flag; it reads this
+# property when it creates the build on your behalf.
+export CLOUDSDK_BUILDS_TIMEOUT="${CLOUDSDK_BUILDS_TIMEOUT:-1500}"
+
 gcloud run deploy "$SERVICE" \
   --source . \
   --project "$PROJECT" \

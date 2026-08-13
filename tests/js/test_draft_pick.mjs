@@ -458,8 +458,19 @@ const sweptRow = ids["check-swept-list"].childNodes.map((n) => n.textContent);
 assert.equal(sweptRow.length, 1, "the filed sweep is listed");
 assert.match(sweptRow[0], /24 scenes/, "labelled by what it swept");
 assert.match(sweptRow[0], /67 claims/, "and how much it found");
-assert.match(sweptRow[0], /AUG 2026/, "with the date after — two sweeps of one draft " +
-  "on one day are told apart by their counts, which a rewrite changes");
+assert.match(sweptRow[0], /AUG 2026/, "with the date after");
+// TO THE MINUTE, and this replaces the reasoning it shipped with: "two sweeps
+// of one draft on one day are told apart by their counts, which a rewrite
+// changes". Measured 2026-08-13 — two sweeps of the same UNREWRITTEN draft,
+// both 24 scenes and both 64 claims, rendered as two buttons with identical
+// text, and a writer holding an export of one had nothing here to press.
+// Re-sweeping without touching the draft is what everyone does to see whether
+// the verifier did better; the clock is the only thing that separates them.
+assert.match(
+  sweptRow[0],
+  /\d{2} [A-Z]{3} \d{4} \d{2}:\d{2}$/,
+  `the clock ends the label, so two same-count sweeps of one day differ: ${sweptRow[0]}`
+);
 assert.ok(!ids["check-swept-row"].classList.contains("hidden"));
 
 await ids["check-swept-list"].childNodes[0].press();

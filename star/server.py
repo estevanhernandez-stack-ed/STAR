@@ -2623,6 +2623,59 @@ class AnnotationRequest(BaseModel):
     apply: bool = False
 
 
+async def _wrong_sweep(uid: str, run_id: str, origin: str) -> str:
+    """The refusal, in the words the sweep picker uses.
+
+    THE READER HAS NEVER SEEN A SWEEP ID. The picker draws each filed sweep as
+    "24 scenes · 64 claims · 13 AUG 2026 13:35" and an id appears on no surface
+    of this app, so the first version of this message — "that file was exported
+    from sweep 26881297a20d, open the sweep the file came from" — sent a writer
+    to look for a string that is not written anywhere they can look. True,
+    specific, and impossible to act on, which is the exact failure the message
+    was written to fix.
+
+    So the sweep is looked up and described the way the button describes it. If
+    it is not filed on this room at all, say THAT instead: it is a different
+    answer, and "open the one that says 24 scenes" would be a lie about a sweep
+    that is not on the screen.
+    """
+    try:
+        sweeps = await asyncio.to_thread(_store.list_sweeps, uid, run_id)
+    except Exception:  # pragma: no cover - a listing failure is not the point
+        logger.exception("Could not list sweeps while refusing an import")
+        sweeps = []
+
+    for summary in sweeps or []:
+        if (summary or {}).get("sweep_id") != origin:
+            continue
+        # Built from the same three fields the button is, in the same order, so
+        # the sentence and the thing it points at can be read side by side.
+        scenes = int(summary.get("scenes_read") or 0)
+        claims = int(summary.get("claim_count") or 0)
+        stamp = str(summary.get("created_at") or "")[:16].replace("T", " ")
+        described = " · ".join(
+            part
+            for part in (
+                f"{scenes} scene{'' if scenes == 1 else 's'}",
+                f"{claims} claim{'' if claims == 1 else 's'}",
+                stamp,
+            )
+            if part
+        )
+        return (
+            "That file came from a different sweep of this room — the one "
+            f"listed as {described}. Open that sweep and import the file "
+            "there, or export this one and mark that up instead. Nothing was "
+            "changed."
+        )
+
+    return (
+        "That file was exported from a sweep that is not filed on this room, "
+        "so there is nothing here to file its notes against. Export this "
+        "sweep and mark that up instead. Nothing was changed."
+    )
+
+
 @app.post("/api/rooms/{run_id}/sweeps/{sweep_id}/annotations")
 async def annotate_sweep(
     run_id: str,
@@ -2658,12 +2711,7 @@ async def annotate_sweep(
     # looking at.
     origin = exports.annotation_origin(req.csv)
     if origin and origin != sweep_id:
-        raise HTTPException(
-            400,
-            f"That file was exported from sweep {origin}, and the sweep open "
-            f"here is {sweep_id}. Open the sweep the file came from, or export "
-            "this one and mark that up instead. Nothing was changed.",
-        )
+        raise HTTPException(400, await _wrong_sweep(uid, run_id, origin))
 
     annotations, complaints = exports.read_annotations(req.csv)
     # Both lists, in the order they are raised: what the FILE was wrong about

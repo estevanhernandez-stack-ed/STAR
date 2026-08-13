@@ -537,6 +537,21 @@ function filedDate(iso) {
   return `${pad2(d.getDate())} ${month} ${d.getFullYear()}`;
 }
 
+/** DD MON YYYY HH:MM — `filedDate` plus the clock, for the one surface where
+ *  two entries can share a day.
+ *
+ *  Separate from `filedDate` rather than a flag on it, because the date alone
+ *  is right everywhere else: a check's stamp is a date the way a rubber stamp
+ *  is, and putting a time on it would make it read like a log line. The sweep
+ *  picker is the exception, and it is the exception for a measured reason —
+ *  see the label it builds. */
+function filedStamp(iso) {
+  const day = filedDate(iso);
+  if (!day) return "";
+  const d = new Date(iso);
+  return `${day} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
 /* ---------------------------------------------------------------------
    The whole result region, assembled.
 --------------------------------------------------------------------- */
@@ -1266,13 +1281,22 @@ async function loadFiledSweeps() {
   for (const summary of sweeps) {
     const id = String(summary?.sweep_id || "");
     if (!id) continue;
-    // WHAT was swept, then when. Two sweeps of the same draft on the same day
-    // are told apart by their counts — a rewrite changes what a draft claims,
-    // which is the whole reason somebody sweeps it twice.
+    // WHAT was swept, then when — to the MINUTE.
+    //
+    // This used to stop at the date, on the reasoning that two sweeps of one
+    // draft on one day are told apart by their counts because a rewrite
+    // changes what a draft claims. Measured 2026-08-13: two sweeps of the same
+    // unrewritten draft, both reading 24 scenes and both raising 64 claims,
+    // rendered as two buttons with identical text. A writer holding an export
+    // of one of them had nothing on this screen to press.
+    //
+    // Sweeping twice without touching the draft is not the odd case, it is
+    // what happens every time somebody re-runs a sweep to see if the verifier
+    // does better. The clock is what actually separates them.
     const label = [
       `${plural(Number(summary?.scenes_read) || 0, "scene")}`,
       `${plural(Number(summary?.claim_count) || 0, "claim")}`,
-      filedDate(summary?.created_at) || "",
+      filedStamp(summary?.created_at) || "",
     ]
       .filter(Boolean)
       .join(" · ");
