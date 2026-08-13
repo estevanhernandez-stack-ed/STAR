@@ -262,7 +262,19 @@ globalThis.__fetch = async (url, options) => {
         search_count: 3,
         budget_exhausted: false,
         claims: [
-          { text: "a Gibson", verdict: "confirmed", scenes: [1, 3], note: "In production." },
+          {
+            text: "a Gibson",
+            verdict: "confirmed",
+            scenes: [1, 3],
+            note: "In production.",
+            citations: [
+              {
+                url: "https://gibson.example/history",
+                title: "Gibson, a history",
+                excerpt: "The model was in production from 1958.",
+              },
+            ],
+          },
           { text: "a cassette deck", verdict: "anachronism", scenes: [4], note: "1963." },
         ],
       }),
@@ -301,6 +313,20 @@ assert.match(sweepText, /2 distinct/, "and what was actually asked about");
 assert.match(sweepText, /3 live searches/, "and what that cost");
 assert.match(sweepText, /scene 1, 3/, "which pages a claim came from");
 assert.match(sweepText, /anachronism/, "and the verdict that matters most");
+
+// THE RECEIPTS. The first sweep of a real draft returned forty-five
+// confirmations with nothing on screen behind any of them. star/verdicts.py
+// guarantees a confirmed claim holds at least one hydrated citation, so the
+// sources were always there — this surface just did not print them, which
+// asked a reader to take the stamp on trust.
+assert.match(sweepText, /Gibson, a history/, "the source's own title");
+assert.match(sweepText, /gibson\.example/, "and where it came from");
+assert.match(sweepText, /in production from 1958/, "and the page's own words");
+assert.match(
+  sweepText,
+  /reading of the sources under it, not a check of the line against the world/,
+  "with the scope a page of stamps cannot go without"
+);
 assert.ok(
   !ids["check-sweep-result"].classList.contains("hidden"),
   "the answer is showing"

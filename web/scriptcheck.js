@@ -968,6 +968,19 @@ function renderSweep(payload) {
     )
   );
   if (payload?.scope_note) body.appendChild(el("p", "sweep-scope", payload.scope_note));
+  // The same scope a filed check carries, for the same reason: a verdict is
+  // the department's reading of the sources shown, not a check of the claim
+  // against the world. A page of stamps without this sentence reads as the
+  // department vouching for a draft.
+  body.appendChild(
+    el(
+      "p",
+      "sweep-scope",
+      "A verdict is the department's reading of the sources under it, not a " +
+        "check of the line against the world. Every source opens where it came " +
+        "from, so you can read it and judge for yourself."
+    )
+  );
   if (payload?.budget_exhausted) {
     body.appendChild(
       el(
@@ -1009,6 +1022,35 @@ function renderSweep(payload) {
       )
     );
     if (claim?.note) item.appendChild(el("p", "sweep-note", String(claim.note)));
+
+    // THE RECEIPTS. A verdict printed without them is the overclaim this whole
+    // project is built against — and the first sweep of a real draft returned
+    // forty-five confirmations with nothing on screen behind any of them.
+    // star/verdicts.py already guarantees a confirmed claim holds at least one
+    // hydrated citation (it downgrades to unverifiable otherwise), so the
+    // sources were always there; this surface simply did not print them, which
+    // asked a reader to take the stamp on trust. That is the one thing a
+    // citation is supposed to make unnecessary.
+    const citations = Array.isArray(claim?.citations) ? claim.citations : [];
+    if (citations.length) {
+      const sources = el("ul", "sweep-sources");
+      for (const citation of citations) {
+        const url = httpUrl(citation?.url);
+        const source = el("li", "sweep-source");
+        const link = el("a", "sweep-source-link", String(citation?.title || domainOf(citation?.url)));
+        if (url) {
+          link.setAttribute("href", url.href);
+          link.setAttribute("rel", "noopener noreferrer");
+          link.setAttribute("target", "_blank");
+        }
+        source.appendChild(link);
+        source.appendChild(el("span", "sweep-source-domain", domainOf(citation?.url)));
+        const excerpt = plainExcerpt(citation?.excerpt);
+        if (excerpt) source.appendChild(el("p", "sweep-excerpt", excerpt));
+        sources.appendChild(source);
+      }
+      item.appendChild(sources);
+    }
     list.appendChild(item);
   }
   if (claims.length) body.appendChild(list);

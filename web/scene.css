@@ -1092,3 +1092,42 @@
     text-align: left;
   }
 }
+
+/* The receipts under a swept claim. Quieter than the citation rail a single
+ * scene check gets — a sweep is sixty-seven claims on one page and full cards
+ * would bury the verdicts — but present, because a verdict with its sources
+ * hidden is the overclaim the whole ledger apparatus exists to prevent. */
+.sweep-sources {
+  grid-column: 1 / -1;
+  list-style: none;
+  margin: 0.45rem 0 0;
+  padding: 0;
+}
+
+.sweep-source {
+  border-left: 2px solid var(--aniline);
+  padding-left: 0.75rem;
+  margin: 0 0 0.5rem;
+}
+
+.sweep-source-link {
+  font-size: var(--text-sm);
+  color: color-mix(in srgb, var(--aniline) 85%, var(--ink));
+}
+
+.sweep-source-domain {
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+  margin-left: 0.5rem;
+  color: color-mix(in srgb, var(--ink) 65%, var(--onionskin));
+}
+
+.sweep-excerpt {
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  margin: 0.2rem 0 0;
+  color: color-mix(in srgb, var(--ink) 88%, var(--onionskin));
+}
+
+.sweep-excerpt::before { content: "“"; }
+.sweep-excerpt::after { content: "”"; }
