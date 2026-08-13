@@ -64,8 +64,10 @@ from star.store import (  # noqa: E402
     TokenStore,
     document_to_room,
     document_to_scene,
+    document_to_sweep,
     room_to_document,
     scene_to_document,
+    sweep_to_document,
 )
 from star.verdicts import annotate  # noqa: E402
 
@@ -1865,8 +1867,10 @@ async def _run_sweep(uid: str, run_id: str, scenes: list[dict]) -> dict:
         search_count=searches,
     )
     payload = jsonable_encoder(result)
-    return {
+    swept = {
         "run_id": run_id,
+        "sweep_id": uuid.uuid4().hex[:12],
+        "created_at": datetime.now(timezone.utc).isoformat(),  # noqa: UP017
         "scenes_read": len(scenes),
         # Both numbers, because the difference between them is the one thing a
         # reader cannot work out for themselves and the whole reason a sweep
@@ -1879,6 +1883,63 @@ async def _run_sweep(uid: str, run_id: str, scenes: list[dict]) -> dict:
         "scope_note": payload.get("scope_note") or "",
         "unsourced_count": payload.get("unsourced_count") or 0,
     }
+
+    # Filed, so a reload does not throw away a whole draft's answers and the
+    # searches that bought them. Best-effort and named rather than hidden, the
+    # posture `_run_check` takes for the same write: the answer was decided
+    # above and the caller is holding it, so a Firestore hiccup costs
+    # durability rather than the result they just paid for.
+    try:
+        await asyncio.to_thread(
+            _store.save_sweep,
+            uid,
+            run_id,
+            swept["sweep_id"],
+            sweep_to_document(swept, swept["sweep_id"], swept["created_at"]),
+        )
+    except Exception:
+        logger.exception("Failed to file sweep %s on room %s", swept["sweep_id"], run_id)
+
+    return swept
+
+
+@app.get("/api/rooms/{run_id}/sweeps")
+async def list_sweeps(run_id: str, authorization: str | None = Header(None)) -> dict:
+    # An unknown room and another caller's room both answer with an empty list
+    # rather than a 404, for the reason list_scenes does: the path is rooted at
+    # `users/{uid}`, so there is nothing to find in either case and no read
+    # that could tell the two apart.
+    uid = _require_uid(authorization)
+    return {"sweeps": await asyncio.to_thread(_store.list_sweeps, uid, run_id)}
+
+
+@app.get("/api/rooms/{run_id}/sweeps/{sweep_id}")
+async def get_sweep(
+    run_id: str, sweep_id: str, authorization: str | None = Header(None)
+) -> dict:
+    """One filed sweep, in the shape the surface that ran it renders."""
+    uid = _require_uid(authorization)
+    document = await asyncio.to_thread(_store.get_sweep, uid, run_id, sweep_id)
+    if document is None:
+        raise HTTPException(404, "Unknown sweep")
+    return {"run_id": run_id, **document_to_sweep(document)}
+
+
+@app.delete("/api/rooms/{run_id}/sweeps/{sweep_id}")
+async def delete_sweep(
+    run_id: str, sweep_id: str, authorization: str | None = Header(None)
+) -> dict:
+    """Remove one filed sweep, and with it every scene fragment it quoted.
+
+    A sweep's claims are exact quotations from across a whole draft, so this is
+    not one scene's pages but a sample of all of them. The retention promise
+    the check panel makes about a pasted scene has to cover them.
+    """
+    uid = _require_uid(authorization)
+    removed = await asyncio.to_thread(_store.delete_sweep, uid, run_id, sweep_id)
+    if not removed:
+        raise HTTPException(404, "Unknown sweep")
+    return {"deleted": True, "sweep_id": sweep_id}
 
 
 class SceneRequest(BaseModel):

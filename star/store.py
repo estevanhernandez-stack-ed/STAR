@@ -207,6 +207,85 @@ def _first_line(text: str, limit: int = 60) -> str:
     return ""
 
 
+def sweep_to_document(result: dict, sweep_id: str, created_at: str) -> dict:
+    """Shape one finished sweep into its stored document. Pure.
+
+    A sweep costs more than a check — a whole draft read, one search budget
+    spent — and until this existed the answer lived only in the browser tab
+    that ran it. A reload threw away sixty-seven verdicts and the searches that
+    bought them.
+
+    `sweep_id` and `created_at` are minted by the caller rather than here, for
+    the reason `_persist` records at length: a second clock in the write path
+    is how a stamped date drifts away from the answer it belongs to.
+
+    THE CLAIMS ARE STORED WHOLE, citations and excerpts included, which is the
+    one place this is deliberately fatter than `scene_to_document`. A filed
+    check keeps the scene text and re-derives its marks from it; a sweep has no
+    single scene to mark, so its claims ARE the record. Dropping the citations
+    to save space would file a page of verdicts with nothing behind them, which
+    is the overclaim the whole ledger apparatus exists to prevent — and the
+    sweep surface already shipped that defect once by not rendering them.
+    """
+    result = result or {}
+    return {
+        "sweep_id": sweep_id,
+        "created_at": created_at,
+        "scenes_read": result.get("scenes_read") or 0,
+        # Both numbers. The difference between them is the one thing a reader
+        # cannot work out for themselves, and it is the whole reason a sweep
+        # costs less than the same scenes checked one at a time.
+        "claims_raised": result.get("claims_raised") or 0,
+        "claims": result.get("claims") or [],
+        "search_count": result.get("search_count") or 0,
+        "budget_exhausted": bool(result.get("budget_exhausted")),
+        "cover_note": result.get("cover_note") or "",
+        "scope_note": result.get("scope_note") or "",
+        "unsourced_count": result.get("unsourced_count") or 0,
+    }
+
+
+def document_to_sweep(doc: dict) -> dict:
+    """A stored sweep, in the shape the surface that ran it renders."""
+    doc = doc or {}
+    return {
+        "sweep_id": doc.get("sweep_id") or "",
+        "created_at": doc.get("created_at") or "",
+        "scenes_read": doc.get("scenes_read") or 0,
+        "claims_raised": doc.get("claims_raised") or 0,
+        "claims": doc.get("claims") or [],
+        "search_count": doc.get("search_count") or 0,
+        "budget_exhausted": bool(doc.get("budget_exhausted")),
+        "cover_note": doc.get("cover_note") or "",
+        "scope_note": doc.get("scope_note") or "",
+        "unsourced_count": doc.get("unsourced_count") or 0,
+    }
+
+
+def sweep_summary(doc: dict) -> dict:
+    """The small shape a room's list of filed sweeps carries. Pure.
+
+    Excludes the claims for the reason `scene_summary` excludes the scene text:
+    a room with six filed sweeps would otherwise send four hundred claims and
+    their citations across the wire to draw a list of six.
+
+    `scenes_read` and `claims_raised` are here because they are what
+    distinguishes one sweep of a draft from the next one after a rewrite —
+    which is the lesson the filed-check row learned when it shipped as a column
+    of identical dates.
+    """
+    doc = doc or {}
+    return {
+        "sweep_id": doc.get("sweep_id") or "",
+        "created_at": doc.get("created_at") or "",
+        "scenes_read": doc.get("scenes_read") or 0,
+        "claims_raised": doc.get("claims_raised") or 0,
+        "claim_count": len(doc.get("claims") or []),
+        "search_count": doc.get("search_count") or 0,
+        "budget_exhausted": bool(doc.get("budget_exhausted")),
+    }
+
+
 def scene_to_document(result: dict, scene: str, scene_key: str = "") -> dict:
     """Shape one finished check into its stored document. Pure.
 
@@ -564,6 +643,36 @@ class RoomStore:
         False by construction rather than by an ownership check.
         """
         document = self._scenes(uid, run_id).document(scene_id)
+        if not document.get().exists:
+            return False
+        document.delete()
+        return True
+
+    def _sweeps(self, uid: str, run_id: str):
+        return self.client.collection(f"users/{uid}/rooms/{run_id}/sweeps")
+
+    def save_sweep(self, uid: str, run_id: str, sweep_id: str, document: dict) -> None:
+        self._sweeps(uid, run_id).document(sweep_id).set(document)
+
+    def get_sweep(self, uid: str, run_id: str, sweep_id: str) -> dict | None:
+        snapshot = self._sweeps(uid, run_id).document(sweep_id).get()
+        return snapshot.to_dict() if snapshot.exists else None
+
+    def list_sweeps(self, uid: str, run_id: str) -> list[dict]:
+        docs = [s.to_dict() for s in self._sweeps(uid, run_id).stream() if s.exists]
+        docs.sort(key=lambda d: d.get("created_at") or "", reverse=True)
+        return [sweep_summary(d) for d in docs]
+
+    def delete_sweep(self, uid: str, run_id: str, sweep_id: str) -> bool:
+        """Remove one filed sweep, and with it every scene fragment it quoted.
+
+        Answers honestly for the reason `delete_scene` does, and the reason is
+        larger here: a sweep's claims are exact quotations from across a whole
+        draft, so this is not one scene's pages but a sample of all of them. A
+        delete that always reported success would tell a writer a draft's worth
+        of their own text was gone on a sweep_id that was never theirs.
+        """
+        document = self._sweeps(uid, run_id).document(sweep_id)
         if not document.get().exists:
             return False
         document.delete()

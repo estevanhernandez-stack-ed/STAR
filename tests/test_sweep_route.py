@@ -279,3 +279,116 @@ def test_the_reply_carries_both_numbers(field):
         body = post(TestClient(server.app)).json()
 
     assert field in body
+
+
+# -- what survives a reload --------------------------------------------------
+
+
+def test_a_sweep_is_filed_so_a_reload_does_not_throw_it_away():
+    """The whole reason this item came before the exports.
+
+    A sweep costs a draft read and a search budget. Until it was filed, the
+    answer lived only in the browser tab that ran it, and a reload discarded
+    sixty-seven verdicts and the searches that bought them.
+    """
+    store, client = a_store()
+    store.save(UID, ROOM, filed_room())
+
+    with sweeping(store):
+        body = post(TestClient(server.app)).json()
+
+    sweep_id = body["sweep_id"]
+    assert sweep_id, "the reply names the filing, so a caller can come back to it"
+    assert f"users/{UID}/rooms/{ROOM}/sweeps/{sweep_id}" in client.data, (
+        "a subcollection of the room, for the three reasons the scenes are: a "
+        "room read must not pay for every sweep ever run against it, .set() on "
+        "the room would clobber them, and one delete must be one delete"
+    )
+
+    filed = client.data[f"users/{UID}/rooms/{ROOM}/sweeps/{sweep_id}"]
+    assert filed["claims_raised"] == body["claims_raised"]
+    assert len(filed["claims"]) == len(body["claims"])
+    assert filed["claims"][0]["citations"], (
+        "THE CITATIONS ARE STORED WHOLE. A filed check keeps the scene text and "
+        "re-derives its marks; a sweep has no single scene, so its claims ARE "
+        "the record — dropping the sources would file a page of verdicts with "
+        "nothing behind them"
+    )
+    assert filed["claims"][0]["scenes"], "and which pages each claim came from"
+
+
+def test_a_filed_sweep_reads_back_as_it_returned():
+    store, _ = a_store()
+    store.save(UID, ROOM, filed_room())
+    client = TestClient(server.app)
+
+    with sweeping(store):
+        ran = post(client).json()
+        listed = client.get(f"/api/rooms/{ROOM}/sweeps", headers=AUTH).json()["sweeps"]
+        again = client.get(
+            f"/api/rooms/{ROOM}/sweeps/{ran['sweep_id']}", headers=AUTH
+        ).json()
+
+    assert [s["sweep_id"] for s in listed] == [ran["sweep_id"]]
+    assert listed[0]["claim_count"] == len(ran["claims"])
+    assert "claims" not in listed[0], (
+        "the list excludes them for the reason scene_summary excludes scene "
+        "text: six filed sweeps would otherwise send four hundred claims and "
+        "their citations to draw a list of six"
+    )
+    assert again["claims"] == ran["claims"], "every verdict, source and scene number"
+    assert again["search_count"] == ran["search_count"]
+
+
+def test_a_filed_sweep_can_be_deleted_and_takes_its_quotations_with_it():
+    """A sweep's claims are exact quotations from across a whole draft — not
+    one scene's pages but a sample of all of them."""
+    store, client_data = a_store()
+    store.save(UID, ROOM, filed_room())
+    client = TestClient(server.app)
+
+    with sweeping(store):
+        ran = post(client).json()
+        gone = client.delete(f"/api/rooms/{ROOM}/sweeps/{ran['sweep_id']}", headers=AUTH)
+        twice = client.delete(f"/api/rooms/{ROOM}/sweeps/{ran['sweep_id']}", headers=AUTH)
+
+    assert gone.status_code == 200
+    assert f"users/{UID}/rooms/{ROOM}/sweeps/{ran['sweep_id']}" not in client_data.data
+    assert twice.status_code == 404, (
+        "and it answers honestly the second time. A delete that always reported "
+        "success would tell a writer a draft's worth of their own text was gone "
+        "on a sweep_id that was never theirs"
+    )
+
+
+def test_another_accounts_sweep_is_not_found_rather_than_refused():
+    store, _ = a_store()
+    store.save(UID, ROOM, filed_room())
+    client = TestClient(server.app)
+
+    with sweeping(store):
+        ran = post(client).json()
+
+    with mock.patch("star.server.verify_token", return_value="uid-two"),             mock.patch("star.server._store", store):
+        assert client.get(f"/api/rooms/{ROOM}/sweeps", headers=AUTH).json()["sweeps"] == []
+        assert client.get(
+            f"/api/rooms/{ROOM}/sweeps/{ran['sweep_id']}", headers=AUTH
+        ).status_code == 404
+        assert client.delete(
+            f"/api/rooms/{ROOM}/sweeps/{ran['sweep_id']}", headers=AUTH
+        ).status_code == 404
+
+
+def test_a_failure_to_file_does_not_cost_the_caller_the_answer():
+    """The posture _run_check takes for the same write: the answer was decided
+    before this and the caller is holding it, so a Firestore hiccup costs
+    durability rather than the result they just paid for."""
+    store, _ = a_store()
+    store.save(UID, ROOM, filed_room())
+    store.save_sweep = mock.Mock(side_effect=RuntimeError("firestore said no"))
+
+    with sweeping(store):
+        response = post(TestClient(server.app))
+
+    assert response.status_code == 200
+    assert response.json()["claims"], "the sweep still came back"
