@@ -1497,6 +1497,13 @@ function mountRoomDrawer(el, doc, plan, filed) {
     // genuinely the same day, and this is the caller stating that on purpose.
     date: filed,
     retrieved: filed,
+    // Which room these clips belong to, so each one can offer the card that
+    // defends it. Read from module state rather than threaded down through
+    // paintRoom's arguments: `openRoomId` is what every other control on this
+    // screen already acts on, and a second copy travelling by a different
+    // route is how a card ends up citing the room a reader was looking at
+    // before this one.
+    runId: openRoomId,
   };
 
   const toggle = document.createElement("button");

@@ -70,7 +70,8 @@ Pipeline B · Script Check  (SequentialAgent)
 
 The agent door
   star/mcp/     Streamable HTTP, hand-written against the transport spec.
-                free:   list_rooms · get_room · ask_room · delete_room
+                free:   list_rooms · get_room · ask_room · defend_claim
+                        delete_room
                 spends: build_room · check_scene · research_question
 ```
 
@@ -167,12 +168,16 @@ Tokens are stored as sha256, shown once at issue, never recoverable, and revocab
 can only be issued to an account with a linked identity, because an anonymous account's only
 proof of ownership is a `localStorage` entry.
 
-The door serves `list_rooms`, `get_room`, `ask_room`, `build_room`, `check_scene`,
-`delete_room` and `research_question`. `get_room` **is** `build_room`'s poll, and
+The door serves `list_rooms`, `get_room`, `ask_room`, `defend_claim`, `build_room`,
+`check_scene`, `delete_room` and `research_question`. `get_room` **is** `build_room`'s poll.
 `research_question` is what `ask_room` points at when a room does not answer: it researches
 that one question and files the result into the room the writer already has, rather than
-charging them a whole second room to learn one thing. Every description is written for a
-reader who cannot see a screen, and every refusal names what failed and what to do next.
+charging them a whole second room to learn one thing. `defend_claim` takes one filed fact
+back out with its sources, their excerpts and the date they were retrieved — the shape a
+writer hands to whoever is challenging the detail, and it refuses to find a fact by
+approximation rather than put real sources behind a claim the room never made. Every
+description is written for a reader who cannot see a screen, and every refusal names what
+failed and what to do next.
 
 That list is pinned by a test against `star/mcp/tools.py`, and it names them rather than
 counting them. The sentence here was wrong for a day after `ask_room` and `delete_room`

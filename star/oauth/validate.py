@@ -40,6 +40,12 @@ SCOPE_BY_TOOL = {
     "list_rooms": "rooms:read",
     "get_room": "rooms:read",
     "ask_room": "rooms:read",
+    # Reads, so it reads. The card is a SHAPE of a room that already exists —
+    # one finding, its sources, its retrieval date — assembled from the same
+    # document `get_room` returns. It sends nobody to the field and spends
+    # nothing, and a writer handing an agent a read token should be able to
+    # get a citation out of it.
+    "defend_claim": "rooms:read",
     "build_room": "rooms:write",
     "check_scene": "rooms:write",
     # rooms:write and not rooms:read, though it reads like a question. What

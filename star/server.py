@@ -39,7 +39,7 @@ from google.adk.runners import InMemoryRunner  # noqa: E402
 from google.genai import types  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
-from star import bible, config  # noqa: E402
+from star import bible, config, defence  # noqa: E402
 
 config.validate_env()
 
@@ -1699,6 +1699,45 @@ async def create_scene(
     # two that have to be kept in step. See the comment against
     # `_uid_limiter.check` there for the ceiling and why it sits where it does.
     return jsonable_encoder(await _run_check(uid, run_id, scene))
+
+
+@app.get("/api/rooms/{run_id}/defence")
+async def get_defence(
+    run_id: str, fact: str = "", authorization: str | None = Header(None)
+) -> dict:
+    """One filed fact with everything behind it, for the printable card.
+
+    The same `star/defence.py` the MCP `defend_claim` tool calls, so the sheet
+    a writer prints and the card an agent returns cannot disagree about what
+    the room says — which is the one disagreement that matters, since both are
+    read by someone who is already sceptical.
+
+    404 for a room this account cannot see, and the same 404 for a fact that is
+    not in it: `_store.get` is rooted at `users/{uid}`, so another caller's
+    room is not found rather than refused, and a fact this room never filed is
+    the same kind of absence.
+    """
+    uid = _require_uid(authorization)
+    fact = (fact or "").strip()
+    if not fact:
+        raise HTTPException(400, "Name the fact to defend.")
+
+    document = await asyncio.to_thread(_store.get, uid, run_id)
+    if document is None:
+        raise HTTPException(404, "Unknown run")
+
+    result = document_to_room(document)
+    located = defence.locate(result, fact)
+    if located is None:
+        raise HTTPException(
+            404,
+            "No finding in this room says that. The department will not build "
+            "a card around the nearest match — that would put real sources "
+            "behind a claim the room never made. Check the wording against the "
+            "room and try again.",
+        )
+    category, finding = located
+    return defence.card(result, category, finding, run_id)
 
 
 class QuestionRequest(BaseModel):

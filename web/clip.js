@@ -302,7 +302,7 @@ function renderUnsourced(urls) {
  *  the link we do not have.
  *
  *  `stamp` carries { date, code } when the caller genuinely knows them. */
-export function renderClip(finding, stamp = {}) {
+export function renderClip(finding, stamp = {}, runId = "") {
   const fact = String(finding?.fact || "").trim();
   if (!fact) return "";
   const citations = Array.isArray(finding?.citations) ? finding.citations : [];
@@ -317,11 +317,29 @@ export function renderClip(finding, stamp = {}) {
     .filter(Boolean)
     .join("");
 
+  // The card that defends this one fact, on its own page so the browser's
+  // print dialogue can have it. A link and not a button: it opens a document,
+  // it is worth middle-clicking into a tab, and a writer with three contested
+  // details wants three tabs. `target="_blank"` for the same reason — the room
+  // is where they came from and where they are going back to.
+  //
+  // Only when there is a room to point at. renderClips is called during a LIVE
+  // run too, where the findings are arriving and the room has no id yet; a
+  // link built on an empty run id would 404 on a fact that is right there on
+  // the screen. star/defence.py finds the finding from the fact itself, so
+  // nothing here needs an index into a drawer that is still being filled.
+  const defence = runId
+    ? `<p class="clip-defend"><a class="clip-defend-link"
+        href="/defend.html?run=${encodeURIComponent(runId)}&fact=${encodeURIComponent(fact)}"
+        target="_blank" rel="noopener">Where this came from</a></p>`
+    : "";
+
   return `
     <li class="clip"${unverified.length ? ' data-unsourced="true"' : ""}>
       <p class="clip-fact">${escapeHtml(fact)}</p>
       ${receipts ? `<div class="clip-receipts">${receipts}</div>` : ""}
       ${renderUnsourced(unverified)}
+      ${defence}
     </li>`;
 }
 
@@ -340,7 +358,11 @@ export function renderClip(finding, stamp = {}) {
  *  renders nothing and the promise points at blank card. The caller passes what
  *  it is actually about to render, not what the payload contains, so the two
  *  cannot drift. */
-export function renderClips(findings, stamp = {}, { hasFieldNotes = false } = {}) {
+export function renderClips(
+  findings,
+  stamp = {},
+  { hasFieldNotes = false, runId = "" } = {}
+) {
   const list = Array.isArray(findings) ? findings : [];
   const clips = list
     // The drawer's retrieval date is the room's, and it is the honest one for
@@ -354,7 +376,7 @@ export function renderClips(findings, stamp = {}, { hasFieldNotes = false } = {}
     // whose date will not parse drops the RET line rather than inventing one.
     .map((f) => {
       const own = isoStamp(f?.retrieved_at);
-      return renderClip(f, own ? { ...stamp, date: own } : stamp);
+      return renderClip(f, own ? { ...stamp, date: own } : stamp, runId);
     })
     .filter(Boolean)
     .join("");

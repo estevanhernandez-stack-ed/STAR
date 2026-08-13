@@ -364,7 +364,10 @@ function renderExpanded(body, data = {}, category = "") {
     ${renderSceneNeeds(questions)}
     ${renderUncertainty(doc)}
     <p class="drawer-legend">What was found</p>
-    ${renderClips(findings, stamp, { hasFieldNotes: Boolean(fieldNotes) })}
+    ${renderClips(findings, stamp, {
+      hasFieldNotes: Boolean(fieldNotes),
+      runId: data.runId,
+    })}
     ${fieldNotes}
     ${buildLabelledLog(data)}
   `;

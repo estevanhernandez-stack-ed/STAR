@@ -569,3 +569,29 @@
     padding: 0.6rem 0.7rem;
   }
 }
+
+/* WHERE THIS CAME FROM — the link out to one fact's defence card.
+ *
+ *  Quiet by default and never a button. It is not the action a reader came to
+ *  the drawer to take; it is the one they need on the day someone challenges
+ *  a detail, and on that day they are looking for it. Sized and coloured like
+ *  the stamp slugs around it so it reads as part of the clip's furniture
+ *  rather than as a call to action competing with the fact above it. */
+.clip-defend {
+  margin: 0.75rem 0 0;
+}
+
+.clip-defend-link {
+  font-family: var(--label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  font-size: var(--label-sm);
+  color: var(--aniline);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
+
+.clip-defend-link:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}

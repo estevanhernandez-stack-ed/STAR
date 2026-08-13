@@ -1068,6 +1068,7 @@ def test_no_tool_is_a_second_name_for_another_tools_answer():
         "list_rooms",
         "get_room",
         "ask_room",
+        "defend_claim",
         "delete_room",
         "build_room",
         "check_scene",
@@ -1165,6 +1166,7 @@ async def test_tools_list_puts_them_all_on_the_wire_with_their_descriptions():
         "list_rooms",
         "get_room",
         "ask_room",
+        "defend_claim",
         "delete_room",
         "build_room",
         "check_scene",
@@ -1388,6 +1390,228 @@ async def test_a_thin_check_carries_the_departments_own_cover_note():
     assert "Each claim below" not in said(result)
     # The retention disclosure still stands, because the scene was still kept.
     assert "now stored with this room" in said(result)
+
+
+# -- defend_claim ------------------------------------------------------------
+#
+# One fact, back out of the room with everything behind it, in the shape a
+# writer hands to whoever is challenging the detail. The room already holds all
+# of it; what this adds is refusing to guess which fact was meant.
+
+
+async def _defensible(uid, run_id):
+    return {
+        "status": "complete",
+        "result": {
+            "created_at": "2026-08-09T12:00:00Z",
+            "story_profile": {"title": "BROWNOUT", "era": "Summer 1977", "genre": "Crime"},
+            "categories": {
+                "logistics": {
+                    "findings": [
+                        {
+                            "fact": "Night court sat until 4 AM during the blackout.",
+                            "citations": [
+                                {
+                                    "url": "https://example.org/court",
+                                    "title": "Night Court Records",
+                                    "excerpt": "The court sat until four in the morning.",
+                                }
+                            ],
+                            "unverified_urls": [],
+                        },
+                        {
+                            "fact": "Arraignments ran 48 to 72 hours behind.",
+                            "citations": [
+                                {"url": "https://example.org/delay", "title": "Delays", "excerpt": ""}
+                            ],
+                            "unverified_urls": ["https://example.org/never-returned"],
+                            "requisition": "how long did arraignment take",
+                            "retrieved_at": "2026-08-12T05:00:00Z",
+                        },
+                    ]
+                }
+            },
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_defend_claim_returns_the_fact_its_sources_and_when_they_came_back():
+    result = await invoke(
+        "defend_claim",
+        {"run_id": "abc", "fact": "Night court sat until 4 AM during the blackout."},
+        read_room=_defensible,
+    )
+    card = carried(result)
+
+    assert card["fact"] == "Night court sat until 4 AM during the blackout."
+    assert card["category"] == "logistics"
+    assert card["room"]["title"] == "BROWNOUT"
+    assert card["sources"][0]["url"] == "https://example.org/court"
+    assert card["sources"][0]["excerpt"], "the page's own words are the point of the card"
+    assert card["filed_by"] == "build"
+    assert card["retrieved_at"] == "2026-08-09T12:00:00Z", (
+        "a finding the build filed was retrieved when the room was made"
+    )
+    text = said(result)
+    assert "came back from a live search" in text
+    assert "judgement it does not make for you" in text, (
+        "the narrow claim, stated. A citation that reads as an endorsement of "
+        "the fact is the failure the aversion research documents"
+    )
+
+
+@pytest.mark.asyncio
+async def test_defend_claim_dates_a_requisitioned_fact_to_when_it_was_asked_for():
+    """The date that would otherwise be wrong on exactly the fact most likely
+    to be challenged — the one a writer went and got because someone doubted
+    the room."""
+    result = await invoke(
+        "defend_claim",
+        {"run_id": "abc", "fact": "Arraignments ran 48 to 72 hours behind."},
+        read_room=_defensible,
+    )
+    card = carried(result)
+
+    assert card["retrieved_at"] == "2026-08-12T05:00:00Z", "its own, not the room's"
+    assert card["filed_by"] == "requisition"
+    assert card["requisition"] == "how long did arraignment take"
+    text = said(result)
+    assert "Filed after the room was built" in text
+    assert "not when the room was made" in text
+
+
+@pytest.mark.asyncio
+async def test_defend_claim_will_not_find_a_fact_by_approximation():
+    """The refusal this tool is mostly made of.
+
+    A card assembled around the nearest match puts real sources, real
+    excerpts and a real retrieval date behind a sentence the room never
+    filed — and hands it to the writer in the exact conversation where being
+    confidently wrong costs the most. `ask_room` is the tool that searches on
+    meaning, and it is named here so the refusal is a next step.
+    """
+    result = await invoke(
+        "defend_claim",
+        {"run_id": "abc", "fact": "Night court sat until dawn every night that summer."},
+        read_room=_defensible,
+    )
+    card = carried(result)
+
+    assert card["found"] is False
+    text = said(result)
+    assert "No finding in this room says that" in text
+    assert "`ask_room`" in text
+    assert "`research_question`" in text, "and what to do if the room truly lacks it"
+
+
+@pytest.mark.asyncio
+async def test_defend_claim_finds_a_fact_from_a_distinctive_fragment():
+    """A writer typing what an executive just read off a page has a fragment,
+    not the sentence. One finding contains it, so there is nothing to guess."""
+    result = await invoke(
+        "defend_claim", {"run_id": "abc", "fact": "48 to 72 hours"}, read_room=_defensible
+    )
+    card = carried(result)
+
+    assert card["fact"] == "Arraignments ran 48 to 72 hours behind."
+
+
+@pytest.mark.asyncio
+async def test_defend_claim_will_not_match_two_facts_that_differ_by_a_number():
+    """Punctuation and digits are load-bearing, and this is where that is said.
+
+    `normalised` folds case and collapses whitespace and does nothing else,
+    which looks like an under-implementation until you ask what this card is
+    for. A writer defending "48 to 72 hours" against an executive holding "48
+    to 73" needs the department to say it did not file that, not to hand back
+    a card whose sources say something adjacent. The number IS the claim.
+    """
+    for near in (
+        "Arraignments ran 48 to 73 hours behind.",
+        "Arraignments ran 48 to 72 days behind.",
+        "Arraignments ran 48-72 hours behind.",
+    ):
+        result = await invoke(
+            "defend_claim", {"run_id": "abc", "fact": near}, read_room=_defensible
+        )
+        assert carried(result)["found"] is False, near
+
+
+@pytest.mark.asyncio
+async def test_defend_claim_refuses_a_fragment_that_fits_two_findings():
+    """Ambiguity is not resolved by storage order.
+
+    Both findings below contain "the blackout", and picking the first would be
+    picking whichever the researcher happened to write first — presented to the
+    reader as the fact they meant.
+    """
+
+    async def _twice(uid, run_id):
+        return {
+            "status": "complete",
+            "result": {
+                "created_at": "2026-08-09T12:00:00Z",
+                "story_profile": {"title": "BROWNOUT"},
+                "categories": {
+                    "logistics": {
+                        "findings": [
+                            {"fact": "Courts closed during the blackout.", "citations": []},
+                            {"fact": "Buses stopped during the blackout.", "citations": []},
+                        ]
+                    }
+                },
+            },
+        }
+
+    result = await invoke(
+        "defend_claim", {"run_id": "abc", "fact": "during the blackout"}, read_room=_twice
+    )
+
+    assert carried(result)["found"] is False
+
+
+@pytest.mark.asyncio
+async def test_defend_claim_says_plainly_when_a_fact_has_nothing_behind_it():
+    """A claim with no source is the one a writer most needs warning about,
+    and the department will not assemble a defence out of nothing."""
+
+    async def _bare(uid, run_id):
+        return {
+            "status": "complete",
+            "result": {
+                "created_at": "2026-08-09T12:00:00Z",
+                "story_profile": {"title": "BROWNOUT"},
+                "categories": {
+                    "setting": {
+                        "findings": [{"fact": "The heat broke on the fourteenth.", "citations": []}]
+                    }
+                },
+            },
+        }
+
+    result = await invoke(
+        "defend_claim",
+        {"run_id": "abc", "fact": "The heat broke on the fourteenth."},
+        read_room=_bare,
+    )
+    text = said(result)
+
+    assert "No source is filed behind this fact" in text
+    assert "should not go in front of anyone who might ask" in text
+
+
+@pytest.mark.asyncio
+async def test_defend_claim_names_an_unsourced_url_and_says_not_to_cite_it():
+    result = await invoke(
+        "defend_claim",
+        {"run_id": "abc", "fact": "Arraignments ran 48 to 72 hours behind."},
+        read_room=_defensible,
+    )
+    text = said(result)
+
+    assert "never appeared in a search result" in text
+    assert "Do not cite them." in text
 
 
 # -- research_question -------------------------------------------------------

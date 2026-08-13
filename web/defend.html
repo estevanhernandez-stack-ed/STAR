@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>STAR — Where this detail came from</title>
+
+  <!-- THE DEFENCE CARD, and why it is a whole document rather than a panel.
+
+       Every other surface in this app is something the shell swaps in, which
+       is right for them: they are places a reader walks to from inside the
+       cabinet. This one exists to LEAVE. A writer opens it when someone is
+       challenging a detail, and what they do with it is print it or turn the
+       screen around — so it has to be addressable by URL, survive being
+       opened in a tab of its own, and carry nothing the room's furniture
+       would put around it.
+
+       Printing is the whole reason it is not a modal. The browser's own print
+       dialogue is a better export than any format this project could invent
+       and worse than none only if the page fights it, so web/defend.css sets
+       up @media print and otherwise stays out of the way. No export button, no
+       PDF library, no server-side renderer: Ctrl+P is the feature.
+
+       It loads /defend.css rather than /shell.css for the reason
+       web/consent.html does — the cabinet's rail and stage do not apply here —
+       and it carries the paper-surface pair (focus ring, link colour) scoped
+       to this document. -->
+
+  <link rel="stylesheet" href="/tokens.css" />
+  <link rel="stylesheet" href="/defend.css" />
+</head>
+<body class="defence">
+  <!-- Everything below is replaced by web/defend.js once the card arrives. It
+       is not a spinner: this text is what the page says while the fetch is in
+       flight, and a reader who lands here with a dead token or a bad link sees
+       it replaced by a sentence that says which of those happened. -->
+  <main class="defence-sheet" id="sheet" aria-live="polite">
+    <p class="defence-loading">Pulling the file…</p>
+  </main>
+
+  <script type="module" src="/defend.js"></script>
+</body>
+</html>

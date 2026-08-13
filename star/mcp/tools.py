@@ -39,7 +39,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
-from star import bible, config
+from star import bible, config, defence
 from star.findings import _tokenize
 from star.models import Category
 
@@ -402,6 +402,53 @@ TOOLS: tuple[dict, ...] = (
                 },
             },
             "required": ["run_id", "question"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "defend_claim",
+        "description": (
+            "Take one fact out of a filed room with everything behind it, in "
+            "the shape a writer hands to someone challenging it.\n\n"
+            f"Needs `run_id`, {_ROOM_ID}, and `fact` — the sentence to "
+            "defend, as the room filed it or a distinctive fragment of it.\n\n"
+            "Returns that fact, every source behind it with the page's own "
+            "title and the excerpt the search returned, the date those "
+            "sources were retrieved, which drawer it lives in, and whether "
+            "the build filed it or a writer asked for it afterwards — with "
+            "the question they asked, when they did.\n\n"
+            "**It will not find a fact by approximation.** An exact match, or "
+            "a fragment that appears in exactly one finding, or it says it "
+            "cannot find it. A card assembled around the nearest match would "
+            "put real sources behind a claim the room never made, which is "
+            "worse than no card at all in the one conversation this exists "
+            "for. Use `ask_room` to search on meaning and bring back the "
+            "wording as filed.\n\n"
+            "The retrieval date is the finding's own where it has one. A "
+            "finding the build filed was retrieved when the room was made; "
+            "one added later by `research_question` was retrieved then, and "
+            "carries that date rather than the room's.\n\n"
+            "What this proves is narrow and worth stating: every url came "
+            "back from a live search and was recorded before the fact was "
+            "written, so no source here was authored by a model. Whether the "
+            "source supports the claim is a judgement the department does not "
+            "make — the excerpts are returned so a reader can make it.\n\n"
+            "Costs nothing, spends no searches, and is never rate-limited — "
+            "it reads a room that already exists."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "run_id": {"type": "string", "description": _ROOM_ID},
+                "fact": {
+                    "type": "string",
+                    "description": (
+                        "the fact to defend, as the room filed it or a "
+                        "distinctive fragment of it"
+                    ),
+                },
+            },
+            "required": ["run_id", "fact"],
             "additionalProperties": False,
         },
     },
@@ -1701,6 +1748,77 @@ async def _check_scene(arguments: dict, calls: Calls, identity) -> dict:
     return _payload("\n\n".join(lines), result)
 
 
+async def _defend_claim(arguments: dict, calls: Calls, identity) -> dict:
+    values = _arguments(_TOOLS_BY_NAME["defend_claim"], arguments)
+    run_id = values["run_id"]
+    fact = values["fact"]
+
+    room = await calls.read_room(identity.uid, run_id)
+    status = room.get("status") or "unknown"
+    result = room.get("result")
+    if not isinstance(result, dict) or not _filed_anything(result):
+        return _payload(
+            _room_report(status, result),
+            {"run_id": run_id, "status": status, "fact": fact, "found": False},
+        )
+
+    located = defence.locate(result, fact)
+    if located is None:
+        return _payload(
+            "No finding in this room says that. The department can only "
+            "defend what it filed, and it will not assemble a citation for a "
+            "sentence it cannot find — a card built around the nearest match "
+            "would put sources behind a claim the room never made, which is "
+            "the failure this call exists to prevent. Check the wording with "
+            "`ask_room`, which searches on meaning rather than on the exact "
+            "sentence, and bring back the fact as it is filed. If the room "
+            "genuinely does not cover it, `research_question` can send it to "
+            "the field.",
+            {"run_id": run_id, "fact": fact, "found": False},
+        )
+
+    category, finding = located
+    card = defence.card(result, category, finding, run_id)
+    sources = card["sources"]
+    quoted = sum(1 for source in sources if source["excerpt"])
+
+    lines = [
+        f"{card['room']['title']} — one claim, and where it came from.",
+        card["fact"],
+    ]
+    if card["filed_by"] == "requisition":
+        lines.append(
+            "Filed after the room was built, in answer to: "
+            f"{card['requisition']}. Its sources were retrieved then, not when "
+            "the room was made, and the date below is that retrieval."
+        )
+    if sources:
+        lines.append(
+            f"{len(sources)} source{'' if len(sources) == 1 else 's'} behind "
+            f"it, {quoted} carrying the page's own words. Every url here came "
+            "back from a live search and was recorded before this fact was "
+            "written — the title and the excerpt are the page's, not a "
+            "model's. That is what the department can say. Whether the source "
+            "supports the claim is a judgement it does not make for you, and "
+            "the excerpts are here so you can make it."
+        )
+    else:
+        lines.append(
+            "No source is filed behind this fact. The department will not "
+            "assemble a defence out of nothing, and a claim in this state "
+            "should not go in front of anyone who might ask."
+        )
+    if card["unsourced_urls"]:
+        count = len(card["unsourced_urls"])
+        lines.append(
+            f"{count} url{'' if count == 1 else 's'} the researcher named "
+            "never appeared in a search result and "
+            f"{'is' if count == 1 else 'are'} stamped unsourced below. "
+            "Do not cite them."
+        )
+    return _payload("\n\n".join(lines), card)
+
+
 async def _research_question(arguments: dict, calls: Calls, identity) -> dict:
     values = _arguments(_TOOLS_BY_NAME["research_question"], arguments)
     question = values["question"]
@@ -1768,6 +1886,7 @@ _RUNNERS: dict[str, Callable[[dict, "Calls", Any], Any]] = {
     "build_room": _build_room,
     "check_scene": _check_scene,
     "ask_room": _ask_room,
+    "defend_claim": _defend_claim,
     "research_question": _research_question,
     "delete_room": _delete_room,
 }

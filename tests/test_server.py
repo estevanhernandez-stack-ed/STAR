@@ -552,6 +552,53 @@ async def test_an_overrun_with_nothing_filed_is_still_an_error():
     del server._runs["empty"]
 
 
+def test_the_defence_endpoint_and_the_agent_door_answer_from_one_function():
+    """The property that makes the printed sheet trustworthy.
+
+    A writer prints this card and an agent returns it, and both are read by
+    someone who is already sceptical. Two implementations of "which finding did
+    they mean" would eventually disagree, and the disagreement would surface in
+    front of that person. Both call star/defence.py, and this is the assertion
+    that says so in a way a refactor cannot quietly undo.
+    """
+    from star import defence
+    from star.mcp import tools
+
+    assert tools.defence is defence, "the agent door's card comes from here"
+    assert server.defence is defence, "and so does the browser's"
+
+
+def test_the_defence_card_refuses_a_fact_the_room_did_not_file():
+    room = {
+        "run_id": "abc",
+        "status": "complete",
+        "story_profile": {"title": "BROWNOUT"},
+        "created_at": "2026-08-09T12:00:00Z",
+        "categories": {
+            "setting": {"findings": [{"fact": "The heat broke.", "citations": []}]}
+        },
+    }
+    store = mock.Mock()
+    store.get.return_value = room
+
+    async def _ask(fact):
+        with mock.patch("star.server._store", store):
+            return await server.get_defence("abc", fact=fact, authorization=None)
+
+    with mock.patch("star.server._require_uid", return_value="uid-one"):
+        found = asyncio.run(_ask("The heat broke."))
+        assert found["fact"] == "The heat broke."
+
+        with pytest.raises(HTTPException) as raised:
+            asyncio.run(_ask("The heat broke on the fourteenth."))
+
+    assert raised.value.status_code == 404
+    assert "nearest match" in raised.value.detail, (
+        "and it says why it will not guess — a card built around a near match "
+        "puts real sources behind a claim the room never made"
+    )
+
+
 def test_a_requisition_appends_to_a_drawer_without_disturbing_the_rest():
     """The append is pure, so it can be asserted without a model or a network.
 

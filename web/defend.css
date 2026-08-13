@@ -1,0 +1,254 @@
+/* THE DEFENCE CARD — one fact, its receipts, on a sheet that prints.
+
+   Loads /tokens.css and nothing else from the cabinet. web/shell.css is the
+   furniture — rail, stage, drawer grid — and none of it applies to a document
+   whose whole job is to be one page a writer hands to someone. The two rules
+   this page still needs from it (a focus ring and a link colour that clear AA
+   on paper) are scoped here, the same arrangement web/consent.css makes and
+   for the same reason.
+
+   THE PAGE IS THE PRINT LAYOUT. Not a screen design with a print stylesheet
+   bolted under it: the screen version is already a sheet, centred on a neutral
+   ground, at a measure that fits a printed page. @media print then removes the
+   ground and the one control, and changes nothing about the type. A page that
+   reflows when it prints is a page whose author never printed it, and the
+   whole feature here is Ctrl+P.
+
+   No --cabinet anywhere. The cabinet is furniture you look at a room through,
+   and this is the sheet that comes out of it. */
+
+:root {
+  color-scheme: light;
+}
+
+body.defence {
+  margin: 0;
+  padding: 2.5rem 1.25rem 4rem;
+  background: color-mix(in srgb, var(--onionskin) 60%, #fff);
+  color: var(--ink);
+  font-family: var(--body);
+  /* Never a viewport-relative size. This document gets printed, and vw units
+     resolve against the paper's width at print time — 17px on screen becomes
+     something else entirely on A4, which is how a carefully set measure turns
+     into eleven words a line in the version that reaches the reader. */
+  font-size: var(--text-md);
+  line-height: 1.55;
+}
+
+.defence-sheet {
+  max-width: 40rem;
+  margin: 0 auto;
+  background: var(--onionskin);
+  border: 1px solid var(--manila-edge);
+  padding: 2.5rem 2.75rem 3rem;
+}
+
+.defence-loading,
+.defence-problem {
+  font-family: var(--label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  font-size: var(--label-sm);
+  color: var(--pencil-text);
+}
+
+.defence-problem {
+  text-transform: none;
+  letter-spacing: normal;
+  font-family: var(--body);
+  font-size: var(--text-md);
+  color: var(--ink);
+}
+
+/* The masthead: which room this came out of, in the department's own hand. */
+.defence-room {
+  font-family: var(--label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  font-size: var(--label-sm);
+  color: var(--pencil-text);
+  margin: 0 0 1.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--manila-edge);
+}
+
+/* The fact. The largest thing on the sheet, because it is the thing being
+   argued about — everything else here exists to stand behind this sentence. */
+.defence-fact {
+  font-size: var(--text-lg);
+  line-height: 1.35;
+  margin: 0 0 1.5rem;
+}
+
+.defence-provenance {
+  font-size: var(--text-sm);
+  color: var(--pencil-text);
+  margin: 0 0 2rem;
+}
+
+.defence-provenance strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.defence-legend {
+  font-family: var(--label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  font-size: var(--label-sm);
+  color: var(--pencil-text);
+  margin: 0 0 0.75rem;
+}
+
+.defence-sources {
+  list-style: none;
+  margin: 0 0 2rem;
+  padding: 0;
+}
+
+.defence-source {
+  border-left: 2px solid var(--aniline);
+  padding: 0 0 0 1rem;
+  margin: 0 0 1.5rem;
+  /* Keeps one source from being split across a page break. A citation whose
+     url is on page one and whose quotation is on page two is not a citation
+     anybody can check. */
+  break-inside: avoid;
+}
+
+.defence-source-title {
+  font-weight: 600;
+  margin: 0 0 0.25rem;
+}
+
+.defence-source-url {
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+  color: var(--aniline);
+  /* Long urls are the norm here and this sheet is fixed-width. Breaking them
+     anywhere beats a horizontal scrollbar on screen and a clipped address on
+     paper, and the address has to survive being read off the page by hand. */
+  word-break: break-all;
+  margin: 0 0 0.5rem;
+}
+
+.defence-source-url a {
+  color: inherit;
+}
+
+.defence-excerpt {
+  font-size: var(--text-sm);
+  margin: 0;
+  color: color-mix(in srgb, var(--ink) 88%, var(--onionskin));
+}
+
+.defence-excerpt::before {
+  content: "“";
+}
+
+.defence-excerpt::after {
+  content: "”";
+}
+
+.defence-noquote {
+  font-size: var(--text-sm);
+  color: var(--pencil-text);
+  margin: 0;
+}
+
+/* What the department is NOT saying. Printed at the same size as the sources
+   rather than as fine print, because a card that reads as an endorsement of
+   the fact is the exact failure the aversion research documents — people trust
+   a cited answer more even when it is wrong. */
+.defence-scope {
+  border-top: 1px solid var(--manila-edge);
+  padding-top: 1.25rem;
+  font-size: var(--text-sm);
+  color: color-mix(in srgb, var(--ink) 88%, var(--onionskin));
+}
+
+.defence-unsourced {
+  border-left: 2px solid var(--oxide);
+  padding-left: 1rem;
+  margin: 0 0 2rem;
+  font-size: var(--text-sm);
+}
+
+.defence-unsourced-label {
+  font-family: var(--label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  font-size: var(--label-sm);
+  color: var(--oxide);
+  margin: 0 0 0.35rem;
+}
+
+.defence-unsourced ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+  word-break: break-all;
+}
+
+.defence-print {
+  display: block;
+  margin: 2rem auto 0;
+  font-family: var(--label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  font-size: var(--label-sm);
+  padding: 0.6rem 1.4rem;
+  background: var(--onionskin);
+  color: var(--ink);
+  border: 1px solid var(--manila-edge);
+  cursor: pointer;
+}
+
+/* --ink on --onionskin, the pair that clears AA on this paper. Carried here
+   rather than inherited, for the reason at the top of this file. */
+.defence a:focus-visible,
+.defence button:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+@media (max-width: 560px) {
+  body.defence {
+    padding: 1.25rem 0.75rem 3rem;
+  }
+
+  .defence-sheet {
+    padding: 1.5rem 1.25rem 2rem;
+  }
+}
+
+/* PRINT. Everything here removes something; nothing here re-sets type. The
+   screen layout above is already the sheet. */
+@media print {
+  body.defence {
+    background: #fff;
+    padding: 0;
+    font-size: 11pt;
+  }
+
+  .defence-sheet {
+    max-width: none;
+    border: 0;
+    background: #fff;
+    padding: 0;
+  }
+
+  /* The control is the one thing on this page that cannot be acted on from
+     paper. */
+  .defence-print {
+    display: none;
+  }
+
+  /* No `a::after { content: attr(href) }` here, and that is the point rather
+     than an omission: web/defend.js renders each url as its OWN TEXT and wraps
+     that text in the link. The address is already on the paper, so appending
+     the href would print every url twice. A printed citation whose address
+     exists only as link markup is one nobody can follow, and this sheet's
+     whole purpose is being read away from the browser that fetched it. */
+}
