@@ -969,6 +969,41 @@ async function runSweep() {
   loadFiledSweeps();
 }
 
+/** Fetch the CSV with credentials and hand it to the browser as a file.
+ *
+ *  Everything in `/api` requires a bearer token, which only `authedFetch`
+ *  attaches — so a download has to be fetched and then saved, rather than
+ *  linked to. The object URL is revoked on the next turn of the event loop:
+ *  the click has already been dispatched by then, and holding it would pin a
+ *  whole sweep's text in memory for the life of the page. */
+async function downloadCsv(sweepId, button) {
+  if (!roomId || !sweepId) return;
+  els.error.replaceChildren();
+  button.disabled = true;
+  try {
+    const res = await authedFetch(
+      `/api/rooms/${encodeURIComponent(roomId)}/sweeps/${encodeURIComponent(sweepId)}.csv`
+    );
+    if (!res.ok) throw new Error(await failureDetail(res));
+    const blob = await res.blob();
+    // The server already chose the filename and said so in the disposition;
+    // reading it back rather than rebuilding it keeps one source for what a
+    // writer finds in their downloads folder.
+    const disposition = res.headers.get("content-disposition") || "";
+    const named = /filename="([^"]+)"/.exec(disposition);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", named ? named[1] : "sweep.csv");
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  } catch (err) {
+    els.error.replaceChildren(document.createTextNode(err.message));
+  } finally {
+    button.disabled = false;
+  }
+}
+
 /** An annotated export, brought back.
  *
  *  TWO PRESSES, and the first one changes nothing. The same arming
@@ -1295,14 +1330,19 @@ function renderSweep(payload) {
     // And the spreadsheet. Same row, because they are two ways out of the same
     // filed sweep and a reader deciding between them is deciding what they
     // want to DO — hand it to somebody, or sort it.
-    const csv = el("a", "sweep-report-link", "Download as CSV");
-    csv.setAttribute(
-      "href",
-      `/api/rooms/${encodeURIComponent(roomId)}/sweeps/${encodeURIComponent(payload.sweep_id)}.csv`
-    );
-    // No `target`: this is a download, not a page, and the server answers it
-    // with an attachment disposition. Opening a tab for a file that never
-    // renders leaves a blank window behind.
+    //
+    // A BUTTON, NOT A LINK, and that distinction is the whole of a bug this
+    // shipped with. An <a href> to an /api route is a browser NAVIGATION: it
+    // sends cookies and no Authorization header, so the server answered 401
+    // and a reader who was signed in was told to sign in. The report page
+    // escaped it only by being an HTML page that fetches its own data with
+    // auth afterwards; this one pointed straight at the API.
+    //
+    // The server test asserting the route 401s without a token PASSED while
+    // this was broken — it was asserting the thing that was going wrong.
+    const csv = el("button", "sweep-report-link sweep-report-btn", "Download as CSV");
+    csv.setAttribute("type", "button");
+    csv.addEventListener("click", () => downloadCsv(payload.sweep_id, csv));
     out.appendChild(csv);
     body.appendChild(out);
   }

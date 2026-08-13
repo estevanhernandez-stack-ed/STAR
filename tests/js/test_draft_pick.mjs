@@ -98,6 +98,15 @@ class Node {
   // discarded it would let every assertion below run before the fetch it is
   // asking about — a test that passes because it looked too early.
   press() { return Promise.all((this.listeners.click || []).map((fn) => fn())); }
+  // A programmatic .click() on a created <a> is how a fetched file is saved.
+  // Recorded rather than ignored, because the filename it carries is the one
+  // thing a reader finds in their downloads folder.
+  click() {
+    globalThis.__clickedLinks.push({
+      href: this.attributes.href,
+      download: this.attributes.download,
+    });
+  }
   type() {
     for (const fn of this.listeners.input || []) fn();
     for (const fn of this.listeners.change || []) fn();
@@ -131,6 +140,20 @@ globalThis.document = {
   createTextNode: (d) => new Text(d),
 };
 globalThis.window = {};
+// What a download touches. `createObjectURL` and an <a>.click() are the only
+// way to save a file that had to be FETCHED with credentials — see the note on
+// downloadCsv in web/scriptcheck.js.
+// Added AS STATICS on the real URL rather than replacing it: web/clip.js's
+// httpUrl does `new URL(...)` to refuse a `javascript:` href, and swapping the
+// constructor for a plain object broke that guard rather than the download.
+const objectUrls = [];
+URL.createObjectURL = (blob) => {
+  objectUrls.push(blob);
+  return `blob:stub/${objectUrls.length}`;
+};
+URL.revokeObjectURL = () => {};
+const clicked = [];
+globalThis.__clickedLinks = clicked;
 
 // Only POSTs are spends. A finished check re-reads the filed list with a GET
 // through this same stub, and counting both made "one check was sent" read as
@@ -428,6 +451,89 @@ assert.match(reopened, /anachronism/, "with its verdict");
 assert.match(reopened, /Spinal Tap/, "AND its sources — a reopened page of stamps with " +
   "nothing under them is the defect this surface already shipped once");
 assert.match(reopened, /scene 19/, "and which page it belongs to");
+
+/* 4d2 — the CSV download carries credentials. ---------------------------- */
+//
+// THE BUG THIS EXISTS FOR. It shipped as a plain <a href> to an /api route,
+// which is a browser NAVIGATION: cookies, no Authorization header. The server
+// correctly answered 401 and a reader who was signed in was told to sign in.
+//
+// The server test asserting that route 401s without a token PASSED the whole
+// time — it was asserting the very thing going wrong. Nothing either side of
+// the seam was broken; the seam was. So this drives the button and asks
+// whether the request that actually goes out is an authed one.
+
+const fetched = [];
+globalThis.__fetch = async (url, options) => {
+  const method = (options?.method || "GET").toUpperCase();
+  fetched.push({ url, method });
+  if (url.endsWith(".csv")) {
+    return {
+      ok: true,
+      status: 200,
+      headers: {
+        get: (name) =>
+          name.toLowerCase() === "content-disposition"
+            ? 'attachment; filename="doctor-who-sweep-2026-08-12.csv"'
+            : null,
+      },
+      blob: async () => "scenes,claim\n1,a Gibson\n",
+    };
+  }
+  if (method === "GET" && url.includes("/sweeps/")) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ sweep_id: "swcsv", scenes_read: 4, claims_raised: 5, claims: [] }),
+    };
+  }
+  if (method === "GET" && url.includes("/sweeps")) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        sweeps: [{ sweep_id: "swcsv", created_at: "2026-08-12T22:00:00Z", scenes_read: 4, claim_count: 5 }],
+      }),
+    };
+  }
+  return { ok: true, status: 200, json: async () => ({ scene_id: "s9", claims: [], scenes: [] }) };
+};
+
+mod.resetCheck();
+mod.setCheckRoom("room-csv");
+mod.openedCheck();
+await new Promise((r) => setTimeout(r, 0));
+await ids["check-swept-list"].childNodes[0].press();
+await new Promise((r) => setTimeout(r, 0));
+
+const exportRow = ids["check-sweep-result"];
+const findCsv = (node) =>
+  String(node.attributes?.class || "").includes("sweep-report-btn")
+    ? node
+    : (node.childNodes || []).map(findCsv).find(Boolean);
+const csvButton = findCsv(exportRow);
+
+assert.ok(csvButton, "a filed sweep offers a CSV control");
+assert.equal(
+  csvButton.nodeName,
+  "BUTTON",
+  "a BUTTON, not a link. An <a href> to /api sends no Authorization header, " +
+    "so the server 401s and a signed-in reader is told to sign in"
+);
+
+clicked.length = 0;
+await csvButton.press();
+await new Promise((r) => setTimeout(r, 0));
+
+const csvRequest = fetched.find((f) => f.url.endsWith(".csv"));
+assert.ok(csvRequest, "pressing it goes through authedFetch, which is what carries the token");
+assert.equal(clicked.length, 1, "and the fetched bytes are handed to the browser as a file");
+assert.equal(
+  clicked[0].download,
+  "doctor-who-sweep-2026-08-12.csv",
+  "under the name the SERVER chose — read back from the disposition rather " +
+    "than rebuilt here, so there is one source for what lands in a downloads folder"
+);
 
 /* 4e — the import is armed by a file and confirmed by a second press. ---- */
 //
