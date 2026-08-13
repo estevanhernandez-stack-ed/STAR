@@ -179,6 +179,64 @@ approximation rather than put real sources behind a claim the room never made. E
 description is written for a reader who cannot see a screen, and every refusal names what
 failed and what to do next.
 
+## The draft, rather than the scene
+
+`check_scene` takes one scene, which is right for one scene and wrong for a screenplay. A
+writer with a finished draft was finding each scene in their editor, selecting it, pasting,
+waiting, and going back for the next — fifty times.
+
+**Paste the whole thing.** `web/fountain.js` splits a Fountain draft into its scenes in the
+browser and lists them; pressing one loads it and spends nothing. Fountain because it is what
+screenwriters already have on disk (Highland, Slugline, Beat and WriterDuet all export it).
+The parser requires a blank line before a scene heading as well as after, which the 1.1
+reference calls optional — without it, the last line of a paragraph starting "EXT." splits a
+scene in half and each half is checked without the context that made it make sense.
+
+**Or sweep it.** One request reads every scene, collects what the draft claims about the
+world, collapses that to the distinct set, and checks it against the room in a single pass.
+The arithmetic is the argument: extraction is a schema'd model call with no tools, so reading
+a whole feature costs model time and no searches, and only the verification is paid for.
+Scene by scene, 24 scenes is 24 search budgets — up to 192 searches — and 24 slots of an
+hourly window that admits five. A sweep is one of each.
+
+Measured over a real 27-page special: 24 scenes, 85 claims raised, 65 distinct, 4 live
+searches. Deduplication accounts for about a fifth of that; the budget structure accounts for
+the rest.
+
+Every claim comes back naming the scenes that made it — the answer no number of single-scene
+checks adds up to, because an object that is fine in Liverpool in 1958 and wrong in Hamburg in
+1960 is wrong in neither scene alone.
+
+## What leaves the building
+
+A sweep is filed, so a reload does not discard a draft's worth of answers and the searches
+that bought them. From a filed sweep:
+
+- **`/report.html`** — one printable page, anachronisms first, every verdict above its
+  sources. The browser's own print dialogue is the export; the screen layout *is* the sheet.
+- **`.csv`** — one row per claim per source, so a spreadsheet can filter on a domain. Cells
+  opening `=`, `+`, `-`, `@`, tab or carriage return are prefixed, because every cell here is
+  a writer's own line or a page off the open web and both land in a program that will run
+  them.
+- **an import** — a writer annotates that CSV and brings it back. It carries a note and a
+  dismissal and **nothing else**: a verdict, a source and an excerpt are the department's,
+  hydrated out of a ledger, and a row editing one has that column ignored and named in the
+  report. A room must never read as better-sourced than its research made it.
+
+## Rooms that stack
+
+A story spans eras, and Liverpool in 1958 and Hamburg in 1960 want two rooms. `continues`
+links them, and a check or a sweep against the later room reads **the whole chain** — nearest
+first, each room's findings under its own name, so an answer can say which room held the fact.
+
+Nothing is re-planned and no room is rebuilt. That is deliberate: re-planning against a
+revised treatment risks a planner shown prior questions suppressing rather than narrowing, and
+failing quietly — a room that comes back looking fine and thinner than it should be. Stacking
+cannot fail that way. A chain that is not working spends searches it did not need; a
+suppressed plan loses facts nobody knows are missing.
+
+An unlinked room reads exactly as it did before any of this existed.
+
 That list is pinned by a test against `star/mcp/tools.py`, and it names them rather than
 counting them. The sentence here was wrong for a day after `ask_room` and `delete_room`
 shipped, because it advertised only the ones that came before — the same defect
