@@ -813,7 +813,22 @@ export function initScriptCheck() {
 function showDraft() {
   if (!els) return;
   const parsed = fountainScenes(els.input.value);
-  draftScenes = parsed.length > 1 ? parsed : [];
+  if (parsed.length > 1) {
+    // A draft arrived, or the one in the box changed. Remember it.
+    draftScenes = parsed;
+  } else if (draftScenes.length) {
+    // ONE scene in the box while a draft is remembered, which is the ordinary
+    // state after pressing a scene — and the list must survive it, or picking
+    // a scene destroys the list the writer is working through.
+    //
+    // Kept only when the box holds one of THIS draft's own scenes. A writer
+    // who has moved on and pasted something unrelated should not be looking at
+    // a stale list of a screenplay they are no longer in; comparing by key is
+    // the same comparison that decides which scenes are already checked, so
+    // there is one definition of "the same scene" and not two.
+    const key = sceneKey(els.input.value.trim());
+    if (!draftScenes.some((s) => sceneKey(s.text) === key)) draftScenes = [];
+  }
   renderDraft();
 }
 
@@ -972,10 +987,18 @@ async function runCheck() {
   // The server's wording stays as it is. The agent door has no strip and no
   // list to pick from, so there "send a scene, not the script" is still the
   // whole of the advice.
-  if (draftScenes.length > 1) {
+  // Parsed from the BOX, not read off `draftScenes`. That variable is the
+  // remembered draft and it deliberately survives picking a scene out of it —
+  // so testing it here refused the very scene the reader had just loaded,
+  // told them to pick one from a list they had already picked from, and left
+  // no way forward at all. Setting `.value` from code fires no `input` event,
+  // which is why the stale read looked correct in every test that never
+  // pressed a button.
+  const inBox = fountainScenes(scene);
+  if (inBox.length > 1) {
     els.error.replaceChildren(
       document.createTextNode(
-        `That is the whole draft — ${plural(draftScenes.length, "scene")}. ` +
+        `That is the whole draft — ${plural(inBox.length, "scene")}. ` +
           "Pick one from the list above and it will load here, then check that."
       )
     );

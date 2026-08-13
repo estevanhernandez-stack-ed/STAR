@@ -8,14 +8,18 @@
 // here is not that the strip works — it is that pressing a scene submits
 // NOTHING.
 //
-// WHY THIS IS A SOURCE TEST. web/scriptcheck.js takes its element references
-// through `document.getElementById` at init, and the shared stub in
-// _scriptcheck_module.mjs deliberately provides only createElement and
-// createTextNode — it exists to exercise the renderer, which is pure. Driving
-// the panel would mean a second, larger DOM in this repo, and the properties
-// below are about which calls the source makes rather than about what a
-// rendered node looks like. Same reasoning tests/js/test_error_spend.mjs
-// records for the same kind of claim.
+// WHAT A SOURCE TEST IS FOR HERE, AND WHAT IT IS NOT. This file was once the
+// only test of the strip, and it passed while the feature was unusable: it
+// asserted that the whole-draft guard existed, the guard did exist, and the
+// guard was reading the wrong variable. Source text cannot tell working from
+// spelled-right. tests/js/test_draft_pick.mjs now stands the panel up against
+// a DOM stub and presses the button, and that is where the behaviour is
+// proved.
+//
+// What is left here are the claims that ARE about source text: which value a
+// guard reads, which module a symbol comes from, and whether this file ever
+// assembles markup. Those cannot be observed by pressing anything, and they
+// are the ones worth grepping for in a review.
 //
 // The SPLITTING itself is not asserted here. tests/js/test_fountain.mjs loads
 // that module for real and drives it with actual Fountain.
@@ -49,36 +53,45 @@ assert.doesNotMatch(
     "stays where it was, behind the control the writer already knows"
 );
 
-/* 1b — the refusal does not scold a reader for taking the invitation. ---- */
+/* 1b — the refusal reads the BOX, not the remembered draft. -------------- */
 //
-// The server answers an oversize paste with "send the department a scene, not
-// the script" — correct until this surface started asking for the script. With
-// the strip above it, pressing the button on a whole draft got the app arguing
-// with its own instruction in front of somebody who followed it.
+// This assertion used to name `draftScenes` and it PASSED while the feature was
+// unusable: the guard existed, it was reading the remembered draft rather than
+// the textarea, and so it refused the very scene a reader had just loaded. A
+// source test cannot tell a guard that works from a guard that is spelled
+// right, which is why tests/js/test_draft_pick.mjs now stands the panel up and
+// presses the button. What is left here is the one half that IS about source
+// text: which value the guard reads.
 
-const guard = bare.match(/if \(draftScenes\.length > 1\) \{([\s\S]*?)\n {2}\}/);
-assert.ok(guard, "the browser should catch a whole draft before the request");
-assert.match(guard[1], /Pick one from the list above/, "it points at the way out");
+const guard = bare.match(/const inBox = fountainScenes\(scene\);[\s\S]*?\n {2}\}/);
+assert.ok(guard, "the guard should parse the scene currently in the box");
 assert.doesNotMatch(
-  guard[1],
+  guard[0],
+  /draftScenes\.length/,
+  "and never the remembered draft, which survives picking a scene out of it " +
+    "and therefore says 'this is a whole draft' about a single loaded scene"
+);
+assert.match(guard[0], /Pick one from the list above/, "it points at the way out");
+assert.doesNotMatch(
+  guard[0],
   /not the script/,
   "and never repeats the server's line, which contradicts the strip that just " +
     "asked for the script"
-);
-assert.match(
-  guard[1],
-  /return;/,
-  "and it returns rather than spending — a refusal that still POSTs is a " +
-    "refusal that costs the reader a check"
 );
 
 /* 2 — the strip only exists when there is a draft. ----------------------- */
 
 assert.match(
   bare,
-  /draftScenes = parsed\.length > 1 \? parsed : \[\]/,
-  "more than one heading, or nothing. One scene pasted into a scene box is " +
-    "the case this surface was built for and needs no strip telling it so"
+  /if \(parsed\.length > 1\) \{\s*draftScenes = parsed;/,
+  "more than one heading raises it. One scene pasted into a scene box is the " +
+    "case this surface was built for and needs no strip telling it so"
+);
+assert.match(
+  bare,
+  /draftScenes\.some\(\(s\) => sceneKey\(s\.text\) === key\)/,
+  "and a single scene in the box only CLEARS the list when it is not one of " +
+    "the draft's own — picking a scene must not destroy the list it came from"
 );
 
 /* 3 — the check carries the key that makes the strip durable. ------------ */
