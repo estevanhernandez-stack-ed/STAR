@@ -13,12 +13,33 @@
  *  `check_scene` needs and every additional inference is a claim about the
  *  writer's draft this file would have to be right about.
  *
- *  THE SCENE TEXT IS VERBATIM. Whatever stood between two headings is what
- *  gets checked and what gets stored, character for character. A splitter that
- *  tidied indentation or dropped a stray line would send the department
- *  something the writer never wrote, and web/scriptcheck.js's whole design —
- *  no string in it ever becomes markup — assumes the scene it renders is the
- *  scene that was submitted.
+ *  THE SCENE TEXT IS VERBATIM, WITH ONE SUBTRACTION. Whatever stood between
+ *  two headings is what gets checked and what gets stored, character for
+ *  character — no reindenting, no tidying, no dropped stray lines. A splitter
+ *  that cleaned up on the way through would send the department something the
+ *  writer never wrote, and web/scriptcheck.js's whole design — no string in it
+ *  ever becomes markup — assumes the scene it renders is the scene submitted.
+ *
+ *  The subtraction is the boneyard, and it is the format's own: `/* … *\/` is
+ *  invisible to every Fountain renderer, so text either side of one was never
+ *  two passages to a reader. Removing it can join two runs, which means a
+ *  scene is not always a literal substring of the file. Found in a real draft
+ *  rather than reasoned about: The Beat That Shook The Void marks its scene
+ *  boundaries with commented banners that themselves CONTAIN a scene heading
+ *  —
+ *
+ *      SMASH CUT TO:
+ *
+ *      /*----------------------------------------------
+ *      SCENE 2 — THE VORTEX / IN TRANSIT
+ *      INT. TARDIS — IN FLIGHT
+ *      ----------------------------------------------*\/
+ *
+ *      SUPER: "Two years later. Hamburg, 1960."
+ *
+ *  — and had the boneyard not been stripped first, that banner's heading
+ *  would have opened a phantom scene four lines above the real one, in all
+ *  twenty-four of that draft's scenes.
  *
  *  Written against the Fountain 1.1 syntax reference (fountain.io/syntax). The
  *  places it deliberately diverges are commented where they occur. */

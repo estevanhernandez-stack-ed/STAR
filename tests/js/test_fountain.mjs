@@ -179,6 +179,61 @@ assert.equal(boned.length, 2, "a heading inside a comment is not a scene");
 assert.doesNotMatch(boned.map((s) => s.text).join("\n"), /CUT SCENE/);
 assert.match(boned[0].text, /Still the first scene\./, "and the text around it survives");
 
+/* 5b — the shape a real draft actually uses. ----------------------------- */
+//
+// From The Beat That Shook The Void (doctor-whom, 24 scenes), which marks its
+// scene boundaries with commented banners that CONTAIN a scene heading. Every
+// one of that draft's scenes is preceded by one. Had the boneyard not been
+// stripped before headings are looked for, the banner's heading would have
+// opened a phantom scene four lines above the real one — twenty-four times.
+//
+// This is the case that made the boneyard rule load-bearing rather than tidy,
+// and it was found by running the parser over a draft written by somebody who
+// had never heard of it.
+
+const BANNERED = `INT. CASBAH CELLAR — NIGHT
+
+The band plays.
+
+SMASH CUT TO:
+
+
+/*-------------------------------------------------------------
+SCENE 2 — THE VORTEX / IN TRANSIT
+INT. TARDIS — IN FLIGHT
+TARGET RUNTIME: 10:00 - 15:00
+[[ Doctor and Rose, alone. They think it's over. ]]
+-------------------------------------------------------------*/
+
+SUPER: "Two years later. Hamburg, West Germany — 1960."
+
+INT. TARDIS — IN FLIGHT
+
+The time vortex churns on the scanner.`;
+
+const bannered = scenes(BANNERED);
+assert.equal(bannered.length, 2, "two scenes, not three — the banner is not one");
+assert.deepEqual(
+  bannered.map((s) => s.heading),
+  ["INT. CASBAH CELLAR — NIGHT", "INT. TARDIS — IN FLIGHT"]
+);
+assert.match(
+  bannered[0].text,
+  /SUPER: "Two years later/,
+  "the SUPER after the banner belongs to the scene before it, because the " +
+    "banner was never there as far as a reader is concerned"
+);
+assert.doesNotMatch(
+  bannered.map((s) => s.text).join("\n"),
+  /TARGET RUNTIME|SCENE 2 —/,
+  "and nothing from inside the banner reaches a check"
+);
+assert.match(
+  bannered[1].text,
+  /The time vortex churns/,
+  "the REAL heading four lines below opens the second scene"
+);
+
 /* 6 — the shapes that are not a draft at all. ---------------------------- */
 
 for (const input of ["", null, undefined, "Just a paragraph a writer pasted.", "\n\n\n"]) {
