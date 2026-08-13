@@ -449,12 +449,66 @@ def chain_to_csv(rooms) -> str:
     return buffer.getvalue()
 
 
-def csv_filename(room_title: str, created_at: str, kind: str = "sweep") -> str:
+def bible_markdown(result: dict, run_id: str = "") -> str:
+    """A room's bible as a file somebody can be handed. Pure.
+
+    The stored bible is already markdown, so this adds a masthead and gets out
+    of the way: which room, which era, when it was built, and how many sources
+    stand behind it. A document that arrives in somebody's inbox with no idea
+    which room it came from is a document they cannot check.
+
+    NOT A CELL IN THE ROOM CSV, and that is the whole reason this is its own
+    file. Excel truncates any cell over 32,767 characters and does it on SAVE,
+    without saying so — a writer who opened the research export to sort it and
+    pressed save would hand on a bible with the end quietly missing. A document
+    and a table are also two things a reader reads two ways, and packing one
+    into the other serves neither.
+
+    Returns "" when there is no bible, so a caller can refuse rather than send
+    an empty file with a masthead on it.
+    """
+    result = result or {}
+    bible = str(result.get("research_bible") or "").strip()
+    if not bible:
+        return ""
+
+    profile = result.get("story_profile") or {}
+    title = str(profile.get("title") or "Untitled room").strip()
+    era = str(profile.get("era") or "").strip()
+    built = str(result.get("created_at") or "")[:10]
+    sources = int(result.get("source_count") or 0)
+
+    head = [f"# {title}"]
+    stamp = " · ".join(
+        part
+        for part in (
+            era,
+            f"filed {built}" if built else "",
+            f"{sources} source{'' if sources == 1 else 's'}" if sources else "",
+            f"room {run_id}" if run_id else "",
+        )
+        if part
+    )
+    if stamp:
+        head.append(f"*{stamp}*")
+    # The bible's own heading levels start at `##` in a well-formed room, so the
+    # masthead above sits over them rather than beside them. A room whose bible
+    # opens on `#` reads as two documents stacked, which is ugly and is not
+    # worth rewriting a writer's document to avoid.
+    return "\n\n".join([*head, bible]) + "\n"
+
+
+def csv_filename(
+    room_title: str, created_at: str, kind: str = "sweep", ext: str = "csv"
+) -> str:
     """A filename a writer can find again in a downloads folder.
 
     Built from the room and the date rather than the sweep id, because a reader
     looking for last Tuesday's sweep of the Doctor Who room is not looking for
     `sw_9f2c1a`. Reduced to characters every filesystem accepts.
+
+    `ext` because the bible leaves as markdown and everything else as CSV, and
+    two functions doing this would be two answers to what a room is called.
     """
     stem = "".join(
         char if char.isalnum() or char in " -_" else " " for char in str(room_title or "")
@@ -463,4 +517,4 @@ def csv_filename(room_title: str, created_at: str, kind: str = "sweep") -> str:
     day = str(created_at or "")[:10] or "undated"
     # No stem means no room title, and `sweep-sweep-undated.csv` is what a
     # default stem of "sweep" produces. The word appears once.
-    return f"{stem}-{kind}-{day}.csv" if stem else f"{kind}-{day}.csv"
+    return f"{stem}-{kind}-{day}.{ext}" if stem else f"{kind}-{day}.{ext}"

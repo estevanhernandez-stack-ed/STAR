@@ -82,6 +82,7 @@ const checkSurface = $("check-panel");
 const checkBtn = $("check-btn");
 const roomCsvBtn = $("room-csv-btn");
 const chainCsvBtn = $("chain-csv-btn");
+const bibleMdBtn = $("bible-md-btn");
 
 /* What each toggle says when its surface is CLOSED, read off the markup once
  * rather than written here a second time.
@@ -523,14 +524,12 @@ function pad2(n) {
  *
  *  The filename comes back from the server's own disposition rather than being
  *  rebuilt here, so there is one source for what lands in a downloads folder. */
-async function downloadCsv(button, query, fallbackName) {
+async function downloadCsv(button, path, fallbackName) {
   if (!openRoomId) return;
   const label = button.textContent;
   button.disabled = true;
   try {
-    const res = await authedFetch(
-      `/api/rooms/${encodeURIComponent(openRoomId)}.csv${query}`
-    );
+    const res = await authedFetch(`/api/rooms/${encodeURIComponent(openRoomId)}${path}`);
     if (!res.ok) throw new Error(`The department could not build that file (${res.status}).`);
     const blob = await res.blob();
     const disposition = res.headers.get("content-disposition") || "";
@@ -568,14 +567,24 @@ function showChainCsv(result) {
   const parent = (result && result.continues) || "";
   const reachable = parent && knownRooms().some((room) => room.run_id === parent);
   chainCsvBtn.classList.toggle("hidden", !reachable);
+  // And the bible, on the same rule and for the same reason: a room can file
+  // four drawers of research with no bible — an interrupted synthesis, or a
+  // build the editor never reached — and the route 404s on one. A control
+  // that only ever fails is worse than no control.
+  const hasBible = Boolean(result && String(result.research_bible || "").trim());
+  bibleMdBtn.classList.toggle("hidden", !hasBible);
 }
 
 roomCsvBtn.addEventListener("click", () =>
-  downloadCsv(roomCsvBtn, "", "research.csv")
+  downloadCsv(roomCsvBtn, ".csv", "research.csv")
 );
 chainCsvBtn.addEventListener("click", () =>
-  downloadCsv(chainCsvBtn, "?chain=true", "story.csv")
+  downloadCsv(chainCsvBtn, ".csv?chain=true", "story.csv")
 );
+// Same function, a different path and a different extension. The bible is a
+// document rather than a table and leaves as one — see exports.bible_markdown
+// for why it is not a cell in the CSV above.
+bibleMdBtn.addEventListener("click", () => downloadCsv(bibleMdBtn, ".md", "bible.md"));
 
 /*  stampDate — DD MON YYYY, matching the stamp's slug-face convention in
  *  docs/design/visual-directions.md's own mockup ("RET 09 AUG 2026") — now

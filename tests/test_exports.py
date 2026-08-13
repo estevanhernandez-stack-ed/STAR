@@ -16,6 +16,7 @@ from star.exports import (
     COLUMNS,
     ROOM_COLUMNS,
     apply_annotations,
+    bible_markdown,
     chain_to_csv,
     csv_filename,
     read_annotations,
@@ -395,6 +396,80 @@ def test_the_room_download_is_reachable_and_is_a_file():
     assert "research" in response.headers["content-disposition"]
     assert response.headers["x-content-type-options"] == "nosniff"
     assert "Impala" in response.text, "the room's own finding is in it"
+
+
+# -- the BIBLE, which is a document and leaves as one -------------------------
+
+
+def test_the_bible_leaves_as_a_file_that_says_which_room_it_came_from():
+    """A document that arrives in somebody's inbox with no idea which room it
+    came from is a document they cannot check."""
+    room = {**ROOM, "research_bible": "## Setting\n\nLiverpool, 1958.\n", "source_count": 74}
+    text = bible_markdown(room, "room-1")
+
+    assert text.startswith("# Doctor Who Special: Liverpool\n")
+    assert "1958-1962" in text and "filed 2026-08-10" in text and "74 sources" in text
+    assert "room-1" in text
+    assert "## Setting\n\nLiverpool, 1958." in text, "and the document itself, unedited"
+
+
+def test_a_room_with_no_bible_produces_nothing_rather_than_a_masthead():
+    """A room can file four drawers and no bible — an interrupted synthesis.
+    A masthead over an empty page reads as a bible that says nothing."""
+    assert bible_markdown({**ROOM, "research_bible": "   "}) == ""
+    assert bible_markdown({}) == ""
+    assert bible_markdown(None) == ""
+
+
+def test_the_bible_download_is_reachable_and_is_a_file():
+    """Registered ABOVE `/api/rooms/{run_id}` for the third time in this
+    codebase, which is where that route would otherwise claim `abc.md`."""
+    store, _ = a_store()
+    store.save(UID, ROOM_ID, filed_room())
+
+    with mock.patch("star.server.verify_token", return_value=UID), \
+            mock.patch("star.server._store", store):
+        response = TestClient(server.app).get(f"/api/rooms/{ROOM_ID}.md", headers=AUTH)
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/markdown")
+    assert "attachment" in response.headers["content-disposition"]
+    assert ".md" in response.headers["content-disposition"]
+    assert "bible" in response.headers["content-disposition"]
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert "# Bible" in response.text, "the room's own document"
+
+
+def test_a_room_with_no_bible_refuses_the_download_with_the_reason():
+    store, _ = a_store()
+    store.save(UID, ROOM_ID, {**filed_room(), "research_bible": ""})
+
+    with mock.patch("star.server.verify_token", return_value=UID), \
+            mock.patch("star.server._store", store):
+        response = TestClient(server.app).get(f"/api/rooms/{ROOM_ID}.md", headers=AUTH)
+
+    assert response.status_code == 404
+    assert "no bible" in response.json()["detail"]
+
+
+def test_another_accounts_bible_does_not_download():
+    store, _ = a_store()
+    store.save(UID, ROOM_ID, filed_room())
+
+    with mock.patch("star.server.verify_token", return_value="uid-two"), \
+            mock.patch("star.server._store", store):
+        response = TestClient(server.app).get(f"/api/rooms/{ROOM_ID}.md", headers=AUTH)
+
+    assert response.status_code == 404
+
+
+def test_a_bible_and_a_research_file_are_told_apart_in_a_downloads_folder():
+    assert csv_filename("Liverpool", "2026-08-13T00:00:00Z", kind="bible", ext="md") == (
+        "liverpool-bible-2026-08-13.md"
+    )
+    assert csv_filename("Liverpool", "2026-08-13T00:00:00Z", kind="research") == (
+        "liverpool-research-2026-08-13.csv"
+    ), "and the default is still csv"
 
 
 def test_another_accounts_room_has_no_csv():

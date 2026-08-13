@@ -1155,6 +1155,55 @@ async def get_room_csv(
     )
 
 
+@app.get("/api/rooms/{run_id}.md")
+async def get_room_bible(run_id: str, authorization: str | None = Header(None)) -> Response:
+    """A room's bible as a file, so it can be handed to somebody.
+
+    Until this existed the bible could be read on one screen and reached no
+    further: no download, no print sheet, nothing to attach to an email. A
+    document a writer paid a build for that cannot leave the tab it renders in
+    is not a document they own.
+
+    Registered ABOVE `/api/rooms/{run_id}` for the third time in this file,
+    because Starlette matches in declaration order and that route would
+    otherwise claim `abc.md` and 404 on a room whose id has no dot in it. The
+    sweep CSV shipped with exactly that bug under a comment claiming it had
+    been avoided; the room CSV did not, because the order was checked before
+    the commit rather than after.
+
+    Markdown rather than PDF: the stored bible IS markdown, so this is the
+    document itself rather than a rendering of it, and a reader can open it in
+    anything or paste it into their own script. The printable report is the
+    other half of that pair and already prints.
+    """
+    uid = _require_uid(authorization)
+    document = await asyncio.to_thread(_store.get, uid, run_id)
+    if document is None:
+        raise HTTPException(404, "Unknown run")
+
+    result = document_to_room(document)
+    body = exports.bible_markdown(result, run_id)
+    if not body:
+        # A room can be filed with drawers full of research and no bible — an
+        # interrupted synthesis, or one the editor never reached. Refused with
+        # the reason rather than sent as a masthead over an empty page, which
+        # would read as a bible that says nothing.
+        raise HTTPException(404, "This room has no bible to download.")
+
+    profile = result.get("story_profile") or {}
+    filename = exports.csv_filename(
+        profile.get("title") or "room", result.get("created_at"), kind="bible", ext="md"
+    )
+    return Response(
+        content=body,
+        media_type="text/markdown; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
 @app.get("/api/rooms/{run_id}")
 async def get_room(run_id: str, authorization: str | None = Header(None)) -> dict:
     """The browser door onto one room. Auth, then the shared read."""
