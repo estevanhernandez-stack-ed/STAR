@@ -97,13 +97,29 @@ Deployed 2026-08-09.
 | Service URL | `https://star-390753828501.us-central1.run.app` |
 | Region | `us-central1` |
 | Service name | `star` |
-| Revision | `star-00002-rtj` |
+| Revision | `star-00053-8sf` |
 
-Deploy command (also `scripts/deploy.sh`, run from repo root):
+Deploy command, from anywhere:
 
 ```bash
-FIREBASE_API_KEY=$(grep '^FIREBASE_API_KEY=' .env | cut -d= -f2-) bash scripts/deploy.sh
+bash scripts/deploy.sh
 ```
+
+It reads `FIREBASE_API_KEY` and `GOOGLE_OAUTH_CLIENT_ID` out of `.env` when
+they are not already exported, so nothing has to be typed. An exported value
+always wins and a missing `.env` is not an error, which is what keeps CI
+working — it exports both rather than shipping the file.
+
+**This used to be documented as `FIREBASE_API_KEY=$(grep … .env | cut …) bash
+scripts/deploy.sh`,** and that was wrong twice. It put a secret on a command
+line — shell history, and `ps` for every user on the box — to hand it to a
+script sitting beside the file it came from. And it carried
+`GOOGLE_OAUTH_CLIENT_ID` nowhere, so **the documented way to deploy was the
+way that strips Google account linking off the live service**, silently, with
+the only symptom being that linking stops being offered on a card nobody
+re-checks after a deploy. The warning below existed to catch that and told the
+reader to export it by hand. The safe invocation and the convenient one agree
+now.
 
 The script builds from source via Cloud Build (no local Docker needed),
 deploys to Cloud Run, and prints the service URL. Now also `cd`'s to the repo

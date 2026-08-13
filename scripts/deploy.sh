@@ -8,6 +8,36 @@ PROJECT="${PROJECT:-star-research-dept}"
 REGION=us-central1
 SERVICE=star
 
+# Read the two config values out of .env when they are not already exported.
+#
+# The documented invocation used to be
+#   FIREBASE_API_KEY=$(grep '^FIREBASE_API_KEY=' .env | cut -d= -f2-) bash scripts/deploy.sh
+# which put a secret on a command line — into shell history, into `ps` for
+# every user on the box — to hand it to a script sitting in the same directory
+# as the file it came from. It also carried GOOGLE_OAUTH_CLIENT_ID nowhere, so
+# the ordinary way to run the deploy was the way that triggers the warning
+# below and strips account linking off the live service. The safe invocation
+# and the convenient one now agree: `bash scripts/deploy.sh`.
+#
+# Values are never echoed, an already-exported value always wins, and a
+# missing .env is not an error — CI exports these rather than shipping the
+# file, and that has to keep working.
+if [[ -f .env ]]; then
+  for _var in FIREBASE_API_KEY GOOGLE_OAUTH_CLIENT_ID; do
+    if [[ -z "${!_var:-}" ]]; then
+      # `read` rather than eval: a .env line is data, and a value containing
+      # $(...) or a backtick must reach the deploy as those characters rather
+      # than as something this shell ran. Quotes are stripped, nothing else is
+      # interpreted, and only the first match counts.
+      _val=$(grep -m1 "^${_var}=" .env 2>/dev/null | cut -d= -f2- || true)
+      _val="${_val%\"}"; _val="${_val#\"}"
+      _val="${_val%\'}"; _val="${_val#\'}"
+      [[ -n "$_val" ]] && export "${_var}=${_val}"
+    fi
+  done
+  unset _var _val
+fi
+
 # GOOGLE_OAUTH_CLIENT_ID is optional at boot and the app degrades honestly
 # without it: /config.js serves "", the card renders linking as unavailable and
 # says why, and every other path works. It is NOT optional here in the same way,
