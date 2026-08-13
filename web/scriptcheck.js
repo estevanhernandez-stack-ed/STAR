@@ -962,6 +962,26 @@ async function runCheck() {
     );
     return;
   }
+  // The whole draft is still in the box. Caught HERE rather than at the
+  // server, which answers "send the department a scene, not the script" — a
+  // sentence that was right until this surface started asking for the script.
+  // The strip above invites the paste and then the refusal scolded the reader
+  // for accepting the invitation, which is the app disagreeing with itself in
+  // front of somebody who did exactly what it said.
+  //
+  // The server's wording stays as it is. The agent door has no strip and no
+  // list to pick from, so there "send a scene, not the script" is still the
+  // whole of the advice.
+  if (draftScenes.length > 1) {
+    els.error.replaceChildren(
+      document.createTextNode(
+        `That is the whole draft — ${plural(draftScenes.length, "scene")}. ` +
+          "Pick one from the list above and it will load here, then check that."
+      )
+    );
+    els.input.focus();
+    return;
+  }
 
   // Disabling the focused button drops focus to <body> in every engine, and
   // re-enabling it does not give focus back. So from here until one of the two

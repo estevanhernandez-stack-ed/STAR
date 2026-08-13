@@ -829,21 +829,37 @@
  *  nothing. A ninety-page draft must not be able to cost ninety checks by
  *  accident, so the spend stays where it was: one deliberate press of the
  *  control the writer already knows. */
+/* Bounded to the same measure as the box it feeds. #scene is max-width 74ch
+   and the panel is wider than that, so a list at the panel's full width ran
+   past the right edge of the textarea by a third of the screen — the list and
+   the box it loads into looked like two unrelated controls. */
 .check-draft {
   margin: 0 0 1rem;
+  max-width: 74ch;
 }
 
+/* --ink, not --pencil-text. The panel is --manila and --pencil-text is mixed
+   TOWARD --onionskin, so it is a legible grey on the light scene rows below
+   and a washed-out smear on the tan above them. Measured by printing the
+   thing: the label was barely readable in a screenshot at full size, which is
+   the one place a contrast failure cannot hide. `.check-label` on the same
+   surface has always used --ink; this now matches it. */
 .check-draft-line {
   font-family: var(--label);
   letter-spacing: var(--track-label);
   text-transform: uppercase;
   font-size: var(--label-sm);
-  color: var(--pencil-text);
+  color: var(--ink);
   margin: 0 0 0.6rem;
 }
 
+/* The FILED pad, darkened toward --ink until it clears AA on manila. Raw
+   --aniline measures 4.37:1 here, which is under the 4.5 body text needs, and
+   this is 11px uppercase — nowhere near the size that earns the 3.0 exemption.
+   Darkening keeps the pad's meaning; the alternative was a different colour
+   saying a different thing. */
 .check-draft-done {
-  color: var(--aniline);
+  color: color-mix(in srgb, var(--aniline) 85%, var(--ink));
   margin-left: 0.5rem;
 }
 
@@ -884,10 +900,15 @@
   outline-offset: -2px;
 }
 
+/* NOT --pencil-text, which measures 2.32:1 on onionskin. That token is the
+   app's muted voice and it is used on this surface elsewhere, but those are
+   stamps a reader glances at — this is the number somebody uses to find scene
+   17 in a list of 24, and it has to be read rather than sensed. Mixed to
+   4.59:1, which is the least darkening that clears AA. */
 .check-draft-index {
   font-family: var(--slug);
   font-size: var(--label-sm);
-  color: var(--pencil-text);
+  color: color-mix(in srgb, var(--ink) 65%, var(--onionskin));
   min-width: 1.6rem;
 }
 

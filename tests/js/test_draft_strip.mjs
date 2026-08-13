@@ -49,6 +49,29 @@ assert.doesNotMatch(
     "stays where it was, behind the control the writer already knows"
 );
 
+/* 1b — the refusal does not scold a reader for taking the invitation. ---- */
+//
+// The server answers an oversize paste with "send the department a scene, not
+// the script" — correct until this surface started asking for the script. With
+// the strip above it, pressing the button on a whole draft got the app arguing
+// with its own instruction in front of somebody who followed it.
+
+const guard = bare.match(/if \(draftScenes\.length > 1\) \{([\s\S]*?)\n {2}\}/);
+assert.ok(guard, "the browser should catch a whole draft before the request");
+assert.match(guard[1], /Pick one from the list above/, "it points at the way out");
+assert.doesNotMatch(
+  guard[1],
+  /not the script/,
+  "and never repeats the server's line, which contradicts the strip that just " +
+    "asked for the script"
+);
+assert.match(
+  guard[1],
+  /return;/,
+  "and it returns rather than spending — a refusal that still POSTs is a " +
+    "refusal that costs the reader a check"
+);
+
 /* 2 — the strip only exists when there is a draft. ----------------------- */
 
 assert.match(
