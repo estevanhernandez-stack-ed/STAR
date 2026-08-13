@@ -355,7 +355,17 @@
               <span id="check-draft-done" class="check-draft-done"></span>
             </p>
             <div id="check-draft-scenes" class="check-draft-scenes"></div>
+            <!-- The sweep. Sits under the scene list because it is the other
+                 thing a reader can do with a draft they have just pasted, and
+                 it is the ONE control on this surface that spends without a
+                 scene being chosen — so it says what it costs before it is
+                 pressed rather than after. -->
+            <div class="check-sweep">
+              <button id="check-sweep-btn" type="button">Sweep the whole draft</button>
+              <span id="check-sweep-note" class="check-sweep-note"></span>
+            </div>
           </div>
+          <div id="check-sweep-result" class="check-sweep-result hidden"></div>
           <div class="actions">
             <button id="check-run-btn" type="button">Check this scene</button>
             <span id="check-status" class="check-status" role="status"></span>

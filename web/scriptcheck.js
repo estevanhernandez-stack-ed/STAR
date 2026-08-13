@@ -784,8 +784,12 @@ export function initScriptCheck() {
     draftCount: $("check-draft-count"),
     draftDone: $("check-draft-done"),
     draftScenes: $("check-draft-scenes"),
+    sweep: $("check-sweep-btn"),
+    sweepNote: $("check-sweep-note"),
+    sweepResult: $("check-sweep-result"),
   };
   els.run.addEventListener("click", runCheck);
+  els.sweep.addEventListener("click", runSweep);
   // `input` rather than `paste`: a paste event fires before the value lands,
   // and a writer may also drag a file in or type. This runs a regex over the
   // box on every keystroke, which is cheap next to what the box costs to
@@ -839,6 +843,7 @@ function renderDraft() {
     els.draftScenes.replaceChildren();
     els.draftCount.replaceChildren();
     els.draftDone.replaceChildren();
+    els.sweepNote.replaceChildren();
     return;
   }
 
@@ -877,6 +882,140 @@ function renderDraft() {
     });
     els.draftScenes.appendChild(btn);
   }
+
+  // What the sweep will cost, before it is pressed. This is the one control on
+  // the surface that spends without a scene being chosen, so a reader must not
+  // have to press it to find out what it does.
+  els.sweepNote.replaceChildren(
+    document.createTextNode(
+      `Reads all ${plural(draftScenes.length, "scene")}, collects what the ` +
+        "draft claims about the world, and checks the distinct set against " +
+        "this room in one pass. One search budget for the draft, and one " +
+        "check against your hourly limit."
+    )
+  );
+}
+
+/** Every claim a draft makes, asked once.
+ *
+ *  The other thing to do with a pasted draft, and the reason the strip is not
+ *  just a convenience. A scene check answers "is this scene right"; a sweep
+ *  answers "does this draft contradict itself about the world", which is a
+ *  question no number of scene checks adds up to — an object that is fine in
+ *  1958 and wrong in 1960 is wrong in neither scene alone.
+ *
+ *  Deliberately NOT wired to the scene list's own buttons. Those load a scene
+ *  and spend nothing; this spends, so it is its own control with its own words
+ *  on it. */
+async function runSweep() {
+  if (!roomId || !draftScenes.length) return;
+  els.error.replaceChildren();
+  els.sweepResult.replaceChildren();
+  els.sweepResult.classList.add("hidden");
+  els.sweep.disabled = true;
+  working(
+    `The department is reading all ${plural(draftScenes.length, "scene")} and ` +
+      "checking what they claim against this room"
+  );
+
+  let payload;
+  try {
+    const res = await authedFetch(`/api/rooms/${encodeURIComponent(roomId)}/sweep`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        scenes: draftScenes.map((scene) => ({
+          index: scene.index,
+          heading: scene.heading,
+          text: scene.text,
+        })),
+      }),
+    });
+    if (!res.ok) throw new Error(await failureDetail(res));
+    payload = await res.json();
+  } catch (err) {
+    els.status.replaceChildren();
+    els.sweep.disabled = false;
+    els.error.replaceChildren(document.createTextNode(err.message));
+    els.sweep.focus();
+    return;
+  }
+
+  els.status.replaceChildren();
+  els.sweep.disabled = false;
+  renderSweep(payload);
+}
+
+function renderSweep(payload) {
+  const claims = Array.isArray(payload?.claims) ? payload.claims : [];
+  const body = el("div", "sweep");
+  body.setAttribute("tabindex", "-1");
+
+  const raised = Number(payload?.claims_raised) || 0;
+  const read = Number(payload?.scenes_read) || 0;
+  const searches = Number(payload?.search_count) || 0;
+
+  // Both numbers. The gap between what a draft RAISED and what was distinct is
+  // the whole reason this costs less than the same scenes one at a time, and a
+  // reader cannot work it out from either number alone.
+  body.appendChild(
+    el(
+      "p",
+      "sweep-count",
+      `${plural(read, "scene")} read. ${plural(raised, "claim")} raised, ` +
+        `${claims.length} distinct, checked against this room for ` +
+        `${plural(searches, "live search")}.`
+    )
+  );
+  if (payload?.scope_note) body.appendChild(el("p", "sweep-scope", payload.scope_note));
+  if (payload?.budget_exhausted) {
+    body.appendChild(
+      el(
+        "p",
+        "sweep-budget",
+        "The sweep reached its search limit before the end of the draft. What " +
+          "is below is what it managed; a claim marked unverifiable for budget " +
+          "was not looked for, which is not the same as not being there."
+      )
+    );
+  }
+
+  if (!claims.length) {
+    body.appendChild(
+      el(
+        "p",
+        "sweep-scope",
+        "Nothing in this draft made a checkable claim about the world. That is " +
+          "a result rather than a failure — a stretch of pure dialogue asserts " +
+          "very little a department can look up."
+      )
+    );
+  }
+
+  const list = el("ul", "sweep-list");
+  for (const claim of claims) {
+    const item = el("li", "sweep-claim");
+    item.dataset.verdict = String(claim?.verdict || "unverifiable");
+    item.appendChild(el("span", "sweep-verdict", String(claim?.verdict || "unverifiable")));
+    item.appendChild(el("span", "sweep-text", String(claim?.text || "")));
+    const scenes = Array.isArray(claim?.scenes) ? claim.scenes : [];
+    // Which pages to open. The one thing a sweep can say that a scene check
+    // cannot, and it is the reason the answer is worth reading top to bottom.
+    item.appendChild(
+      el(
+        "span",
+        "sweep-scenes",
+        scenes.length ? `scene ${scenes.join(", ")}` : "scene not recorded"
+      )
+    );
+    if (claim?.note) item.appendChild(el("p", "sweep-note", String(claim.note)));
+    list.appendChild(item);
+  }
+  if (claims.length) body.appendChild(list);
+
+  els.sweepResult.replaceChildren(body);
+  els.sweepResult.classList.remove("hidden");
+  body.focus();
 }
 
 /** Point the surface at a room. Called every time a room is painted, so a
@@ -933,6 +1072,12 @@ function clearCheck({ keepScene }) {
   els.run.disabled = false;
   els.filedRow.classList.add("hidden");
   els.filedList.replaceChildren();
+  // The sweep goes with everything else. It is a whole draft's worth of
+  // answers about ONE room, and leaving it standing under a different room's
+  // title is the cross-room leak the drawers were fixed for.
+  els.sweep.disabled = false;
+  els.sweepResult.replaceChildren();
+  els.sweepResult.classList.add("hidden");
   if (!keepScene) els.input.value = "";
 }
 

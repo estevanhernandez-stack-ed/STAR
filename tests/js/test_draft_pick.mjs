@@ -95,6 +95,7 @@ for (const id of [
   "check-panel", "scene", "check-run-btn", "check-status", "check-error",
   "check-result", "check-filed-row", "check-filed-list",
   "check-draft", "check-draft-count", "check-draft-done", "check-draft-scenes",
+  "check-sweep-btn", "check-sweep-note", "check-sweep-result",
 ]) ids[id] = new Node();
 
 globalThis.document = {
@@ -236,6 +237,73 @@ assert.match(
   /^\d/,
   "a check filed before scene_label existed falls back to the date rather " +
     "than rendering an empty button"
+);
+
+/* 4c — the sweep sends the whole draft and reports both numbers. --------- */
+//
+// The one control on this surface that spends without a scene being chosen.
+// What matters is that it sends EVERY scene, that it says what it will cost
+// before it is pressed, and that the answer carries the gap between what the
+// draft raised and what was distinct — the number that is the case for the
+// feature and the one a reader cannot work out alone.
+
+const swept = [];
+globalThis.__fetch = async (url, options) => {
+  const method = (options?.method || "GET").toUpperCase();
+  if (method === "POST" && url.includes("/sweep")) {
+    swept.push(JSON.parse(options?.body || "{}"));
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        run_id: "room-3",
+        scenes_read: 4,
+        claims_raised: 7,
+        search_count: 3,
+        budget_exhausted: false,
+        claims: [
+          { text: "a Gibson", verdict: "confirmed", scenes: [1, 3], note: "In production." },
+          { text: "a cassette deck", verdict: "anachronism", scenes: [4], note: "1963." },
+        ],
+      }),
+    };
+  }
+  if (method === "POST") posted.push({ url, body: JSON.parse(options?.body || "{}") });
+  return { ok: true, status: 200, json: async () => ({ scene_id: "s9", claims: [], scenes: [] }) };
+};
+
+mod.resetCheck();
+mod.setCheckRoom("room-3");
+ids.scene.value = DRAFT;
+ids.scene.type();
+
+assert.match(
+  ids["check-sweep-note"].textContent,
+  /4 scenes/,
+  "the cost is on the page before the button is pressed, not after"
+);
+assert.match(ids["check-sweep-note"].textContent, /One search budget/);
+
+await ids["check-sweep-btn"].press();
+await new Promise((r) => setTimeout(r, 0));
+
+assert.equal(swept.length, 1, "one request for the whole draft");
+assert.equal(swept[0].scenes.length, 4, "carrying every scene");
+assert.deepEqual(
+  swept[0].scenes.map((s) => s.index),
+  [1, 2, 3, 4],
+  "with their indices, which is how a verdict finds its way back to a page"
+);
+
+const sweepText = ids["check-sweep-result"].textContent;
+assert.match(sweepText, /7 claims raised/, "what the draft raised");
+assert.match(sweepText, /2 distinct/, "and what was actually asked about");
+assert.match(sweepText, /3 live searches/, "and what that cost");
+assert.match(sweepText, /scene 1, 3/, "which pages a claim came from");
+assert.match(sweepText, /anachronism/, "and the verdict that matters most");
+assert.ok(
+  !ids["check-sweep-result"].classList.contains("hidden"),
+  "the answer is showing"
 );
 
 /* 5 — pasting something unrelated drops the list. ------------------------ */

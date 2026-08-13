@@ -935,3 +935,160 @@
 .check-draft-scene[data-checked="true"] .check-draft-slug {
   color: var(--pencil-text);
 }
+
+/* THE SWEEP — every claim a draft makes, asked once.
+ *
+ *  The one control on this surface that spends without a scene being chosen,
+ *  so it carries its cost in words beside it rather than behind it. Set apart
+ *  from the scene list above by a rule, because pressing a scene and pressing
+ *  this are not the same kind of act: one loads text, the other buys answers. */
+.check-sweep {
+  display: flex;
+  align-items: baseline;
+  gap: 0.9rem;
+  margin: 0.9rem 0 0;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--manila-edge);
+}
+
+#check-sweep-btn {
+  flex: none;
+  background: var(--cabinet);
+  color: var(--manila);
+  border: 1px solid var(--cabinet);
+  font-family: var(--label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  font-size: var(--label-sm);
+  padding: 0.6rem 1.1rem;
+  cursor: pointer;
+}
+
+#check-sweep-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+#check-sweep-btn:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.check-sweep-note {
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.check-sweep-result {
+  margin: 1.25rem 0 0;
+}
+
+.check-sweep-result.hidden {
+  display: none;
+}
+
+.sweep:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 4px;
+}
+
+.sweep-count {
+  font-family: var(--label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  font-size: var(--label-sm);
+  color: var(--ink);
+  margin: 0 0 0.5rem;
+}
+
+.sweep-scope,
+.sweep-budget {
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  margin: 0 0 0.75rem;
+  max-width: 68ch;
+}
+
+/* The budget line takes the FLAGGED pad. "We ran out of searches" and "we
+   looked and it is not there" are different answers and star/verdicts.py
+   already keeps them apart; this makes the first one visible at a glance. */
+.sweep-budget {
+  border-left: 2px solid var(--oxide);
+  padding-left: 0.9rem;
+  color: var(--ink);
+}
+
+.sweep-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sweep-claim {
+  display: grid;
+  grid-template-columns: 7.5rem 1fr 7rem;
+  gap: 0.75rem;
+  align-items: baseline;
+  padding: 0.55rem 0.7rem;
+  background: var(--onionskin);
+  border-bottom: 1px solid var(--manila-edge);
+}
+
+.sweep-verdict {
+  font-family: var(--label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  font-size: var(--label-sm);
+  /* --ink darkened per pad rather than the raw token, for the reason the
+     draft strip's labels are: these sit on --onionskin and the raw pads do not
+     all clear AA at 11px on it. */
+  color: color-mix(in srgb, var(--ink) 70%, var(--onionskin));
+}
+
+.sweep-claim[data-verdict="anachronism"] .sweep-verdict {
+  color: color-mix(in srgb, var(--oxide) 80%, var(--ink));
+}
+
+.sweep-claim[data-verdict="confirmed"] .sweep-verdict {
+  color: color-mix(in srgb, var(--aniline) 85%, var(--ink));
+}
+
+.sweep-text {
+  font-size: var(--text-sm);
+  color: var(--ink);
+}
+
+/* Which pages to open — the one thing a sweep can say that no number of scene
+   checks adds up to. Right-aligned so the column reads as a set of page
+   references rather than as part of the claim. */
+.sweep-scenes {
+  font-family: var(--slug);
+  font-size: var(--label-sm);
+  text-align: right;
+  color: color-mix(in srgb, var(--ink) 65%, var(--onionskin));
+}
+
+.sweep-note {
+  grid-column: 1 / -1;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  margin: 0.35rem 0 0;
+  color: color-mix(in srgb, var(--ink) 88%, var(--onionskin));
+}
+
+@media (max-width: 700px) {
+  .check-sweep {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .sweep-claim {
+    grid-template-columns: 1fr;
+    gap: 0.2rem;
+  }
+
+  .sweep-scenes {
+    text-align: left;
+  }
+}
