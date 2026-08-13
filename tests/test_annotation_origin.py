@@ -64,11 +64,42 @@ def test_the_id_survives_the_formula_guard():
     assert exports.annotation_origin("claim,sweep_id\nx,26881297a20d\n") == "26881297a20d"
 
 
-STORED = "users/{uid}/rooms/{room}/sweeps/sw1"
+def test_a_spreadsheet_mangled_id_is_read_as_no_id_at_all():
+    """FAIL OPEN, and this is the half that matters.
+
+    A sweep id is uuid4().hex[:12]. 1 in 141 of those parses as a number —
+    10^12 of the 16^12 are all digits, another 10^12 have the shape
+    `digits e digits` — and a spreadsheet coerces the cell and writes the
+    coerced value back on save.
+
+    The caller REFUSES on a mismatch. Reading `1.23457E+11` as an id would
+    reject a file that genuinely belongs to the open sweep, and the refusal's
+    own advice — export this sweep and mark that up — walks the writer into
+    the same wall next try. A loop, out of a cell nobody typed in.
+    """
+    for mangled in ("1.23457E+11", "inf", "#NUM!", "2.6881E+11", "-inf", "1E+05"):
+        text = f"claim,sweep_id\nKaiserkeller,{mangled}\n"
+        assert exports.annotation_origin(text) == "", mangled
+
+
+def test_an_id_a_spreadsheet_left_alone_still_counts():
+    """The other side of the same coin. An all-digit id that Excel preserved
+    exactly is still an id, and treating every numeric-looking value as damage
+    would silently disable the check for 1 in 270 sweeps."""
+    assert exports.annotation_origin("claim,sweep_id\nx,123456789012\n") == "123456789012"
+
+
+def test_the_shape_test_does_not_swallow_a_real_mismatch():
+    """Fail-open must not become fail-always. A well-formed id that differs is
+    the case this feature exists for."""
+    assert exports.annotation_origin("claim,sweep_id\nx,f1d31518e372\n") == "f1d31518e372"
+
+
+STORED = "users/{uid}/rooms/{room}/sweeps/aa11bb22cc33"
 
 
 def a_post(csv_text: str, apply: bool = False):
-    """One import against the filed sweep `sw1`, through the real store.
+    """One import against the filed sweep `aa11bb22cc33`, through the real store.
 
     Returns (response, the stored sweep afterwards), because half of what this
     file asserts is that a refusal WROTE NOTHING, and a status code cannot say
@@ -76,12 +107,12 @@ def a_post(csv_text: str, apply: bool = False):
     """
     store, client_data = a_store()
     store.save(UID, ROOM, filed_room())
-    store.save_sweep(UID, ROOM, "sw1", sweep_to_document(SWEEP, "sw1", "2026-08-12T22:00:00Z"))
+    store.save_sweep(UID, ROOM, "aa11bb22cc33", sweep_to_document(SWEEP, "aa11bb22cc33", "2026-08-12T22:00:00Z"))
 
     with mock.patch("star.server.verify_token", return_value=UID), \
             mock.patch("star.server._store", store):
         response = TestClient(server.app).post(
-            f"/api/rooms/{ROOM}/sweeps/sw1/annotations",
+            f"/api/rooms/{ROOM}/sweeps/aa11bb22cc33/annotations",
             json={"csv": csv_text, "apply": apply},
             headers=AUTH,
         )
@@ -92,7 +123,7 @@ def test_a_file_from_a_sweep_not_on_this_room_says_so():
     """A different answer from "open the other one", and it has to be. The
     writer cannot open a sweep that is not filed here, and pointing at one
     would be a lie about a button that is not on the screen."""
-    response, _ = a_post("claim,sweep_id,writer_note\nKaiserkeller,sw-other,keep it\n")
+    response, _ = a_post("claim,sweep_id,writer_note\nKaiserkeller,dd44ee55ff66,keep it\n")
 
     assert response.status_code == 400
     body = response.json()["detail"]
@@ -109,17 +140,17 @@ def test_the_refusal_names_the_other_sweep_the_way_the_picker_does():
     """
     store, _ = a_store()
     store.save(UID, ROOM, filed_room())
-    store.save_sweep(UID, ROOM, "sw1", sweep_to_document(SWEEP, "sw1", "2026-08-13T13:35:00Z"))
+    store.save_sweep(UID, ROOM, "aa11bb22cc33", sweep_to_document(SWEEP, "aa11bb22cc33", "2026-08-13T13:35:00Z"))
     # The sweep the file actually came from, also filed on this room.
-    other = sweep_to_document(SWEEP, "sw-older", "2026-08-13T11:41:00Z")
+    other = sweep_to_document(SWEEP, "f1d31518e372", "2026-08-13T11:41:00Z")
     other["scenes_read"] = 24
-    store.save_sweep(UID, ROOM, "sw-older", other)
+    store.save_sweep(UID, ROOM, "f1d31518e372", other)
 
     with mock.patch("star.server.verify_token", return_value=UID), \
             mock.patch("star.server._store", store):
         response = TestClient(server.app).post(
-            f"/api/rooms/{ROOM}/sweeps/sw1/annotations",
-            json={"csv": "claim,sweep_id,writer_note\nKaiserkeller,sw-older,keep it\n"},
+            f"/api/rooms/{ROOM}/sweeps/aa11bb22cc33/annotations",
+            json={"csv": "claim,sweep_id,writer_note\nKaiserkeller,f1d31518e372,keep it\n"},
             headers=AUTH,
         )
 
@@ -128,7 +159,7 @@ def test_the_refusal_names_the_other_sweep_the_way_the_picker_does():
     assert "24 scenes" in body, body
     assert "2 claims" in body, body
     assert "2026-08-13 11:41" in body, body
-    assert "sw-older" not in body, f"the id is not a handle the reader has: {body}"
+    assert "f1d31518e372" not in body, f"the id is not a handle the reader has: {body}"
 
 
 def test_one_scene_and_one_claim_are_not_pluralised():
@@ -136,17 +167,17 @@ def test_one_scene_and_one_claim_are_not_pluralised():
     a sentence that says "1 scenes" beside it reads like a different sweep."""
     store, _ = a_store()
     store.save(UID, ROOM, filed_room())
-    store.save_sweep(UID, ROOM, "sw1", sweep_to_document(SWEEP, "sw1", "2026-08-13T13:35:00Z"))
+    store.save_sweep(UID, ROOM, "aa11bb22cc33", sweep_to_document(SWEEP, "aa11bb22cc33", "2026-08-13T13:35:00Z"))
     one = {"room": SWEEP["room"], "claims": SWEEP["claims"][:1]}
-    other = sweep_to_document(one, "sw-older", "2026-08-13T11:41:00Z")
+    other = sweep_to_document(one, "f1d31518e372", "2026-08-13T11:41:00Z")
     other["scenes_read"] = 1
-    store.save_sweep(UID, ROOM, "sw-older", other)
+    store.save_sweep(UID, ROOM, "f1d31518e372", other)
 
     with mock.patch("star.server.verify_token", return_value=UID), \
             mock.patch("star.server._store", store):
         body = TestClient(server.app).post(
-            f"/api/rooms/{ROOM}/sweeps/sw1/annotations",
-            json={"csv": "claim,sweep_id,writer_note\nKaiserkeller,sw-older,keep it\n"},
+            f"/api/rooms/{ROOM}/sweeps/aa11bb22cc33/annotations",
+            json={"csv": "claim,sweep_id,writer_note\nKaiserkeller,f1d31518e372,keep it\n"},
             headers=AUTH,
         ).json()["detail"]
 
@@ -160,7 +191,7 @@ def test_nothing_is_filed_from_a_file_belonging_elsewhere():
     from filing whatever the two sweeps share onto the wrong document, and the
     notes that landed would look like success."""
     response, stored = a_post(
-        "claim,sweep_id,writer_note\nKaiserkeller,sw-other,keep it\n", apply=True
+        "claim,sweep_id,writer_note\nKaiserkeller,dd44ee55ff66,keep it\n", apply=True
     )
 
     assert response.status_code == 400
@@ -169,11 +200,22 @@ def test_nothing_is_filed_from_a_file_belonging_elsewhere():
 
 def test_the_sweep_its_own_file_came_from_still_takes_it():
     response, stored = a_post(
-        "claim,sweep_id,writer_note\nKaiserkeller,sw1,keep it\n", apply=True
+        "claim,sweep_id,writer_note\nKaiserkeller,aa11bb22cc33,keep it\n", apply=True
     )
 
     assert response.status_code == 200
     assert response.json()["matched"] == 1
+    assert stored["claims"][0]["writer_note"] == "keep it"
+
+
+def test_a_file_whose_id_a_spreadsheet_ate_still_imports():
+    """End to end on the loop this prevents: the file belongs to the open
+    sweep, Excel turned its id into a float, and it must still file."""
+    response, stored = a_post(
+        "claim,sweep_id,writer_note\nKaiserkeller,1.23457E+11,keep it\n", apply=True
+    )
+
+    assert response.status_code == 200, response.text
     assert stored["claims"][0]["writer_note"] == "keep it"
 
 
@@ -191,10 +233,10 @@ def test_a_real_export_imports_into_its_own_sweep():
     """End to end over the export this feature is for, rather than a hand-typed
     two-column file. `sweep_to_csv` writes the id and this reads it, so the two
     halves are pinned to each other rather than to my memory of the shape."""
-    document = sweep_to_document(SWEEP, "sw1", "2026-08-12T22:00:00Z")
+    document = sweep_to_document(SWEEP, "aa11bb22cc33", "2026-08-12T22:00:00Z")
     text = exports.sweep_to_csv(document)
 
-    assert exports.annotation_origin(text) == "sw1"
+    assert exports.annotation_origin(text) == "aa11bb22cc33"
 
     response, _ = a_post(text)
     assert response.status_code == 200, response.text
@@ -206,8 +248,8 @@ def test_the_refusal_comes_before_the_rows_are_read():
     reader first and bury the one that explains all of them."""
     response, _ = a_post(
         "claim,sweep_id,writer_note\n"
-        ",sw-other,a row naming no claim\n"
-        "Kaiserkeller,sw-other,keep it\n"
+        ",dd44ee55ff66,a row naming no claim\n"
+        "Kaiserkeller,dd44ee55ff66,keep it\n"
     )
 
     assert response.status_code == 400

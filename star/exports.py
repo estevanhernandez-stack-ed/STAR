@@ -210,10 +210,35 @@ def annotation_origin(text: str) -> str:
     One id, not a set. A file whose rows disagree is not a sweep export, and
     the first row is the one to believe: it is the header's own neighbour and
     the last thing an editing spreadsheet reorders.
+
+    IT FAILS OPEN, and that is the load-bearing half. A sweep id is
+    `uuid4().hex[:12]`, and 1 in 141 of those is a string a spreadsheet reads
+    as a number: 10^12 of the 16^12 possible ids are all digits, and another
+    10^12 have the shape `digits e digits`. Excel coerces the cell and writes
+    the coerced value back on save, so `123456789012` returns as
+    `1.23457E+11` and `26881e972102` returns as `inf`.
+
+    The caller REFUSES on a mismatch, so a mangled id would reject a file that
+    genuinely belongs to the open sweep — and the refusal's own advice, export
+    this sweep and mark that up, walks the writer straight into the same wall
+    on the next try. A loop, from a cell nobody typed in.
+
+    So a value that does not have the shape of an id is treated as a file that
+    does not say, which is the behaviour this whole feature was added on top
+    of: match on claim text, refuse nothing. The check only speaks when it is
+    sure, and the cost of its silence is the state of the world last week.
     """
     try:
         for row in csv.DictReader(io.StringIO(text or "")):
-            return unsafe_cell(row.get("sweep_id")).strip()
+            candidate = unsafe_cell(row.get("sweep_id")).strip()
+            # Length bounds rather than exactly twelve hex: the ids are minted
+            # in one place today and a file older or newer than this code
+            # should still be readable. `1.23457E+11` has a dot and a plus,
+            # `inf` and `#NUM!` are the wrong length or the wrong characters,
+            # and none of them survive this.
+            if candidate.isalnum() and 6 <= len(candidate) <= 32:
+                return candidate
+            return ""
     except csv.Error:  # pragma: no cover - csv rarely raises on read
         return ""
     return ""
