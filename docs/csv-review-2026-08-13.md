@@ -161,102 +161,98 @@ export around 80, because eleven claims appear in more than one scene.
 
 # The second round, after the split — sweep `26881297a20d`, 13:35
 
-Four files, downloaded after `star-00046`. Everything I changed is correct in
-them. What I did not change moved on its own, and the movement is worth
-reading.
+Nine files in the download folder, two generations of each. The suffixed copies
+are the new shape; the unsuffixed ones predate today's exports and carry
+neither `scene` nor `continues`. Everything below is measured off the files
+themselves, not read off the screen.
 
-## The columns, verified row by row
+**Correcting the first round.** That review said 23 of 61 rows carried the
+filler source. The real figure for the 11:41 sweep was higher, and I had
+counted distinct claims where I reported rows. Numbers below are derived by
+script and are the ones to trust.
 
-**Sweep file.** `scene, scenes, claim, claim_type, verdict, note, source_title,
-source_url, source_excerpt, swept_at, sweep_id` — `scene` first, `scenes`
-second.
+## The columns, verified by count
 
-- **80 rows**, up from 61. Exactly the inflation predicted, and the reason is
-  visible: eleven claims appear in more than one scene.
-- **Page order holds.** Scenes run 1, 2, 3, 5, 6, 7, 8, 9, 11, 13, 14, 15, 16,
-  17, 18, 19, 20, 21, 22, 23, 24. Scenes 4, 10 and 12 are absent because they
-  raised no claims — the TARDIS scenes, which assert nothing about 1958.
-- **The split is right on every multi-scene claim.** `Kaiserkeller` carries
-  `scenes = "13 17 19 20 21 23 24"` and appears as seven rows, one at each.
-  `Top Ten` (8 9 13) → three rows. `Liverpool` (1 5 21) → three. `HAMBURG`
-  (15 17 24) → three. `VESPA`, `G-sharp`, `RORY STORM AND THE HURRICANES` and
-  `THE SENIORS` all land where their `scenes` cell says.
+`doctor-who-liverpool-and-hamburg-special-sweep-2026-08-13 (1).csv`, sweep
+`26881297a20d`.
 
-**Story file.** `continues` is present and correct: every Hamburg row carries
-`01c41bcf266a`, every Liverpool row carries empty. Hamburg first, Liverpool
-second — nearest first. **That file will import as two rooms, already linked.**
+- Header: `scene, scenes, claim, claim_type, verdict, note, source_title,
+  source_url, source_excerpt, swept_at, sweep_id`. **`scene` first.**
+- **80 rows from 64 distinct claims.** The 11:41 sweep was 64 rows from 64
+  claims, one apiece.
+- **Scene order 1, 2, 3, 5, 6, 7, 8, 9, 11, 13, 14 … 24 — strictly ascending,
+  and not one blank.** Scenes 4, 10 and 12 raised no claims.
+- **Eight multi-scene claims, and every one splits exactly as its `scenes` cell
+  says. Zero mismatches across all 64.** `Kaiserkeller` (7 scenes) → 7 rows.
+  `Top Ten`, `Liverpool`, `HAMBURG` → 3 each.
 
-**Research file (Hamburg alone).** Same columns, and `continues` names
-`01c41bcf266a` — a room that is not in the file. Importing it on its own will
-file one room, unlinked, with the complaint saying so by name. Working as
-designed; worth knowing before you see the message.
+**Room files.** `continues` is present on the suffixed copies only. The story
+file carries `1fd837bdd99e → continues=01c41bcf266a` and `01c41bcf266a →
+continues=""`. That file imports as two rooms, already linked. The
+`research (1)` file is the Hamburg room alone and names a parent that is not in
+it, so it arrives unlinked with the complaint saying so. `requisition` is empty
+on all 132 rows and `retrieved_at` is each room's own stamp — 02:14:17 and
+11:51:03. All correct.
 
-**One thing the story file proves that a fixture could not.**
-`grokipedia.com/page/liverpool_city_police` is cited by BOTH rooms and appears
-as two rows, not one. That is the no-deduplication rule doing its job: a source
-carrying two rooms is a fact about the research.
+## Three counts that say more than the citations do
 
-## The accuracy moved in both directions
+**Zero claims cite more than one source. 0 of 64.** The format asks for
+`<url>, <url>` and got exactly one URL, sixty-four times.
 
-**Genuinely better than the 02:14 sweep:**
+**Zero `unverifiable` verdicts. 77 confirmed, 3 anachronism, 0 declined.**
 
-- **`Empire`** now cites `arthurlloyd.co.uk`'s Liverpool Empire Theatre page —
-  the correct source, and the exact row that was the sharpest example of the
-  defect last time.
-- **`"Raunchy."`** → *Raunchy (instrumental)* on Wikipedia. Correct.
-- **`Some Other Guy` → ANACHRONISM**, citing the Wikipedia entry showing a 1962
-  release against a 1960 scene. **That is a new, correct catch with the right
-  page under it** — and in the earlier sweep the same claim came back
-  `confirmed` against the filler.
-- `turning it up to eleven`, `Candid Camera`, `GERMAN POLICE MOTORCYCLE` and
-  `drums` all cite pages that actually hold them up.
+**Zero notes on confirmed rows. 0 of 77.** All three anachronisms carry one,
+and all three are good: *"The Daleks first appeared in Doctor Who in December
+1963"*, *"The phrase originated in the 1984 film This Is Spinal Tap"*,
+*"Richie Barrett's single 'Some Other Guy' was first released in 1962"*.
 
-**Worse than the 02:14 sweep:**
+Read together those are one finding, not three. **A desk that never declines
+always needs a URL**, and a claim it cannot source still has to be given one —
+so it reaches for a page it read. It writes no note on a confirmation because
+there is nothing to say about a page that does not mention the claim. And it
+lists one source rather than two because it is naming the nearest page rather
+than assembling support.
 
-- **`1959 Standard Vanguard Estate`** now cites a **Ford Thames Pickup**
-  auction listing. The earlier sweep cited the Standard Vanguard Wikipedia
-  entry, which was right. This one is a different vehicle from a different
-  manufacturer.
-- **`DALEK`**, the anachronism the whole demo turns on, cites **Penny Lane**.
-  Last time it cited the minibus. Different nonsense, same nonsense.
-- **A second filler emerged.** Alongside the Beatles-in-Hamburg minibus
-  passage, the *Penny Lane* Wikipedia excerpt now carries eight rows:
-  `Taj Mahal`, `DALEK`, `Do not pass Go`, `April. Judea.`, `A GOLDEN RECORD`,
-  `Voyager`, `Out past the edge of the solar system`, `Carrying music`.
+## What the filler actually looks like
 
-**The rate did not move.** 23 of 80 rows carry the minibus passage and 8 carry
-Penny Lane: **31 of 80, 39%**. The earlier sweep was 23 of 61, 38%. Two
-independent sweeps, the same fraction, different claims — which says this is
-the pipeline's steady state and not a bad night.
+**`en.wikipedia.org/wiki/Penny_Lane` — 8 rows, 8 claims, one excerpt, and it
+supports none of them:** `Taj Mahal`, `DALEK`, `Voyager`, `A GOLDEN RECORD`,
+`April. Judea.`, `Do not pass Go`, `Out past the edge of the solar system`,
+`Carrying music`. **`DALEK` is among them** — the anachronism the demo turns
+on has a correct note and a nonsense receipt.
 
-## And the notes went away
+**`en.wikipedia.org/wiki/The_Beatles_in_Hamburg` — 33 rows, 27 claims, three
+different excerpts.** This one is not simply wrong. It genuinely answers
+`Indra`, `Top Ten`, `Rory Storm`, `The Hurricanes`, `PETE BEST`, `Hamburg.
+1960.` and the band members' ages. It is also where `horn-rimmed glasses`,
+`Union Jack`, `blitzed`, `mate`, `The Elbe.`, `Seventeen. He was seventeen.`
+and `Liverpool in 1958` were sent. **The page is doing real work and standing
+in as the catch-all at the same time**, which is why counting rows against it
+overstates the defect and ignoring it understates it. The honest figure is the
+Penny Lane eight, which are unambiguous, plus a judgement call on roughly seven
+of the Hamburg twenty-seven.
 
-Every `confirmed` row in this sweep has an **empty `note`**. The 02:14 sweep
-wrote one on each — "Eyeglasses made of horn or tortoise shell were standard
-personal items in the 1950s". Only the three anachronisms carry notes now, and
-those three are excellent.
+## Where it improved, on its own
 
-Not caused by anything shipped today: `sweep_rows` passes `note` through
-untouched, and no code between the verifier and the file touches it. It is
-model variance between two runs of the same prompt. It matters anyway — a
-`confirmed` verdict with **no note and a wrong source** gives a reader nothing
-at all to check.
+- **`Empire`** — the sharpest example in the first review — now cites
+  `arthurlloyd.co.uk`'s Liverpool Empire Theatre page.
+- **`Some Other Guy` came back ANACHRONISM against its 1962 release.** In the
+  11:41 sweep the same claim was `confirmed` against the Hamburg page. **A new,
+  correct catch with the right page under it.**
+- `"Raunchy."` cites *Raunchy (instrumental)*. `turning it up to eleven` cites a
+  history of the Spinal Tap line.
 
-## The diagnosis is now one sentence
+## The fix is one sentence, and it is a sentence already in the file
 
 `star/agents/script_check.py` tells the verifier: *"In the sources field list
 only URLs you actually saw, either in `<room_files>` or in a parallel_search
 result."*
 
-**That binds the URL to SEEN, not to SUPPORTS.** The model is obeying the
-instruction it was given. Every filler citation in both sweeps is a page the
-verifier genuinely read on that run — it just is not the page that holds the
-claim up. The rule the prompt never states is the one a receipt depends on:
-*the URL you list must be the page that settles THIS claim, and if no page you
-read settles it, the verdict is `unverifiable`.*
+**That binds the citation to SEEN, not to SUPPORTS.** Every filler URL in both
+sweeps is a page the verifier really did read on that run. It is obeying.
 
-The neighbouring paragraph already makes exactly this argument for the verdict
-("your certainty is not a source... a claim you are sure about with nothing
-behind it is thrown out rather than stamped"). It was never extended to the
-citation. A claim confirmed against a page that does not mention it is the same
-failure the paragraph was written to stop, one field to the right.
+The paragraph immediately above it already makes the argument for the verdict:
+*"Your certainty is not a source… a claim you are sure about with nothing
+behind it is thrown out rather than stamped."* It was never extended one field
+to the right, to the citation — and the 0-of-64 unverifiable count says the
+verdict half is not holding either.
