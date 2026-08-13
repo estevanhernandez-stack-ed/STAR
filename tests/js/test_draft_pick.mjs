@@ -66,8 +66,22 @@ class Node {
       toggle: (c, force) => (force ? this.classes.add(c) : this.classes.delete(c)),
     };
   }
-  appendChild(n) { this.childNodes.push(n); return n; }
-  replaceChildren(...n) { this.childNodes = n; }
+  // appendChild MOVES. A node already in a tree leaves it, exactly as the DOM
+  // does, and the import relies on that: one button that relocates rather than
+  // two that have to be kept in step. A stub that only pushed would show the
+  // button in the controls row AND under the report, and the test asserting it
+  // had moved would pass while the page had two of them.
+  appendChild(n) {
+    if (n.parent) n.parent.childNodes = n.parent.childNodes.filter((c) => c !== n);
+    n.parent = this;
+    this.childNodes.push(n);
+    return n;
+  }
+  replaceChildren(...n) {
+    for (const old of this.childNodes) if (old.parent === this) old.parent = null;
+    for (const node of n) node.parent = this;
+    this.childNodes = n;
+  }
   setAttribute(k, v) { this.attributes[k] = v; }
   getAttribute(k) { return this.attributes[k]; }
   addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
@@ -123,8 +137,14 @@ for (const id of [
   "check-draft", "check-draft-count", "check-draft-done", "check-draft-scenes",
   "check-sweep-btn", "check-sweep-note", "check-sweep-result",
   "check-swept-row", "check-swept-list",
-  "check-import", "check-import-input", "check-import-btn", "check-import-result",
+  "check-import", "check-import-input", "check-import-controls",
+  "check-import-btn", "check-import-result",
 ]) ids[id] = new Node();
+
+// The button starts in the controls row, as index.html has it. The import
+// moves it out while a confirmation is pending, and a stub that never put it
+// there could not tell a relocation from a no-op.
+ids["check-import-controls"].appendChild(ids["check-import-btn"]);
 
 // The file input the import reads from. `files` and `.text()` are the whole of
 // what web/scriptcheck.js touches on it.
@@ -614,6 +634,36 @@ assert.equal(annotations.length, 1, "the first press reads the file");
 assert.equal(annotations[0].apply, false, "AND CHANGES NOTHING");
 assert.match(ids["check-import-result"].textContent, /Nothing has been changed yet/);
 assert.match(ids["check-import-btn"].textContent, /File these notes/, "the label is the arming");
+
+/* The confirmation and its button are the same object. ------------------ */
+//
+// It shipped with the button in the controls row three lines ABOVE the sentence
+// telling the reader to press it, in a row they had already used and finished
+// with. A reader who imported a real file read "press again", looked, and did
+// not find it. A confirmation whose action is somewhere else is a riddle.
+
+const inReport = (btn) => {
+  const walk = (n) => n === btn || (n.childNodes || []).some(walk);
+  return walk(ids["check-import-result"]);
+};
+
+assert.ok(inReport(ids["check-import-btn"]), "armed, the button is INSIDE the report");
+assert.ok(
+  ids["check-import-btn"].classList.contains("armed"),
+  "and marked, so it does not look like the press that changed nothing"
+);
+assert.ok(
+  !ids["check-import-controls"].childNodes.includes(ids["check-import-btn"]),
+  "and it LEFT the controls row rather than being cloned into two live buttons"
+);
+// Under the warnings, never above them. A confirm button that renders before
+// the skipped rows is one a reader presses without having read them.
+const report = ids["check-import-result"].childNodes[0];
+assert.equal(
+  report.childNodes[report.childNodes.length - 1],
+  ids["check-import-btn"],
+  "LAST in the report, under every warning it acts on"
+);
 assert.match(
   ids["check-import-result"].textContent,
   /A claim that was never here/,
@@ -641,6 +691,12 @@ assert.equal(annotations.length, 2, "the second press files them");
 assert.equal(annotations[1].apply, true);
 assert.match(ids["check-import-result"].textContent, /2 notes filed/);
 assert.match(ids["check-import-btn"].textContent, /Read the file/, "and disarms");
+assert.ok(
+  ids["check-import-controls"].childNodes.includes(ids["check-import-btn"]),
+  "AND COMES HOME. The report it was sitting in gets replaced on the next " +
+    "render, so a button left inside it goes off the page with it"
+);
+assert.ok(!ids["check-import-btn"].classList.contains("armed"), "unmarked again");
 
 /* 4f — a different file cannot be applied by the arming of the first. ---- */
 //

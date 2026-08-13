@@ -1237,6 +1237,20 @@
   cursor: default;
 }
 
+/* ARMED. The button moves out of the controls row and under the report while a
+   confirmation is pending, so it also has to LOOK like a different press: the
+   first one reads a file and changes nothing, the second writes. Same colour in
+   both places would make the relocation the only signal, and a reader who
+   already scanned that row once will not scan it again. */
+#check-import-btn.armed {
+  display: block;
+  margin: 0.9rem 0 0.2rem;
+  background: var(--aniline);
+  border-color: var(--aniline);
+  color: var(--manila);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--aniline) 22%, transparent);
+}
+
 #check-import-btn:focus-visible,
 .check-import-file input:focus-visible {
   outline: 2px solid var(--ink);

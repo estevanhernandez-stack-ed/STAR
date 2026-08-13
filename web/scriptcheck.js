@@ -804,6 +804,7 @@ export function initScriptCheck() {
     sweptList: $("check-swept-list"),
     importRow: $("check-import"),
     importInput: $("check-import-input"),
+    importControls: $("check-import-controls"),
     importBtn: $("check-import-btn"),
     importResult: $("check-import-result"),
   };
@@ -813,6 +814,7 @@ export function initScriptCheck() {
   // nothing selected teaches a reader that pressing it does nothing.
   els.importInput.addEventListener("change", () => {
     els.importBtn.disabled = !els.importInput.files?.length;
+    stowImportButton();
     els.importResult.replaceChildren();
     pendingAnnotations = null;
   });
@@ -1113,11 +1115,39 @@ async function runImport() {
   renderImport(payload, { applying, text });
 }
 
+/** Put the button back in the controls row, unarmed.
+ *
+ *  The button LEAVES that row while a confirmation is pending, and this is the
+ *  one way back. Measured on a real import 2026-08-13: the reader read "press
+ *  again to file them", looked for something to press, and did not find it —
+ *  the button was in the top-right corner of a row they had already used and
+ *  finished with, three lines above the sentence telling them to press it. They
+ *  got there eventually and said so: "once I noticed where it was, I hit it
+ *  again."
+ *
+ *  A confirmation whose action is somewhere else is not a confirmation, it is a
+ *  riddle. So the instruction and the button are the same object now: the
+ *  sentence, then the skipped rows and refused columns, THEN the press —
+ *  reading order that puts every warning above the thing that acts on them.
+ *
+ *  One button rather than a second one down here, because two controls firing
+ *  the same handler is two things to keep armed, disabled and labelled in step,
+ *  and the arming IS the label. */
+function stowImportButton() {
+  els.importBtn.classList.remove("armed");
+  if (els.importControls) els.importControls.appendChild(els.importBtn);
+}
+
 function renderImport(payload, { applying, text }) {
   const matched = Number(payload?.matched) || 0;
   const unmatched = Array.isArray(payload?.unmatched) ? payload.unmatched : [];
   const complaints = Array.isArray(payload?.complaints) ? payload.complaints : [];
   const body = el("div", "import-report");
+  let armed = false;
+  // Home first, so the branches below only have to say when it moves. A stow
+  // that each branch had to remember is a branch that will one day forget, and
+  // the failure would be a button that vanished with the report it sat in.
+  stowImportButton();
 
   if (payload?.applied) {
     pendingAnnotations = null;
@@ -1131,12 +1161,14 @@ function renderImport(payload, { applying, text }) {
     // file between presses must not apply the one that was previewed.
     pendingAnnotations = text;
     els.importBtn.textContent = "File these notes";
+    armed = true;
     body.appendChild(
       el(
         "p",
         "import-armed",
         `${plural(matched, "claim")} in this sweep would take a note from that ` +
-          "file. Nothing has been changed yet — press again to file them."
+          "file. Nothing has been changed yet — read what was skipped below, " +
+          "then press the button under it."
       )
     );
   } else {
@@ -1179,6 +1211,13 @@ function renderImport(payload, { applying, text }) {
     for (const complaint of complaints) list.appendChild(el("li", "", String(complaint)));
     body.appendChild(el("p", "import-refused", "What the department kept for itself:"));
     body.appendChild(list);
+  }
+
+  // LAST, under everything the reader should have weighed. A confirm button
+  // above its own warnings is one that gets pressed before they are read.
+  if (armed) {
+    els.importBtn.classList.add("armed");
+    body.appendChild(els.importBtn);
   }
 
   els.importResult.replaceChildren(body);
@@ -1417,6 +1456,10 @@ function renderSweep(payload) {
   openSweepId = payload?.sweep_id || null;
   els.importRow.classList.toggle("hidden", !openSweepId);
   if (!openSweepId) {
+    // Stow before the clear. An armed button lives INSIDE that report, and
+    // emptying it without sending the button home would take the control off
+    // the page along with the text.
+    stowImportButton();
     els.importResult.replaceChildren();
     pendingAnnotations = null;
   }
@@ -1496,8 +1539,10 @@ function clearCheck({ keepScene }) {
   openSweepId = null;
   pendingAnnotations = null;
   els.importRow.classList.add("hidden");
+  stowImportButton();
   els.importResult.replaceChildren();
   els.importBtn.disabled = true;
+  els.importBtn.textContent = "Read the file";
   if (els.importInput) els.importInput.value = "";
   if (!keepScene) els.input.value = "";
 }
