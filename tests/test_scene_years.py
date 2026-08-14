@@ -173,3 +173,73 @@ def test_the_fallback_is_named_rather_than_silent():
 
     assert "carrying no years at all" in prompt
     assert "say in the note that you did" in prompt
+
+
+# --- what the agent's test of the fix turned up ------------------------------
+
+
+def test_a_super_below_two_action_lines_is_still_the_scene_s_date():
+    """FOUND BY THE AGENT TESTING THE FIX, 2026-08-13. This read four lines
+    flat, and two lines of action before a SUPER is ordinary screenwriting. The
+    flat window missed it and then inherited the PREVIOUS scene's year over the
+    top of the writer's own on-page date — a silent wrong answer, which is
+    worse than no answer."""
+    scene = (
+        "EXT. DOCKS - DAY\n\nGulls. The water is flat.\n\n"
+        'A crane swings.\n\nSUPER: "Hamburg, 1958."'
+    )
+
+    assert sweep.scene_year(scene) == "1958"
+
+
+def test_dialogue_below_a_character_cue_is_still_not_the_scene_s_date():
+    """The window widened, so the guard that made it narrow has to hold at the
+    new width. Everything after the first character cue is somebody speaking."""
+    scene = (
+        "INT. PUB - NIGHT\n\nThey drink. The fire is low.\n\n"
+        "Somebody laughs.\n\nPAUL\nMy dad was born in 1931.\n"
+    )
+
+    assert sweep.scene_year(scene) == ""
+
+
+def test_a_transition_is_not_a_character_cue():
+    """`CUT TO:` and `FADE IN:` are upper-case and are not somebody speaking.
+    Stopping at one would cut the head short of a SUPER below it."""
+    scene = 'FADE IN:\n\nEXT. DOCKS - DAY\n\nSUPER: "Hamburg, 1958."\n\nGulls.'
+
+    assert sweep.scene_year(scene) == "1958"
+
+
+def test_a_scene_of_pure_action_does_not_scan_forever():
+    """No cue to stop at, so the twelve-line cap is the only thing that does."""
+    scene = "INT. HALL - DAY\n" + "\n".join(f"Line {n}." for n in range(30)) + "\n1958."
+
+    assert sweep.scene_year(scene) == ""
+
+
+def test_a_heading_naming_a_span_takes_the_earliest_year():
+    """A montage. The earliest year is the safe end: a thing that did not exist
+    in 1958 is wrong in the montage's first beat, so judging against 1958
+    catches it and judging against 1962 lets it through. This was already the
+    behaviour and it was accidental — it is a decision now."""
+    assert sweep.scene_year("INT. STUDIO - NIGHT (1958-1962)\n\nThey play.") == "1958"
+
+
+def test_the_extractor_is_told_a_scene_s_own_date_is_not_a_claim():
+    """THE LAST ERA-REASONING NOTE. An agent testing the year fix found a scene
+    headed NIGHT (1961) whose heading year was extracted as a timing claim and
+    confirmed with "1961 is valid within the story setting" — judged against an
+    era derived from the same writer's treatment. The department agreeing with
+    the writer about when their own scene is set, and calling it verification.
+
+    The heading year is the input the whole check runs on. It cannot also be
+    its subject.
+    """
+    from star.agents.script_check import claim_extractor
+
+    prompt = claim_extractor.instruction
+
+    assert "THE SCENE'S OWN DATE STAMP IS NEVER A CLAIM" in prompt
+    assert "Do not extract it" in prompt
+    assert "the Empire opened in 1925" in prompt, "and the real date claim still is one"

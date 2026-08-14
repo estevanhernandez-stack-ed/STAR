@@ -94,6 +94,27 @@ claim_extractor = Agent(
         "So: read the scene twice. Once for what it NAMES, and once for what "
         "it ASSERTS HAPPENED. The second pass is the one that catches what a "
         "writer got wrong.\n\n"
+        # THE SCENE'S OWN DATE IS NOT A CLAIM ABOUT THE WORLD. Found by an
+        # agent testing the year fix, 2026-08-13: a scene headed NIGHT (1961)
+        # had "1961" extracted as a timing claim, and the desk stamped it
+        # confirmed with the note "1961 is valid within the story setting" —
+        # judged against an era derived from the same writer's own treatment.
+        # A circle: the writer says when the scene is, and the department
+        # agrees with them and calls it verification. It was inconsistent too,
+        # the same sweep leaving a (1958) heading alone, so it read as noise
+        # rather than as a rule.
+        #
+        # And it is the LAST era-reasoning note left after the fix. The heading
+        # year is the input the whole check runs on. It cannot also be its
+        # subject.
+        "THE SCENE'S OWN DATE STAMP IS NEVER A CLAIM. A year in the slugline, "
+        "in a SUPER or in an establishing line — `NIGHT (1961)`, `SUPER: "
+        '"Hamburg, 1960."` — is the writer telling you WHEN this happens. It '
+        "is the frame every other claim is judged inside, and nothing outside "
+        "the script can contradict a writer about when their own scene is set. "
+        "Do not extract it. A date is a claim only when the scene asserts "
+        "something ABOUT it — 'the Empire opened in 1925', 'that record came "
+        "out last year' — which is an assertion the world can settle.\n\n"
         "Leave verdict, note, and citations empty. Judging a claim is the "
         "verification desk's job and it has live search; you do not. Your "
         "whole job is finding what the scene asserts and quoting it exactly.\n\n"

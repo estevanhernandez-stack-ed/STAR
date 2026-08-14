@@ -71,6 +71,36 @@ def normalised(text: object) -> str:
 
 _YEAR = re.compile(r"\b(1[5-9]\d{2}|20\d{2}|21\d{2})\b")
 
+# A slugline or a transition, which are upper-case and are NOT a character cue.
+_NOT_A_CUE = re.compile(r"^(INT|EXT|EST|I/E|INT\./EXT|SUPER|TITLE|FADE|CUT|SMASH)\b")
+
+
+def _head(text: str) -> str:
+    """A scene's heading and action, up to the first line of dialogue. Pure.
+
+    A character cue is an all-upper line that is not a slugline or a transition
+    — `PAUL`, `MIMI`, `JOHN (V.O.)` — and everything after the first one is
+    somebody speaking. Dates live above it; a year below it is usually a
+    character remembering one.
+
+    Capped at twelve lines regardless, because a scene of pure action has no
+    cue to stop at and this must not end up scanning a whole page of it.
+    """
+    kept: list[str] = []
+    for number, line in enumerate(text.splitlines()[:12]):
+        stripped = line.strip()
+        is_cue = (
+            number > 0
+            and stripped
+            and stripped == stripped.upper()
+            and any(char.isalpha() for char in stripped)
+            and not _NOT_A_CUE.match(stripped)
+        )
+        if is_cue:
+            break
+        kept.append(line)
+    return "\n".join(kept)
+
 
 def scene_year(text: str) -> str:
     """The year a scene states, or "" if it states none. Pure.
@@ -87,18 +117,29 @@ def scene_year(text: str) -> str:
     a second one to read a number out of a slugline would double the cheapest
     half of a sweep to learn something a regex knows.
 
-    THE FIRST YEAR IN THE OPENING LINES, not the whole scene. A slugline year is
-    the writer telling you when this is; a year in the middle of dialogue is
-    usually a character talking ABOUT a year — "my dad was born in 1931" does
-    not move the scene to 1931. Four lines is the slugline, a blank, and a SUPER
-    or the first action line, which is where a screenplay puts a date it wants
-    read.
+    THE HEADING AND THE ACTION BEFORE THE FIRST LINE OF DIALOGUE, not the whole
+    scene. That is where a screenplay puts a date it wants read — the slugline,
+    a SUPER, an establishing line — and a year past that point is usually a
+    character talking ABOUT a year. "My dad was born in 1931" does not move the
+    scene to 1931.
 
-    The range refuses two-digit years and anything past 2199, so a room number,
-    a house number, a price and a running time cannot become a date.
+    This read four lines flat until 2026-08-13, when an agent testing the fix
+    pointed out that a SUPER often sits further down than that. It does: two
+    lines of action before `SUPER: "Hamburg, 1958."` is ordinary screenwriting
+    and a flat window silently missed it, then inherited the previous scene's
+    year over the top of the writer's own on-page date. Stopping at the first
+    character cue is the structural rule rather than a bigger guess.
+
+    THE EARLIEST YEAR WHEN A HEADING NAMES A SPAN. `NIGHT (1958-1962)` is a
+    montage, and the earliest year is the safe end: a thing that did not exist
+    in 1958 is wrong in the montage's first beat, so judging against 1958
+    catches it. Judging against 1962 would let it through. This was already the
+    behaviour and it was accidental; it is a decision now.
+
+    The pattern refuses two-digit years and anything past 2199, so a room
+    number, a house number, a price and a running time cannot become a date.
     """
-    head = "\n".join(str(text or "").splitlines()[:4])
-    found = _YEAR.search(head)
+    found = _YEAR.search(_head(str(text or "")))
     return found.group(1) if found else ""
 
 
