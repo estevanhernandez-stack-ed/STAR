@@ -156,7 +156,23 @@ verifier = Agent(
         # '?' for the same reason <room_files> has one: a room whose build was
         # interrupted has no story profile, and a check against it must degrade
         # to "nobody told me the era" rather than abort.
-        "<story_era>\n{era?}\n</story_era>\n\n"
+        # THE YEARS, IN A BLOCK OF THEIR OWN, and the era is gone from here
+        # entirely. Both facts were learned by rendering this prompt with ADK's
+        # own injector on 2026-08-13 and reading it. The years WERE arriving —
+        # `years: ['1962']` sat plainly on the claim — and the desk quoted the
+        # era anyway, in every note across four sweeps.
+        #
+        # The render says why. The era had a labelled block on its own line, in
+        # a tag named after what it means. The year was a key inside a dict
+        # repr, inside a list, inside another dict. One of those reads like a
+        # fact and the other reads like debris, and we gave the wrong number
+        # the better seat, then wrote a paragraph asking for the other one.
+        #
+        # So the seat is reassigned. The era is not in this prompt at all: it
+        # was misused in every note it ever appeared in, it is the widest date
+        # in the room, and it now has a replacement that is right. A date that
+        # can only mislead has no job left.
+        "<scene_years>\n{years?}\n</scene_years>\n\n"
         "Work the room's files first. They were researched for this story, "
         "they are already paid for, and a claim they settle needs no search at "
         "all. Call the parallel_search tool for every claim the files do not "
@@ -192,23 +208,28 @@ verifier = Agent(
         # because a span was the only date it had been handed, and 1959 sits
         # inside 1958-1962. Handing it the era without this paragraph made a
         # vague rubber stamp into a reasoned one.
-        "JUDGE AGAINST THE CLAIM'S OWN YEARS, NOT THE STORY'S ERA. A claim "
-        "carries `years`: the years of the scenes that assert it. Those are "
-        "what it must be true in. <story_era> is the outer bound of the whole "
-        "story and is NEVER a licence for a scene — 'it fits the era' is not a "
-        "verdict, because an era is years long and a scene is one night. If a "
-        "claim carries years, the era is background and you may not cite it as "
-        "your reason.\n\n"
+        "JUDGE EVERY CLAIM AGAINST A YEAR. <scene_years> holds the years this "
+        "draft is set in, and a claim may carry its own `years` — the years of "
+        "the scenes that assert it, which are the ones that decide it. Those "
+        "are what a claim must be true IN. Nothing else in this prompt is a "
+        "date you may judge by.\n\n"
+        "WRITE THE YEAR INTO YOUR NOTE, every time. A note that does not name "
+        "the year it judged against has not shown its working, and a verdict "
+        "whose working is invisible is the one that got this desk four wrong "
+        "answers in a row. 'Introduced in 1959, so wrong in the 1958 scene' is "
+        "a note. 'Fits the period' is not.\n\n"
         "A CLAIM ASSERTED IN SEVERAL YEARS MUST HOLD IN ALL OF THEM. If it "
         "fails in even one, the verdict is anachronism and the note says which "
         "year breaks it and why — 'correct from 1959, so wrong in the 1958 "
         "scene'. This is the one thing a whole-draft sweep can see and a "
         "scene-by-scene check cannot: the same object, right on one page and "
         "wrong on another, wrong in neither page alone.\n\n"
-        "A claim carrying no years at all is one whose scenes never stated a "
-        "date. Fall back to the era then, and say in the note that you did.\n\n"
-        "A SPAN IS NOT A DATE. A room's era covers years, and a finding "
-        "written to that era is true somewhere inside it rather than "
+        "A claim with no year anywhere is one whose scenes never stated a "
+        "date. Say exactly that in the note — 'the draft states no year' — and "
+        "do not reach for a period, a decade or a setting to stand in for one. "
+        "There is no era in this prompt to fall back on, on purpose.\n\n"
+        "A SPAN IS NOT A DATE. A room's research covers years, and a finding "
+        "written to a span is true somewhere inside it rather than "
         "throughout it. When a scene names a year and the evidence names a "
         "span containing it, that is not support: it is a question you have "
         "not answered yet. Ask whether the thing was true IN THAT YEAR — a "
@@ -237,10 +258,21 @@ verifier = Agent(
         "Report one line per claim, in exactly this format:\n\n"
         "- <verdict> | <exact claim text> | <url>, <url> | <note>\n\n"
         "verdict is exactly one of:\n"
-        "  confirmed — a source you actually read holds the claim up for this "
-        "story's era and place.\n"
-        "  anachronism — a source you actually read puts it outside them: too "
-        "early, too late, or somewhere else.\n"
+        # THE DEFINITION OF THE WORD, which said "era" while four paragraphs
+        # above it said not to judge by one. Found 2026-08-13 by grepping the
+        # RENDERED prompt for the word rather than trusting that deleting the
+        # era block had deleted the era.
+        #
+        # This is very likely why every rule above it failed to take. A desk
+        # reading "confirmed MEANS it holds up for the story's era", and then
+        # being told not to judge by the era, is being asked to disobey a
+        # definition — which is not an argument a rule wins. Four rounds of
+        # investigation rewrote the instructions and never once looked at what
+        # the instructions were instructing ABOUT.
+        "  confirmed — a source you actually read holds the claim up IN THE "
+        "YEAR it is asserted in, and in its place.\n"
+        "  anachronism — a source you actually read puts it outside that year "
+        "or that place: too early, too late, or somewhere else.\n"
         "  unverifiable — you looked and could not settle it either way.\n\n"
         # THE STANDARD, because getting the verdicts right is not the same as
         # getting the research right, and this desk was doing the second while
@@ -314,7 +346,7 @@ check_scene = SequentialAgent(
 )
 
 
-def check_state(scene: str, room_files: str = "", era: str = "") -> dict:
+def check_state(scene: str, room_files: str = "", years: str = "") -> dict:
     """The session state one check runs on.
 
     The scene travels in state rather than as the run's user message so that
@@ -334,8 +366,10 @@ def check_state(scene: str, room_files: str = "", era: str = "") -> dict:
     return {
         "scene": scene,
         "room_files": room_files,
-        # The story's own span, named rather than inferred. See the <story_era>
-        # note in the verifier's instruction for what it cost to leave out.
-        "era": era,
+        # The YEAR this scene is set in, which a scene check never had at
+        # all — the verifier does not see `{scene}` and so could not read a
+        # slugline even in principle. It judged by the room's era or by
+        # nothing. See the <scene_years> note in the verifier's instruction.
+        "years": years,
         "search_budget": config.max_searches_per_check(),
     }

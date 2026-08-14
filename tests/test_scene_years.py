@@ -147,14 +147,16 @@ def test_gather_still_works_uncalled_with_years():
     assert "years" not in claims[0]
 
 
-def test_the_desk_is_told_the_years_outrank_the_era():
-    """The rule the live sweep needed and did not have. Asserted against the
-    assembled prompt, because the sentences live across string literals."""
+def test_the_desk_is_told_to_judge_every_claim_against_a_year():
+    """Rewritten when the era left the prompt entirely. It used to assert that
+    the years OUTRANK the era, which was a rule about a comparison the desk
+    kept getting wrong — there is nothing to outrank now. See
+    tests/test_years_reach_the_desk.py for why the era went."""
     prompt = verifier.instruction
 
-    assert "JUDGE AGAINST THE CLAIM'S OWN YEARS, NOT THE STORY'S ERA" in prompt
-    assert "NEVER a licence for a scene" in prompt
-    assert "'it fits the era' is not a verdict" in prompt
+    assert "JUDGE EVERY CLAIM AGAINST A YEAR" in prompt
+    assert "Nothing else in this prompt is a date you may judge by" in prompt
+    assert "story_era" not in prompt
 
 
 def test_the_desk_is_told_a_claim_must_hold_in_every_year_it_appears():
@@ -168,11 +170,14 @@ def test_the_desk_is_told_a_claim_must_hold_in_every_year_it_appears():
     assert "correct from 1959, so wrong in the 1958 scene" in prompt
 
 
-def test_the_fallback_is_named_rather_than_silent():
+def test_a_dateless_draft_gets_a_refusal_rather_than_a_fallback():
+    """This asserted a fallback TO THE ERA. There is no era to fall back on
+    now, so the rule is to say the draft states no year and stop, rather than
+    to reach for a period or a decade to stand in for one."""
     prompt = verifier.instruction
 
-    assert "carrying no years at all" in prompt
-    assert "say in the note that you did" in prompt
+    assert "the draft states no year" in prompt
+    assert "do not reach for a period, a decade or a setting" in prompt
 
 
 # --- what the agent's test of the fix turned up ------------------------------

@@ -1740,28 +1740,26 @@ def _chain_files(documents: list[tuple[str, dict]]) -> str:
     return "\n\n".join(blocks)
 
 
-def _chain_era(documents: list[tuple[str, dict]]) -> str:
-    """The story's own span, as the verifier should be told it. Pure.
+def _draft_years(scenes: list[dict]) -> str:
+    """Every year a draft states, oldest first, as one line. Pure.
 
-    One line per room, because a chain is not one era. A Liverpool room set in
-    1958 and a Hamburg room set in 1960-62 are one story and two spans, and
-    collapsing them to a single range would hand the desk exactly the thing
-    this whole change exists to take away: a wider window than any scene
-    actually sits in.
+    REPLACES `_chain_era`, which handed the desk the room's span and was the
+    instrument of four wrong verdicts. Rendering the prompt with ADK's own
+    injector on 2026-08-13 showed why: the era had a labelled block of its own
+    while a claim's year was a key inside a dict repr, so the wrong number read
+    like a fact and the right one read like debris. The era is not in the
+    prompt at all now.
 
-    Empty when nothing names an era — a build that was interrupted before its
-    story profile was written has none, and `{era?}` in the prompt degrades to
-    "nobody told me" rather than to a guess.
+    The draft's whole set rather than one year, because a sweep crosses scenes
+    and the desk should see the span it is working across. Each claim still
+    carries the years of the scenes that assert IT, which are what decide it —
+    this is context, not the judgement.
+
+    Empty when a draft states no year anywhere, and `{years?}` renders nothing.
+    The prompt then tells the desk to say so rather than reach for a period.
     """
-    lines = []
-    for _run_id, document in documents or []:
-        profile = (document or {}).get("story_profile") or {}
-        era = str(profile.get("era") or "").strip()
-        if not era:
-            continue
-        title = str(profile.get("title") or "").strip()
-        lines.append(f"{title} — {era}" if title else era)
-    return "\n".join(lines)
+    stated = sorted({year for year in sweep.scene_years(scenes).values() if year})
+    return ", ".join(stated)
 
 
 def _room_files(document: dict) -> str:
@@ -2018,7 +2016,7 @@ async def _run_check(
     session = await _check_runner.session_service.create_session(
         app_name=_CHECK_APP,
         user_id=_CHECK_USER,
-        state=check_state(scene, room_files, _chain_era(documents)),
+        state=check_state(scene, room_files, sweep.scene_year(scene)),
     )
     try:
         try:
@@ -2395,7 +2393,7 @@ async def _extract_claims(scene: str) -> list[dict]:
 
 
 async def _verify_claims(
-    claims: list[dict], room_files: str, run_ledger: SourceLedger, era: str = ""
+    claims: list[dict], room_files: str, run_ledger: SourceLedger, years: str = ""
 ) -> dict:
     """The one verification a sweep runs, over the whole deduped set.
 
@@ -2407,7 +2405,7 @@ async def _verify_claims(
     session = await runner.session_service.create_session(
         app_name=agent_sweep.VERIFY_APP,
         user_id=agent_sweep.USER,
-        state=agent_sweep.verify_state({"claims": claims}, room_files, era),
+        state=agent_sweep.verify_state({"claims": claims}, room_files, years),
     )
     try:
         message = types.Content(
@@ -2543,7 +2541,7 @@ async def _run_sweep(uid: str, run_id: str, scenes: list[dict]) -> dict:
     try:
         state = await asyncio.wait_for(
             _verify_claims(
-                claims, _chain_files(documents), run_ledger, _chain_era(documents)
+                claims, _chain_files(documents), run_ledger, _draft_years(scenes)
             ),
             timeout=timeout,
         )
