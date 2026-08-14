@@ -97,7 +97,7 @@ Deployed 2026-08-09.
 | Service URL | `https://star-390753828501.us-central1.run.app` |
 | Region | `us-central1` |
 | Service name | `star` |
-| Revision | `star-00060-5bk` |
+| Revision | `star-00064-xr4` |
 
 Deploy command, from anywhere:
 
