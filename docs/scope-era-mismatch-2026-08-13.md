@@ -316,3 +316,59 @@ and keeps the plumbing the real fix needs.
 
 Validated by the same three-claim fixture, which is now a regression test
 rather than a guess.
+
+---
+
+# The knife: the years are computed and not used
+
+Sweep `36246040498d` on `star-00063-ch8`. Four scenes, three probes.
+
+| claim | scene | year computed | desk judged against | |
+|---|---|---|---|---|
+| `Vox AC30 amplifier` | 2 (inherited) | 1958 | 1958 | anachronism |
+| `Fender Jazz Bass` | 3 (deep SUPER) | **1962** | **1958** | anachronism |
+| `Gibson SG` | 4 (montage span) | 1958 | 1958 | anachronism |
+
+**Scene 3 is 1962 and every one of its three claims reasoned from 1958:**
+
+- `Fender Jazz Bass` — *"introduced in 1960 and did not exist in 1958"*
+- `container` — *"used in maritime transport by 1958"*
+- `Hamburg, 1962.` — *"anachronistic in a scene set in 1958"*
+
+Verified rather than assumed: `_head` is in the deployed commit, `star-00063-ch8`
+built it, and the exact string that went over the wire parses to `1962` —
+`scene_years` returns `{1: '1958', 2: '1958', 3: '1962', 4: '1958'}`.
+
+## Which makes the two passes worthless as evidence
+
+**1958 is also the era's opening year.** Every result in this sweep is
+consistent with the desk defaulting to the era's start and never reading a
+claim's `years` at all. The AC30 and the SG "passed" because their scenes
+happen to be 1958.
+
+Probe 2 is the only one where the scene's year and the era's start differ, and
+it is the one that failed. **So the fix is unproven at best and inert at
+worst**, and the earlier fixture result — the AC30 coming back anachronism —
+proves nothing either, for the same reason.
+
+That is three attempts at this defect where the evidence looked like success
+and did not distinguish the fix from a coincidence. **Every future test of this
+must put the scene's year somewhere other than the era's first year.**
+
+## And the extractor rule did not take
+
+`"Hamburg, 1962."` — the text of a SUPER — was extracted as a geography claim
+and stamped an anachronism. The rule shipped hours earlier says a year in a
+slugline, in a SUPER or in an establishing line is the writer saying WHEN, and
+must not be extracted. It was extracted anyway.
+
+## What to establish before writing another line of fix
+
+The next thing to find out is not a fix, it is a fact: **does a claim's `years`
+reach the rendered prompt at all?** `gather` puts the key on the dict, and
+whether ADK's `{claims}` renders it is unverified. If it does not, every prompt
+rule written about `years` has been addressed to a field the desk cannot see,
+and the three sentences added to the verifier are unreachable code.
+
+That is a free thing to determine and it decides everything after it. No more
+sweeps until it is answered.
