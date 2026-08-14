@@ -164,6 +164,28 @@ verifier = Agent(
         # overlap a match, and stamped CONFIRMED. That is the tool's own
         # argument for itself — right in 1958, wrong in 1960 — running
         # backwards.
+        # THE ERA WAS BEING USED AS THE ANSWER. Measured on sweep 0b65b4d842a1,
+        # one scene, one claim: "Vox AC30 amplifier — confirmed — Introduced in
+        # 1959 by British manufacturer Vox, fitting the 1958-1962 era." The
+        # scene was headed NIGHT (1958). The desk had the era and used it,
+        # because a span was the only date it had been handed, and 1959 sits
+        # inside 1958-1962. Handing it the era without this paragraph made a
+        # vague rubber stamp into a reasoned one.
+        "JUDGE AGAINST THE CLAIM'S OWN YEARS, NOT THE STORY'S ERA. A claim "
+        "carries `years`: the years of the scenes that assert it. Those are "
+        "what it must be true in. <story_era> is the outer bound of the whole "
+        "story and is NEVER a licence for a scene — 'it fits the era' is not a "
+        "verdict, because an era is years long and a scene is one night. If a "
+        "claim carries years, the era is background and you may not cite it as "
+        "your reason.\n\n"
+        "A CLAIM ASSERTED IN SEVERAL YEARS MUST HOLD IN ALL OF THEM. If it "
+        "fails in even one, the verdict is anachronism and the note says which "
+        "year breaks it and why — 'correct from 1959, so wrong in the 1958 "
+        "scene'. This is the one thing a whole-draft sweep can see and a "
+        "scene-by-scene check cannot: the same object, right on one page and "
+        "wrong on another, wrong in neither page alone.\n\n"
+        "A claim carrying no years at all is one whose scenes never stated a "
+        "date. Fall back to the era then, and say in the note that you did.\n\n"
         "A SPAN IS NOT A DATE. A room's era covers years, and a finding "
         "written to that era is true somewhere inside it rather than "
         "throughout it. When a scene names a year and the evidence names a "

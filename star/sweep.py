@@ -69,7 +69,69 @@ def normalised(text: object) -> str:
     return _ARTICLE.sub("", folded)
 
 
-def gather(per_scene: list[tuple[int, list[dict]]]) -> tuple[list[dict], dict[str, list[int]]]:
+_YEAR = re.compile(r"\b(1[5-9]\d{2}|20\d{2}|21\d{2})\b")
+
+
+def scene_year(text: str) -> str:
+    """The year a scene states, or "" if it states none. Pure.
+
+    NOTHING IN THIS CODEBASE PARSED A YEAR UNTIL NOW, and the verification desk
+    paid for it. Measured 2026-08-13 on sweep `0b65b4d842a1`: a single scene
+    headed `NIGHT (1958)` asserted a Vox AC30, and the desk came back
+    `confirmed` with the note "Introduced in 1959 by British manufacturer Vox,
+    fitting the 1958-1962 era." Its reasoning is in its own words — it compared
+    the object's date to the ROOM'S ERA and never to the scene's year, because
+    the era was the only date it had been given and 1959 sits inside it.
+
+    Pure Python and no model call. Extraction already costs one call per scene;
+    a second one to read a number out of a slugline would double the cheapest
+    half of a sweep to learn something a regex knows.
+
+    THE FIRST YEAR IN THE OPENING LINES, not the whole scene. A slugline year is
+    the writer telling you when this is; a year in the middle of dialogue is
+    usually a character talking ABOUT a year — "my dad was born in 1931" does
+    not move the scene to 1931. Four lines is the slugline, a blank, and a SUPER
+    or the first action line, which is where a screenplay puts a date it wants
+    read.
+
+    The range refuses two-digit years and anything past 2199, so a room number,
+    a house number, a price and a running time cannot become a date.
+    """
+    head = "\n".join(str(text or "").splitlines()[:4])
+    found = _YEAR.search(head)
+    return found.group(1) if found else ""
+
+
+def scene_years(scenes: list[dict]) -> dict[int, str]:
+    """Every scene's year, with the unstated ones inheriting. Pure.
+
+    Takes the scene dicts the server already holds — `index` and `text` — and
+    returns `{index: year}`.
+
+    INHERITANCE IS THE POINT. A screenplay states its year once and carries it:
+    scene 1 says 1958 and scenes 2 through 9 say nothing because a reader knows
+    they are still in 1958. Reading each scene in isolation would leave every
+    scene but the first with no year, which is the state that produced the
+    defect this exists for. So a scene with no year of its own takes the last
+    one stated before it.
+
+    A draft that never states a year anywhere yields all empty strings, and the
+    desk is told nothing rather than guessing — the same posture `{era?}` takes.
+    """
+    years: dict[int, str] = {}
+    carried = ""
+    for scene in sorted(scenes or [], key=lambda s: int((s or {}).get("index") or 0)):
+        index = int((scene or {}).get("index") or 0)
+        stated = scene_year(str((scene or {}).get("text") or ""))
+        if stated:
+            carried = stated
+        years[index] = carried
+    return years
+
+
+def gather(
+    per_scene: list[tuple[int, list[dict]]], years: dict[int, str] | None = None
+) -> tuple[list[dict], dict[str, list[int]]]:
     """Every scene's claims, collapsed to the distinct set, in first-seen order.
 
     Takes `[(scene_index, claims)]` and returns the deduped claims plus a map
@@ -83,9 +145,26 @@ def gather(per_scene: list[tuple[int, list[dict]]]) -> tuple[list[dict], dict[st
     The FIRST occurrence's wording is kept. A later scene quoting the same
     claim with different capitalisation does not get to rewrite what the writer
     is shown, and the scene list underneath already records that both said it.
+
+    `years` PUTS THE YEARS ON THE CLAIM rather than splitting it in two, and
+    that choice is worth the paragraph. Keying the dedup on (text, year) was
+    the obvious fix and it breaks `attach`: two claims with identical text come
+    back from the verifier indistinguishable, so the verdicts cannot be put
+    back beside the right scenes. Worse, it would ask the desk the same
+    question twice and pay twice.
+
+    So one claim, one verdict, and the claim carries EVERY year it is asserted
+    in. A thing correct in 1961 and wrong in 1958 is then a single anachronism
+    whose note names the scene that breaks — which is exactly what this file's
+    own opening paragraph promises a sweep does and no scene check can, and
+    which the desk could not say while it had only the story's era to reason
+    from.
     """
     claims: list[dict] = []
     scenes: dict[str, list[int]] = {}
+    seen_years: dict[str, list[str]] = {}
+    by_key: dict[str, dict] = {}
+    years = years or {}
 
     for index, found in per_scene:
         for claim in found or []:
@@ -97,9 +176,20 @@ def gather(per_scene: list[tuple[int, list[dict]]]) -> tuple[list[dict], dict[st
                 continue
             if key not in scenes:
                 scenes[key] = []
-                claims.append(dict(claim))
+                seen_years[key] = []
+                by_key[key] = dict(claim)
+                claims.append(by_key[key])
             if index not in scenes[key]:
                 scenes[key].append(index)
+            year = str(years.get(index) or "")
+            if year and year not in seen_years[key]:
+                seen_years[key].append(year)
+
+    # Sorted, because the desk reads them as a span to judge against and
+    # "1961, 1958" invites it to weigh the wrong end first.
+    for key, claim in by_key.items():
+        if seen_years[key]:
+            claim["years"] = sorted(seen_years[key])
 
     return claims, scenes
 

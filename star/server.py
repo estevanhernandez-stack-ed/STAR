@@ -2514,7 +2514,11 @@ async def _run_sweep(uid: str, run_id: str, scenes: list[dict]) -> dict:
 
     per_scene = sorted(per_scene)
     raised = sum(len(found) for _, found in per_scene)
-    claims, where = sweep.gather(per_scene)
+    # The years the draft states, read out of the scene text the server already
+    # holds — pure Python, no second model call. Every claim then carries the
+    # years it is asserted in, which is what the desk judges against. Before
+    # this it had only the room's era, and a span is not a date.
+    claims, where = sweep.gather(per_scene, sweep.scene_years(scenes))
 
     if not claims:
         # A real outcome, and it costs nothing to say so. A draft of pure
