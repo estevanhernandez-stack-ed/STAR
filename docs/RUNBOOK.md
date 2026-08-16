@@ -150,3 +150,106 @@ source instead*
 `docs/smoke-2026-08-12.md` is a **verification** runbook — pre-demo, per-step
 right and wrong, cost annotated. This is an **operations** runbook — how to run,
 deploy, roll back, what breaks. Both are useful and neither replaces the other.
+
+---
+
+# What the generated scaffold never asked about
+
+The tool asks how to run, deploy, roll back and observe. It does not ask what
+will bite you, and on this service the answers are specific. Everything below is
+read out of the code or run against the live service.
+
+## Deploying resets every abuse counter to zero
+
+`star/guards.py` says it in its own words: the counters "reset on every redeploy
+and every instance recycle." `_ip_limiter`, `_uid_limiter` and `_daily_cap` are
+module-level objects constructed at import, and a deploy replaces the process.
+
+- **5 builds per IP per hour** and **100 rooms per day** are the caps.
+- **A deploy sets both back to zero for everyone.**
+
+That is fine on a quiet Tuesday and it is a live hazard on demo day: deploy
+twenty minutes before showing the thing and the caps are wide open for whoever
+finds the URL. **If you deploy close to a demo, that is the moment the service
+is least protected**, and nothing anywhere else says so.
+
+## Deploying kills any build that is running
+
+`--max-instances=1`, and `_runs` is per-process in-memory state. A deploy
+replaces that process, so a build in flight dies — and the writer's daily-cap
+slot has already been spent on it.
+
+**Before deploying, check nothing is mid-build:**
+
+```bash
+gcloud run services logs read star --region us-central1 \
+  --project star-research-dept --limit 30
+```
+
+A build takes several minutes. There is no other way to see one in progress.
+
+## What actually spends money
+
+| call | ceiling |
+|---|---|
+| `build_room` | 30 live searches |
+| `sweep_draft` | 30 searches for a whole draft |
+| `check_scene` | 8 searches |
+| `research_question` | searches against the writer's window |
+| `write_bible` | one model call, no searches |
+
+Two paid APIs behind those: `GOOGLE_API_KEY` (Gemini through AI Studio, **not**
+Vertex — `GOOGLE_GENAI_USE_VERTEXAI=FALSE`, so it does not touch the cloud
+project's quota) and `PARALLEL_API_KEY` for search.
+
+**Unwritten:** Is there a billing alert on either API, and at what figure?
+Nothing in this repo sets one, and the caps above bound requests rather than
+spend.
+
+## A sweep does not survive the tab that started it
+
+A build is a detached task with an SSE stream — navigate away and it keeps
+going. **A sweep is a synchronous request** and the tab holds it. Close the tab
+mid-sweep and the client loses the result; whether the server finishes and files
+it anyway depends on how uvicorn treats a client disconnect and is **untested**,
+because finding out costs a real sweep.
+
+Support answer: a lost build is recoverable by reopening the room. A lost sweep
+may not be.
+
+## A deleted room is recoverable in the web app only
+
+`delete_room` is armed — two calls, one-time token — and a deleted room can be
+restored from the web app for a window and nowhere else. **An agent holding
+`rooms:delete` can remove a room and cannot put it back.** That scope is not in
+the default consent, deliberately.
+
+## When a deploy fails, it is usually one of three things
+
+All three happened in one week:
+
+1. **`EXPIRED:` with nothing after the colon** — Cloud Build hit its timeout.
+   The script now sets 1500s; if this returns, the image got slower.
+2. **gcloud crashes with a "report this issue" trace** — transient. Re-run.
+   Check the revision first: it may have deployed anyway.
+3. **`FIREBASE_API_KEY: set ... before deploying`** — `.env` is missing or the
+   value is empty. The script reads it; nothing else does.
+
+On a **fresh project**, a fourth: the script does not provision Secret Manager
+entries or IAM. `star-google-api-key` and `star-parallel-api-key` must exist and
+the runtime service account must hold `roles/secretmanager.secretAccessor`, or
+the deploy fails at `--set-secrets` with "secret not found."
+
+## Firestore has no security rules, and that is correct
+
+No ruleset is deployed, and with none deployed Firestore denies all client-side
+access. The server owns every read and write through ADC, which bypasses rules;
+the browser's token is useful only against STAR's own API. **Do not "fix" this
+by deploying permissive test-mode rules** — an `allow read, write: if true`
+ruleset hands every browser token direct access to every user's rooms and
+silently voids the boundary the server was built to be.
+
+## This service has an end date
+
+The Google Cloud project is dedicated to STAR precisely so that teardown after
+**2026-09-07** is one project deletion. Nothing else lives in it.
