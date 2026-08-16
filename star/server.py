@@ -599,6 +599,34 @@ async def _run_pipeline(run_id: str, treatment: str) -> None:
                     category=category.value if category else None,
                 )
 
+                # CHECKPOINT, and the reason a deploy stopped destroying a
+                # build's research on 2026-08-16.
+                #
+                # `_persist` used to run exactly twice: once at creation with
+                # an empty result, once at a terminal status. Nothing wrote in
+                # between, so a build interrupted at ninety per cent filed
+                # NOTHING — the writer opened the room to find `interrupted`
+                # and an empty document, having paid for it with searches and
+                # a slot of the daily cap that, since e715d61, correctly stays
+                # spent.
+                #
+                # `_salvage` is the whole mechanism and it already existed for
+                # the timeout path: it reads the ADK session state, builds the
+                # categories filed so far, returns False when there is nothing
+                # worth showing, and never raises. So this is that call plus a
+                # write, not new machinery.
+                #
+                # It is safe to overwrite `run["result"]` here. `_run_pipeline`
+                # rebuilds it from the final session state when the run ends,
+                # and every `_persist` call writes the WHOLE document from
+                # `room_to_document`, so a checkpoint adds fields rather than
+                # erasing them.
+                #
+                # Per agent rather than per event: four writes across a build
+                # that spends minutes and real money.
+                if category is not None and await _salvage(run, run_id):
+                    await asyncio.to_thread(_persist, run, run_id, "running")
+
     _maybe_warn_empty_ledger(run)
 
     final = await _runner.session_service.get_session(
@@ -1582,6 +1610,17 @@ async def _read_room(uid: str, run_id: str) -> dict:
         if not await asyncio.to_thread(_store.mark_interrupted, uid, run_id):
             raise HTTPException(404, "Unknown run")
         document["status"] = "interrupted"
+        # The slot goes back. This run spent a search budget and a slot of the
+        # shared daily cap and returned whatever had been checkpointed — the
+        # process building it went away mid-flight, which is the department's
+        # restart rather than the writer's doing. Charging for it is billing
+        # for our own deploy.
+        #
+        # Here rather than anywhere else because this is the ONE place a run is
+        # discovered to have died, and `mark_interrupted` returning True means
+        # it flipped the document itself — so the refund happens once per run,
+        # not once per read.
+        _daily_cap.refund()
 
     return _with_coverage(
         {"status": document.get("status", "complete"), "result": document_to_room(document)}

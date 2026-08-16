@@ -102,3 +102,55 @@ the creation document is a subset, a mid-build `.set()` is safe; if the terminal
 write adds fields the creation write omits, a checkpoint could erase on the way
 past. That is a read of one function, and it decides whether A is one line or
 three.
+
+
+---
+
+# Built, and the scope was wrong about how
+
+**A and C shipped.** The risk the scope named was checked first and resolved in
+the safe direction — then the recommendation itself turned out to rest on a
+false assumption, which reading the code destroyed.
+
+## The risk: no risk
+
+`_persist` builds the **whole** document from `room_to_document(run_id, result,
+status, created_at, spent=..., note=...)` on every one of its five calls. There
+is no subset. Creation passes `result=None`; a checkpoint passes a partial
+result. **A mid-build `.set()` adds fields rather than erasing them**, so the
+thing the scope said to verify before writing a line was not a hazard at all.
+
+## The recommendation was wrong, and only reading found it
+
+The scope said: call `_persist` each time a researcher files. That assumes
+`run["result"]` fills up as the build goes. **It does not.** `_run_pipeline`
+assembles the result exactly once, from the ADK session state, *after* the whole
+event loop has finished. A `_persist` inside the loop would have written the
+same empty document four more times and changed nothing.
+
+`_salvage` is what makes it work, and it already existed for the timeout path:
+reads the session state, builds the categories filed so far, returns False when
+there is nothing worth showing, never raises. So the checkpoint is that call
+plus a write, guarded on `category` so it fires per agent — four writes across a
+build that spends minutes — rather than per event.
+
+## What shipped
+
+- **Checkpoint** after each researcher files. An interrupted build now recovers
+  with whatever had been filed instead of an empty room.
+- **Refund** the daily-cap slot at the one place a dead run is noticed — inside
+  the `mark_interrupted` flip, so once per run rather than once per read. Never
+  below zero, never across a day boundary, and persisted. A run that completed,
+  failed or timed out keeps its slot: those spent the money *and* produced
+  something the room can show.
+
+Nine tests, six mutations caught: the checkpoint never firing, firing per event
+instead of per agent, the refund not happening, going below zero, reaching
+across a day boundary, and not persisting.
+
+## Still true
+
+A build interrupted **before its first category files** still recovers empty,
+and the searches spent inside the interrupted category are still gone. The
+window narrowed; it did not close. Option B — real resume — is unchanged and
+still after the 7th.

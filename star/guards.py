@@ -182,6 +182,30 @@ class DailyCap:
         self._save()
         return True
 
+    def refund(self, now: float | None = None) -> None:
+        """Give a spent slot back, for work this department destroyed.
+
+        A build interrupted by a redeploy has burned searches and a slot, and
+        the writer opens the room to find nothing in it. Charging for that is
+        the department billing for its own restart.
+
+        Only ever called from `get_room` at the moment a stranded run is
+        marked `interrupted` — that is, once per run, on the first read after
+        the process that was building it went away. A run that finished, failed
+        or timed out keeps its slot: those spent the money and produced a
+        result, and the room says what they cost.
+
+        Never below zero, and never across a day boundary. If the roll has
+        already moved on, yesterday's slot is not today's to give back.
+        """
+        now = time.time() if now is None else now
+        self._load()
+        day = int(now // 86400)
+        if day != self._day or self._count <= 0:
+            return
+        self._count -= 1
+        self._save()
+
     def count_for(self, now: float | None = None) -> int:
         now = time.time() if now is None else now
         self._load()
