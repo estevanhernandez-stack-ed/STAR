@@ -71,6 +71,7 @@ from star.oauth import metadata as oauth_metadata  # noqa: E402
 from star.oauth import tokens as oauth_tokens  # noqa: E402
 from star.oauth import validate as oauth_validate  # noqa: E402
 from star.store import (  # noqa: E402
+    CapStore,
     ClientStore,
     RoomStore,
     TokenStore,
@@ -204,7 +205,10 @@ _uid_limiter = RateLimiter(
     window_seconds=3600,
     max_keys=config.max_rate_limiter_keys(),
 )
-_daily_cap = DailyCap(max_per_day=config.max_rooms_per_day())
+# PERSISTED, so a redeploy no longer hands the world a fresh hundred rooms.
+# The in-memory version reset on every push and every instance recycle —
+# see DailyCap's own docstring for what that was worth in searches.
+_daily_cap = DailyCap(max_per_day=config.max_rooms_per_day(), store=CapStore())
 
 
 def _require_uid(authorization: str | None) -> str:

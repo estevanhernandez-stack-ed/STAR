@@ -911,3 +911,40 @@ class TokenStore:
         if not stored.get("revoked_at"):
             document.update({"revoked_at": when})
         return True
+
+
+class CapStore:
+    """The daily cap's count, at /service/daily_cap.
+
+    One document for the whole service, not one per user: the cap it backs is
+    global by definition — a kill switch on what this department spends in a
+    day, not a per-account allowance.
+
+    OUTSIDE /users ON PURPOSE. Everything else in this file hangs off a uid
+    because it belongs to a writer and is scoped to them. This belongs to the
+    service, no reader owns it, and filing it under somebody's account would
+    make it look like theirs to anybody reading Firestore.
+
+    Same client seam and the same single-path `collection()` call as RoomStore,
+    for the same reason recorded there: a hand-written fake's document objects
+    do not implement `.collection()`.
+    """
+
+    def __init__(self, client=None) -> None:
+        self._client = client
+
+    @property
+    def client(self):
+        if self._client is None:
+            self._client = _default_client()
+        return self._client
+
+    def _doc(self):
+        return self.client.collection("service").document("daily_cap")
+
+    def read(self) -> dict | None:
+        snapshot = self._doc().get()
+        return snapshot.to_dict() if snapshot.exists else None
+
+    def write(self, day: int, count: int) -> None:
+        self._doc().set({"day": int(day), "count": int(count)})

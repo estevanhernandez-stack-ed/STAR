@@ -25,7 +25,10 @@ being daily-global. Moving to a shared store is the fix, and it has to happen
 in the same change as the scale-up, not after.
 """
 
+import logging
 import time
+
+logger = logging.getLogger(__name__)
 
 
 class RateLimiter:
@@ -96,12 +99,68 @@ class RateLimiter:
 
 
 class DailyCap:
-    """A global kill switch measured in whole UTC days."""
+    """A global kill switch measured in whole UTC days, and it now survives.
 
-    def __init__(self, max_per_day: int) -> None:
+    THE DEFECT THIS CLOSES, written down while producing an operations runbook
+    on 2026-08-16 and true since the day the cap shipped: this counter lived in
+    process memory, so **every deploy handed the world a fresh hundred rooms.**
+    So did every instance recycle. The module docstring above already said so —
+    "the counters also reset on every redeploy and every instance recycle,
+    min-instances or not" — and it was recorded as a property of the design
+    rather than as the hole it is.
+
+    A hundred rooms is up to three thousand live searches. A push twenty
+    minutes before a public demo is the moment this service is least protected,
+    which is the opposite of what anybody wants from a deploy.
+
+    So the count is persisted. `store` is any object with `read()` returning
+    `{"day": int, "count": int}` or None, and `write(day, count)`. Injected
+    rather than imported so this class stays unit-testable without Firestore,
+    which is the same reason `RoomStore` takes a client.
+
+    IT FAILS OPEN, DELIBERATELY, AND LOUDLY. If the store raises, the in-memory
+    count is used and the failure is logged. This cap is a cost guard, not a
+    security boundary — refusing every build in the building because Firestore
+    blinked would turn a spend control into an outage, and an outage is the
+    worse failure for a service whose whole job is to be demonstrated. The log
+    line is what makes that a decision rather than a silence.
+
+    STILL NOT ATOMIC, and that is still fine for exactly one reason: the
+    service runs on a single instance with a single-threaded event loop, so
+    there is no second writer to race. If `--max-instances` ever rises above
+    one, this read-then-write needs a transaction in the same change — the same
+    sentence the module docstring already makes about every other counter here.
+    """
+
+    def __init__(self, max_per_day: int, store: object | None = None) -> None:
         self._max = max_per_day
         self._day: int | None = None
         self._count = 0
+        self._store = store
+
+    def _load(self) -> None:
+        """Pull the stored day and count into memory. Best effort."""
+        if self._store is None:
+            return
+        try:
+            saved = self._store.read()
+        except Exception:
+            logger.exception("Daily cap could not be read; using the in-memory count")
+            return
+        if not saved:
+            return
+        day = saved.get("day")
+        if isinstance(day, int):
+            self._day = day
+            self._count = int(saved.get("count") or 0)
+
+    def _save(self) -> None:
+        if self._store is None or self._day is None:
+            return
+        try:
+            self._store.write(self._day, self._count)
+        except Exception:
+            logger.exception("Daily cap could not be written; the count may reset")
 
     def _roll(self, now: float) -> None:
         day = int(now // 86400)
@@ -110,13 +169,21 @@ class DailyCap:
 
     def check(self, now: float | None = None) -> bool:
         now = time.time() if now is None else now
+        # Read first, every time. A single instance means memory is usually
+        # right, but "usually" is what this class was wrong about before: the
+        # one moment it is stale is the first call after a restart, which is
+        # precisely the moment the cap used to be zero.
+        self._load()
         self._roll(now)
         if self._count >= self._max:
+            self._save()
             return False
         self._count += 1
+        self._save()
         return True
 
     def count_for(self, now: float | None = None) -> int:
         now = time.time() if now is None else now
+        self._load()
         self._roll(now)
         return self._count

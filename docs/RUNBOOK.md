@@ -173,6 +173,17 @@ twenty minutes before showing the thing and the caps are wide open for whoever
 finds the URL. **If you deploy close to a demo, that is the moment the service
 is least protected**, and nothing anywhere else says so.
 
+> **Half fixed, 2026-08-16.** The **daily cap now persists to Firestore** at
+> `/service/daily_cap`, so a redeploy or an instance recycle no longer returns
+> a hundred rooms to the world. It fails open to the in-memory count if the
+> store is unreachable, and logs when it does — a spend guard that becomes an
+> outage is the worse failure.
+>
+> **The per-IP and per-uid hourly limiters are still in memory and still
+> reset.** They bound a burst rather than the bill, so they were left; if the
+> service ever runs on more than one instance they need the same treatment, and
+> then a transaction rather than a read-then-write.
+
 ## Deploying kills any build that is running
 
 `--max-instances=1`, and `_runs` is per-process in-memory state. A deploy
