@@ -152,8 +152,12 @@ in-memory for the same reason, and they become per-instance — and therefore
 bypassable by hitting a different instance — the moment instance count rises
 above one. **`--max-instances=1` is what keeps that from happening.**
 
-`_ip_limiter` and `_daily_cap` are module-level objects constructed once at
-import time. **`--min-instances=0`** — the flag `scripts/deploy.sh` used to
+`_ip_limiter` is a module-level object constructed once at import time.
+**`_daily_cap` no longer is, as of `star-00065-v97`** — its count persists to
+Firestore at `/service/daily_cap`, so a redeploy, an instance recycle and a
+scale-to-zero no longer return a hundred rooms to the world. Everything below
+about resetting still applies to the per-IP and per-uid limiters, which bound a
+burst rather than the bill and were deliberately left in memory. **`--min-instances=0`** — the flag `scripts/deploy.sh` used to
 pass — lets Cloud Run scale the single instance to zero when idle, and the
 next request cold-starts a fresh process with both counters back at zero. The
 100-per-day cap is then "100 builds per instance lifetime," and instance
