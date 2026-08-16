@@ -1,0 +1,59 @@
+{
+  "schemaVersion": "1.0.0",
+  "runbook": "C:\\Users\\estev\\AppData\\Local\\Temp\\claude\\c--Users-estev-Projects-STAR\\077133e7-d99e-4553-be87-0cd10fdd54bf\\scratchpad\\RUNBOOK-generated.md",
+  "coverage": {
+    "extracted": 1,
+    "markedBlocks": 1,
+    "totalBlocks": 14,
+    "confidence": "high",
+    "guidance": null
+  },
+  "claims": [
+    {
+      "id": "c-001",
+      "source": {
+        "file": "C:\\Users\\estev\\AppData\\Local\\Temp\\claude\\c--Users-estev-Projects-STAR\\077133e7-d99e-4553-be87-0cd10fdd54bf\\scratchpad\\RUNBOOK-generated.md",
+        "line": 7
+      },
+      "text": "- HEAD — run: `git rev-parse --short HEAD`",
+      "marker": "preamble",
+      "shape": "pin",
+      "confidence": 0.9,
+      "classifierRule": "pin:labelled-identifier",
+      "venue": "executable",
+      "cost": {
+        "raw": null,
+        "count": null
+      },
+      "verdict": null,
+      "evidence": null,
+      "checkedAt": null
+    }
+  ],
+  "stubs": [
+    {
+      "question": "Which URL or command tells you the service is alive?",
+      "line": 15
+    },
+    {
+      "question": "How do you confirm a rollback took effect?",
+      "line": 23
+    },
+    {
+      "question": "Where do the logs actually live, and what command tails them?",
+      "line": 27
+    },
+    {
+      "question": "Who gets paged when this service degrades, and at what threshold?",
+      "line": 31
+    },
+    {
+      "question": "What does degraded-but-acceptable look like here?",
+      "line": 33
+    },
+    {
+      "question": "Which dashboard answers \"is this our fault\" fastest?",
+      "line": 35
+    }
+  ]
+}
