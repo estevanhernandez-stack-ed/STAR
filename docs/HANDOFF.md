@@ -2,6 +2,19 @@
 
 **For:** the next Claude session picking up this project
 **From:** Cowork session with Estevan, 2026-08-06
+
+> **STALE BELOW THIS LINE, and kept as a record rather than corrected.** This
+> was written on 2026-08-06, before most of the app existed. It says Pipeline B
+> is "not yet built"; Pipeline B is now the centre of the product, reads the
+> year off a draft, and has been run over a 23,000-word book. It says nothing
+> about the whole-draft sweep, the agent door's fifteen tools, the export and
+> import round trip, or the OAuth authorization server.
+>
+> **For the current state, read in this order:** `README.md`, then
+> `docs/RUNBOOK.md` for how it runs, then `docs/smoke-2026-08-12.md`'s
+> "Current as of `star-00065-v97`" section for what a demo should expect.
+> `docs/` also carries dated scopes and reviews — those are snapshots of a
+> moment and are correct as written; see `docs/README.md` for which is which.
 **Repo:** https://github.com/estevanhernandez-stack-ed/STAR · local at `C:\Users\estev\Projects\STAR`
 
 ## What this project is
