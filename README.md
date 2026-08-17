@@ -228,6 +228,35 @@ Every claim comes back naming the scenes that made it — the answer no number o
 checks adds up to, because an object that is fine in Liverpool in 1958 and wrong in Hamburg in
 1960 is wrong in neither scene alone.
 
+### And it reads the year off the page
+
+That last sentence was the argument for a sweep long before it was true. The verification desk
+had no idea what year a scene was set in: it was asked whether a claim held "for this story's
+era", handed a span like `1958-1962`, and did the obvious thing with it — checked membership.
+A Vox AC30, introduced in 1959, came back **confirmed** in a 1958 scene with the note *"fitting
+the 1958-1962 era."* Correct arithmetic against the wrong number.
+
+So the server reads the year out of the draft itself. The heading and the action above the
+first line of dialogue, which is where a screenplay puts a date it wants read — a slugline, a
+`SUPER`, an establishing line. A scene that states no year inherits the last one stated,
+because a screenplay says its year once and a reader carries it. Every claim then carries
+**every year it is asserted in**, and the desk is told those years are the only dates it may
+judge by: *"it fits the era" is not a verdict, because an era is years long and a scene is one
+night.* A claim asserted in several years must hold in **all** of them, or it is an anachronism
+whose note names the year that breaks it.
+
+**A draft that states no date anywhere is told so rather than guessed at** — the claims come
+back `unverifiable` with the note *"the draft states no year"*, and there is no era left in the
+prompt to fall back on.
+
+Measured over a 23,000-word prose draft in eight chapters — no sluglines, no `SUPER`s, the year
+appearing only in the writing: **78 distinct claims, 42 confirmed, 26 anachronisms, 40 judged
+against 1958 and 31 against 1959**, the two separating where the story moves. Eleven of the
+anachronisms traced to a single timeline decision touching 18 of the 31 pieces, which is the
+finding a human editor charges for. The scenes before the draft first names a year returned
+"the draft states no year," refused to guess, and picked the date up the moment the page
+supplied one.
+
 ## What leaves the building
 
 A sweep is filed, so a reload does not discard a draft's worth of answers and the searches
