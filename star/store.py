@@ -28,6 +28,11 @@ from datetime import datetime, timedelta, timezone
 from google.api_core.exceptions import NotFound
 from google.cloud.firestore_v1 import FieldFilter
 
+# Read-path only. A sweep filed before the receipt comparison existed is
+# still a sweep a writer opens, and leaving it blank would make the caveat
+# look like a property of recent runs rather than of the receipts.
+from star.verdicts import count_unmatched, mark_stored_claims
+
 _UNTITLED = "Untitled room"
 
 
@@ -277,6 +282,7 @@ def sweep_to_document(result: dict, sweep_id: str, created_at: str) -> dict:
 def document_to_sweep(doc: dict) -> dict:
     """A stored sweep, in the shape the surface that ran it renders."""
     doc = doc or {}
+    claims = mark_stored_claims(doc.get("claims") or [])
     return {
         "sweep_id": doc.get("sweep_id") or "",
         "created_at": doc.get("created_at") or "",
@@ -284,13 +290,13 @@ def document_to_sweep(doc: dict) -> dict:
         "scenes_read": doc.get("scenes_read") or 0,
         "scene_keys": doc.get("scene_keys") or [],
         "claims_raised": doc.get("claims_raised") or 0,
-        "claims": doc.get("claims") or [],
+        "claims": claims,
         "search_count": doc.get("search_count") or 0,
         "budget_exhausted": bool(doc.get("budget_exhausted")),
         "cover_note": doc.get("cover_note") or "",
         "scope_note": doc.get("scope_note") or "",
         "unsourced_count": doc.get("unsourced_count") or 0,
-        "unmatched_citations": doc.get("unmatched_citations") or 0,
+        "unmatched_citations": count_unmatched(claims),
     }
 
 
@@ -394,14 +400,15 @@ def document_to_scene(doc: dict) -> dict:
     client ever has to know which of the two answered it.
     """
     doc = doc or {}
+    claims = mark_stored_claims(doc.get("claims") or [])
     return {
         "scene_id": doc.get("scene_id") or "",
         "created_at": doc.get("created_at") or "",
         "scene": doc.get("scene") or "",
-        "claims": doc.get("claims") or [],
+        "claims": claims,
         "parse_rate": doc.get("parse_rate") or 0.0,
         "unsourced_count": doc.get("unsourced_count") or 0,
-        "unmatched_citations": doc.get("unmatched_citations") or 0,
+        "unmatched_citations": count_unmatched(claims),
         "field_notes": doc.get("field_notes") or "",
         "search_count": doc.get("search_count") or 0,
         "budget_exhausted": bool(doc.get("budget_exhausted")),

@@ -252,6 +252,48 @@ def _split_budget_prefix(note: str) -> tuple[str, bool]:
     return _open_sentence(note[len(_BUDGET_PREFIX) :].strip()), True
 
 
+def mark_stored_claims(claims: list[dict]) -> list[dict]:
+    """Fill `shares_claim_wording` on claims filed before it was computed.
+
+    Read-path only, and faithful rather than fresh: the comparison runs against
+    the excerpt STORED ON THE CITATION, which is the passage that writer was
+    actually shown. Re-reading the ledger would answer a question about today's
+    sources instead, and a caveat about a page nobody saw is worse than none.
+
+    Idempotent by construction. A confirmed claim recomputes to what it already
+    held, and `None` on a claim too short to compare recomputes to `None` again,
+    so there is no way to tell a backfilled sweep from a fresh one — which is
+    the point. No migration, no dated cutover, and the sweeps already filed stop
+    being a second class of record.
+
+    CONFIRMED only, the same rule `_annotate_one` applies for the same reason.
+    """
+    for claim in claims:
+        if (claim or {}).get("verdict") != Verdict.CONFIRMED.value:
+            continue
+        for citation in claim.get("citations") or []:
+            if not citation:
+                continue
+            citation["shares_claim_wording"] = shares_claim_wording(
+                citation.get("excerpt") or "", claim.get("text") or ""
+            )
+    return claims
+
+
+def count_unmatched(claims: list[dict]) -> int:
+    """The run-level count off stored claims, on the rule `annotate` uses."""
+    return sum(
+        1
+        for claim in claims
+        if (claim or {}).get("verdict") == Verdict.CONFIRMED.value
+        and claim.get("citations")
+        and all(
+            (citation or {}).get("shares_claim_wording") is False
+            for citation in claim["citations"]
+        )
+    )
+
+
 def _annotate_one(
     claim: Claim,
     verdict: str,

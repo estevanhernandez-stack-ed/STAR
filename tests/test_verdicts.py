@@ -574,6 +574,57 @@ def test_the_run_counts_a_claim_once_and_only_when_every_receipt_missed():
     assert result.unmatched_citations == 1
 
 
+def test_a_sweep_filed_before_the_comparison_existed_reads_back_marked():
+    """The read path fills it in, so sweeps already on disk are not a second
+    class of record. Computed off the excerpt STORED ON THE CITATION — the
+    passage that writer was actually shown — never off today's ledger."""
+    claims = [
+        {
+            "text": "He was seventeen.",
+            "verdict": "confirmed",
+            "citations": [{"url": "u", "title": "t", "excerpt": "he was under 18"}],
+        }
+    ]
+
+    verdicts.mark_stored_claims(claims)
+
+    assert claims[0]["citations"][0]["shares_claim_wording"] is False
+    assert verdicts.count_unmatched(claims) == 1
+
+
+def test_backfilling_twice_changes_nothing():
+    """No way to tell a backfilled sweep from a fresh one, which is the point:
+    no migration, no dated cutover, no field meaning 'filed after August'."""
+    claims = [
+        {
+            "text": "the Reeperbahn",
+            "verdict": "confirmed",
+            "citations": [{"url": "u", "title": "t", "excerpt": "The Reeperbahn, St Pauli"}],
+        }
+    ]
+
+    once = verdicts.mark_stored_claims([dict(claims[0])])
+    twice = verdicts.mark_stored_claims(verdicts.mark_stored_claims(claims))
+
+    assert once[0]["citations"][0] == twice[0]["citations"][0]
+    assert twice[0]["citations"][0]["shares_claim_wording"] is True
+
+
+def test_the_backfill_leaves_anachronisms_alone():
+    claims = [
+        {
+            "text": "He was seventeen.",
+            "verdict": "anachronism",
+            "citations": [{"url": "u", "title": "t", "excerpt": "he was under 18"}],
+        }
+    ]
+
+    verdicts.mark_stored_claims(claims)
+
+    assert "shares_claim_wording" not in claims[0]["citations"][0]
+    assert verdicts.count_unmatched(claims) == 0
+
+
 def test_every_unverifiable_carries_a_note():
     result = annotated()
 
