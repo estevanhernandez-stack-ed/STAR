@@ -825,6 +825,11 @@ def test_a_filed_check_keeps_the_scene_and_everything_the_schema_names():
         "claims",
         "parse_rate",
         "unsourced_count",
+        # Filed, not recomputed on read. The excerpt a claim was shown is the
+        # one stored against it, and a later run of the same room can hold
+        # different excerpts — so a count derived at read time would answer a
+        # question about today's ledger, not about the check the writer filed.
+        "unmatched_citations",
         "field_notes",
         "search_count",
         "budget_exhausted",
@@ -1042,6 +1047,7 @@ RESULT = {
     "claims": [{"text": "a '61 Impala", "claim_type": "object", "verdict": "confirmed"}],
     "parse_rate": 1.0,
     "unsourced_count": 0,
+    "unmatched_citations": 0,
     "field_notes": "",
     "search_count": 3,
     "budget_exhausted": False,

@@ -60,6 +60,15 @@ class Citation(BaseModel):
     url: str
     title: str
     excerpt: str
+    shares_claim_wording: bool | None = Field(
+        default=None,
+        description="False when the excerpt shown repeats no word of the claim "
+        "it was filed against. Set on CONFIRMED claims only and never on a "
+        "verdict: a correct anachronism receipt is routinely wordless against "
+        "its claim — 'He was seventeen.' is settled by a page about a "
+        "deportation for being under 18 — so flagging one would strike the "
+        "department's best work. None means the comparison was not run.",
+    )
 
 
 class Finding(BaseModel):
@@ -193,6 +202,15 @@ class ScriptCheckResult(BaseModel):
     claims: list[ClaimResult]
     parse_rate: float = 0.0
     unsourced_count: int = 0
+    unmatched_citations: int = Field(
+        default=0,
+        description="How many CONFIRMED claims were shown a receipt that "
+        "repeats no word of them. Counted per claim, not per citation, because "
+        "it is the claim a writer decides about. Sits beside unsourced_count "
+        "and means something different: unsourced is a URL that resolved to "
+        "nothing, this is a page that resolved fine and appears to be about "
+        "something else.",
+    )
     field_notes: str = ""
     search_count: int = 0
     budget_exhausted: bool = False

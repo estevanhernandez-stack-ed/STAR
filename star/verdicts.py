@@ -36,7 +36,7 @@ import re
 # second URL regex here would leave the ladder undoing exclusions that were
 # never made. A URL that resolves during a room build has to resolve during a
 # check against that same room, and one shared parser is what makes that so.
-from star.findings import _BULLET, _URL, _best_excerpt, _resolve_citation
+from star.findings import _BULLET, _URL, _best_excerpt, _resolve_citation, shares_claim_wording
 from star.ledger import SourceLedger
 from star.models import Citation, Claim, ClaimResult, ScriptCheckResult, Verdict
 
@@ -283,6 +283,25 @@ def _annotate_one(
     # owed apart. Said in prose as well as in `reason`, because the MCP door
     # hands this payload to an agent with no renderer to turn a field into a
     # sentence.
+    # Read the receipt the writer will actually be shown, and only once the
+    # downgrade above has settled what the verdict is. CONFIRMED alone, for the
+    # reason on `Citation.shares_claim_wording`: an anachronism is settled by a
+    # page carrying a DATE, which routinely shares no wording with the line it
+    # contradicts, and the measured cost of flagging those is the best row in
+    # the sweep. This changes no verdict and files no note; it annotates a
+    # citation the department already decided to show.
+    if verdict == Verdict.CONFIRMED.value:
+        citations = [
+            citation.model_copy(
+                update={
+                    "shares_claim_wording": shares_claim_wording(
+                        citation.excerpt, claim.text
+                    )
+                }
+            )
+            for citation in citations
+        ]
+
     if claimed_budget and budget_exhausted and verdict == Verdict.UNVERIFIABLE.value:
         note = f"The check ran out of searches before reaching this claim. {note}"
         reason = "budget"
@@ -482,6 +501,18 @@ def annotate(
         claims=claim_results,
         parse_rate=round(parse_rate, 3),
         unsourced_count=sum(len(result.unsourced_urls) for result in claim_results),
+        # A claim counts once however many receipts it was shown, and only when
+        # EVERY one of them missed. A claim holding one page that repeats it and
+        # one that does not has an answer behind it, and counting that as a miss
+        # would inflate the number the writer is being asked to trust.
+        unmatched_citations=sum(
+            1
+            for result in claim_results
+            if result.citations
+            and all(
+                citation.shares_claim_wording is False for citation in result.citations
+            )
+        ),
         field_notes="\n".join(notes).strip(),
         search_count=search_count,
         budget_exhausted=budget_exhausted,

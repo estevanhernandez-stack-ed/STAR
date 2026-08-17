@@ -270,6 +270,7 @@ def sweep_to_document(result: dict, sweep_id: str, created_at: str) -> dict:
         "cover_note": result.get("cover_note") or "",
         "scope_note": result.get("scope_note") or "",
         "unsourced_count": result.get("unsourced_count") or 0,
+        "unmatched_citations": result.get("unmatched_citations") or 0,
     }
 
 
@@ -289,6 +290,7 @@ def document_to_sweep(doc: dict) -> dict:
         "cover_note": doc.get("cover_note") or "",
         "scope_note": doc.get("scope_note") or "",
         "unsourced_count": doc.get("unsourced_count") or 0,
+        "unmatched_citations": doc.get("unmatched_citations") or 0,
     }
 
 
@@ -371,6 +373,7 @@ def scene_to_document(result: dict, scene: str, scene_key: str = "") -> dict:
         "claims": result.get("claims") or [],
         "parse_rate": result.get("parse_rate") or 0.0,
         "unsourced_count": result.get("unsourced_count") or 0,
+        "unmatched_citations": result.get("unmatched_citations") or 0,
         "field_notes": result.get("field_notes") or "",
         "search_count": result.get("search_count") or 0,
         "budget_exhausted": bool(result.get("budget_exhausted")),
@@ -398,6 +401,7 @@ def document_to_scene(doc: dict) -> dict:
         "claims": doc.get("claims") or [],
         "parse_rate": doc.get("parse_rate") or 0.0,
         "unsourced_count": doc.get("unsourced_count") or 0,
+        "unmatched_citations": doc.get("unmatched_citations") or 0,
         "field_notes": doc.get("field_notes") or "",
         "search_count": doc.get("search_count") or 0,
         "budget_exhausted": bool(doc.get("budget_exhausted")),

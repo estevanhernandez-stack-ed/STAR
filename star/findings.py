@@ -159,6 +159,34 @@ def _best_excerpt(excerpts: list[str], fact: str) -> str:
     return best_excerpt
 
 
+def shares_claim_wording(excerpt: str, claim: str) -> bool | None:
+    """Does the excerpt repeat any of the claim's own words? `None` if unaskable.
+
+    NOT a relevance score, and deliberately not named like one. `_rank_findings`
+    in star/mcp/tools.py once decided whether a text BORE ON a question by
+    counting shared tokens, and 210ce8d records what that cost: a 1978 room
+    answered a question about 1978 with eight unrelated findings, each riding on
+    the single token they shared. Overlap alone is not bearing.
+
+    This asks the far weaker question that failure leaves standing. A page that
+    repeats a word of the claim may or may not settle it. A page that repeats no
+    word of it at all is worth showing a writer with a caveat, and that is the
+    only inference drawn — the verdict is never touched. Precision on the
+    2026-08-14 whole-book sweep, scored against a reading of all 73 confirmed
+    rows: 21 of 23 fired correctly, and both misfires were one claim whose
+    displayed excerpt genuinely does not mention it.
+
+    `None` means the question could not be asked rather than that it passed:
+    a claim of nothing but short words ("Ta.", "mam") clears no token floor, and
+    a caveat drawn from an empty comparison would be a stamp with nothing behind
+    it — the thing star/verdicts.py exists to prevent.
+    """
+    wanted = _tokenize(claim)
+    if not wanted or not excerpt:
+        return None
+    return bool(wanted & _tokenize(excerpt))
+
+
 def parse_findings(
     prose: str | None, category: Category, ledger: SourceLedger
 ) -> ResearchDoc:

@@ -487,6 +487,93 @@ def test_every_confirmed_and_anachronism_carries_a_hydrated_citation():
             assert citation.url and citation.title and citation.excerpt
 
 
+# -- (5b) is the receipt about the claim, or only attached to it? -------------
+#
+# Everything above asserts a citation is PRESENT. Nothing asserted it was ABOUT
+# anything, and the whole-book sweep of 2026-08-14 is what that gap costs: 41%
+# of confirmed rows across four filed sweeps were shown a page repeating no word
+# of the claim, including `Judea` cited to an article on Hamburg.
+
+WORDLESS = {
+    "title": "George Harrison is deported from Germany",
+    "url": "https://beatles.example/deported",
+    "excerpts": ["German authorities deported him after finding he was under 18."],
+}
+
+
+def a_check(verdict, text, url):
+    """One claim, one verdict, one URL, against a ledger holding WORDLESS."""
+    ledger = SourceLedger()
+    ledger.record("verifier", [WORDLESS])
+    return verdicts.annotate(
+        f"- {verdict} | {text} | {url} | Checked.",
+        [Claim(text=text, claim_type="timing")],
+        SourceLedger(),
+        ledger,
+        False,
+    ).claims[0]
+
+
+def test_a_confirmed_receipt_repeating_no_word_of_its_claim_is_marked():
+    claim = a_check("confirmed", "He was seventeen.", WORDLESS["url"])
+
+    assert claim.verdict is Verdict.CONFIRMED, "the flag annotates, it never judges"
+    assert claim.citations[0].shares_claim_wording is False
+
+
+def test_an_anachronism_receipt_is_never_marked_however_wordless_it_is():
+    """The regression that protects the department's best work.
+
+    `He was seventeen.` is settled by a page about a deportation for being under
+    18 — a correct receipt, and one that repeats no word of the line it
+    contradicts. An anachronism is settled by a DATE, so wordlessness is its
+    normal condition rather than a symptom. Measured on the same four sweeps:
+    flagging anachronisms too would have struck 19% of them.
+    """
+    claim = a_check("anachronism", "He was seventeen.", WORDLESS["url"])
+
+    assert claim.verdict is Verdict.ANACHRONISM
+    assert claim.citations[0].shares_claim_wording is None
+
+
+def test_a_receipt_that_does_repeat_the_claim_is_left_alone():
+    claim = a_check("confirmed", "deported from Germany", WORDLESS["url"])
+
+    assert claim.citations[0].shares_claim_wording is True
+
+
+def test_a_claim_too_short_to_compare_is_not_marked_either_way():
+    """`mam`, `Ta.`, `86` — real claims from a real sweep, none of which clear
+    the four-character floor. A caveat drawn from an empty comparison would be
+    the overclaim this module exists to prevent, so the question goes unasked
+    and says so."""
+    claim = a_check("confirmed", "Ta.", WORDLESS["url"])
+
+    assert claim.citations[0].shares_claim_wording is None
+
+
+def test_the_run_counts_a_claim_once_and_only_when_every_receipt_missed():
+    ledger = SourceLedger()
+    ledger.record("verifier", [WORDLESS, STAX])
+    floor = "the Stax studio floor still sloped"
+    result = verdicts.annotate(
+        f"- confirmed | He was seventeen. | {WORDLESS['url']} | Checked.\n"
+        f"- confirmed | {floor} | {WORDLESS['url']} {STAX['url']} | Checked.",
+        [
+            Claim(text="He was seventeen.", claim_type="timing"),
+            Claim(text=floor, claim_type="geography"),
+        ],
+        SourceLedger(),
+        ledger,
+        False,
+    )
+
+    # The floor holds one page repeating it ("floor", "still") and one that does
+    # not, so it has an answer behind it and is not the writer's problem.
+    assert [c.shares_claim_wording for c in result.claims[1].citations] == [False, True]
+    assert result.unmatched_citations == 1
+
+
 def test_every_unverifiable_carries_a_note():
     result = annotated()
 
