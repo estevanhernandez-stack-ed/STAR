@@ -75,14 +75,59 @@ claim_extractor = Agent(
         "technology, a price, a distance, a travel time, a law, a procedure, a "
         "song, a brand, and a term of slang whose currency in that year is "
         "genuinely in question.\n\n"
-        "BEFORE YOU EXTRACT ANYTHING, ASK WHAT A PAGE PROVING IT WRONG IN THAT "
-        "YEAR WOULD LOOK LIKE. If you cannot describe that page, the words are "
-        "scenery and not a claim. A river, a city, a district, a nationality, "
-        "a musical note, a compass direction, a language: all real, all "
-        "checkable, and not one of them can be wrong in 1958. A club that "
-        "opened in August 1959 CAN be wrong in 1958, and on the page it looks "
-        "exactly like the city it stands in. The difference is never the "
-        "words. It is whether a year can touch them.\n\n"
+        "BEFORE YOU EXTRACT ANYTHING, ASK WHAT A PAGE PROVING THE SCENE WRONG "
+        "ABOUT IT WOULD LOOK LIKE. Not wrong about the thing — wrong about the "
+        "scene's use of it, in this place, in this year. If you cannot "
+        "describe that page, the words are scenery and not a claim. A river, a "
+        "city, a district, a nationality, a musical note, a compass direction, "
+        "a language: all real, all checkable, and no page makes any of them "
+        "wrong in 1958. A club that opened in August 1959 CAN be wrong in "
+        "1958, and on the page it looks exactly like the city it stands in.\n\n"
+        # FALSIFIABILITY IS INHERITED, and leaving this out cost three
+        # anachronism catches in the 2026-08-17 A/B. The first draft of the
+        # rule above asked whether the THING could be dated, so the desk read
+        # "a large, spindly spider he'd painted", correctly decided that
+        # painted spiders have no date, and dropped it — along with the rainbow
+        # beside it. Both were real catches: the wall they are painted on
+        # belonged to a club that did not exist yet.
+        #
+        # The error was the same one this whole paragraph exists to fix, one
+        # level up. Pointing the test at the noun instead of at the assertion
+        # is how `Judea` got extracted; pointing it at the noun instead of at
+        # the assertion is also how the spider got dropped.
+        "FALSIFIABILITY IS INHERITED, AND THIS IS THE PART MOST EASILY MISSED. "
+        "A thing with no date of its own carries a claim when the scene "
+        "attaches it to something that CAN be dated: a place that opened, a "
+        "person who was born, a band that formed, a song that was written, a "
+        "job somebody took. A hand-painted mural has no date. A hand-painted "
+        "mural on the wall of a club that opened two years after this scene is "
+        "wrong, and so is the coffee machine beside it and the light fitting "
+        "above it — extract all three, not just the club.\n\n"
+        # THE ANCHOR HAS TO BE DATABLE, and saying only "the scene puts it
+        # somewhere" was too broad: the 2026-08-17 A/B recovered the spider and
+        # the rainbow but brought Hamburg, Liverpool, Dingle and Reeperbahn
+        # back with them. Every one of those IS somewhere the scene puts
+        # something. None of them can be wrong.
+        "THE ANCHOR MUST ITSELF BE DATABLE. Merely happening in a place is not "
+        "an anchor. A city the story passes through, a river it crosses, a "
+        "district somebody is from, a street, a police force, the language "
+        "being spoken: the scene puts things in all of them and dates none of "
+        "them. Naming one is not a claim, and naming one does not make the "
+        "things around it claims either.\n\n"
+        # A DATE IS NOT ONLY A PROPER NOUN, and forgetting that cost `Mach
+        # Schau` and `black leather getup` in the third A/B of 2026-08-17.
+        # Listing "a language" among the non-anchors was read as "phrases do
+        # not count", and neither of those two is a proper noun to anchor to —
+        # but a page can date both precisely. The rule is what a page can put a
+        # year on, not what starts with a capital letter.
+        "A DATE IS NOT ONLY A PROPER NOUN. A turn of phrase, a way of "
+        "dressing, a way of playing, a habit of work: a page can say when each "
+        "of these came into use as surely as when a club opened. A shout an "
+        "audience gives a band, a stage look, a way of setting up a kit — each "
+        "was current from some year and not before it, and a scene using one "
+        "too early is exactly the error a reader will catch. Extract them. "
+        "What decides a claim is whether a page could put a YEAR on it, never "
+        "whether it starts with a capital letter.\n\n"
         "Claims about the story are not yours to extract — 'She is afraid', "
         "'He has never trusted his brother', the names of invented people and "
         "invented places are the writer declaring things, and nothing outside "
