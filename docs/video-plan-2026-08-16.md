@@ -63,31 +63,44 @@ Paste the draft. **31 scenes.** Sweep.
 > Eight chapters, twenty-three thousand words, one request. Scene by scene this
 > would be thirty-one search budgets. It is one.
 
-Counter again, compressed. Land on the result: **78 claims, 42 confirmed, 26
-anachronisms.**
+Counter again, compressed. Land on the result: **75 claims, 34 confirmed, 33
+anachronisms** (sweep `92d9c15c8ef5`, 2026-08-17).
 
 ### 1:50–2:35 — The catch. This is the video.
 
 Two beats, in this order. Small first, structural second.
 
-**Beat one, the arithmetic.** The `"He was seventeen."` row.
+**Beat one, the one-liner.** `"turning it up to eleven"`, in a 1959 scene.
 
-> George Harrison was fifteen in 1958. The desk knows what year the scene is set
-> in, because it read it off the page — and it caught the same line again forty
-> pages later, against a different year, where he was sixteen.
+> That phrase comes from a film made in 1984. Two rows down, "Got blisters on
+> your fingers" — Ringo said that in 1968, on Helter Skelter. Neither is a date
+> anybody could be expected to hold in their head.
+
+No arithmetic on screen, and nothing the viewer has to take on trust: both are
+one-line jokes a reader either knows or doesn't, which is the point.
+
+**DO NOT USE the old `"He was seventeen."` row.** It was a false positive and
+the 2026-08-14 sweep is wrong about it. The desk read "he" as George Harrison;
+scene 1 puts George at "fourteen and a half" in the same paragraph and John at
+seventeen, and scene 8 is the Doctor talking about Lennon. Both are John, and
+John WAS seventeen in 1958. The draft was right and the department was wrong.
+The 2026-08-17 sweep confirms it correctly — which is a fix worth knowing about
+and not a shot worth filming.
 
 **Beat two, the cluster.** Filter to the Casbah rows.
 
-> The Casbah opened in August 1959. So did its espresso machine, the spider
-> painted on its wall and the rainbow on its ceiling. Four flags, one afternoon
-> — and eleven more across eighteen of the thirty-one scenes, all tracing to a
+> The Casbah opened in August 1959. So did Mona Best's coal cellar under it, its
+> espresso machine, the spider painted on its wall and the rainbow on its
+> ceiling. Six flags, one afternoon — and the Kaiserkeller, the Indra and the
+> Top Ten behind them, across most of the thirty-one scenes, all tracing to a
 > single decision about when this story happens.
 
 Then the honest close on it, which is the strongest thing in the video:
 
 > It does not tell you that is wrong. It is a Doctor Who story about a stolen
 > chord — the timeline might be broken on purpose. It tells you a reader will
-> notice, in eighteen places. What you do about it is the writer's business.
+> notice, in twenty-two of the thirty-one scenes. What you do about it is the
+> writer's business.
 
 ### 2:35–2:50 — The same department, no browser
 
@@ -114,8 +127,8 @@ Back to the page, the flagged line visible.
 | 5 | One drawer, one finding, its source | browser | no |
 | 6 | Draft pasted, 31 scenes listed | browser | no |
 | 7 | Sweep running, counter | browser | **yes** |
-| 8 | Result header: 78 / 42 / 26 | browser | no |
-| 9 | The `"He was seventeen."` row and its note | browser | no |
+| 8 | Result header: 75 / 34 / 33 | browser | no |
+| 9 | `"turning it up to eleven"` and its note | browser | no |
 | 10 | Casbah rows filtered | browser or the CSV | no |
 | 11 | Agent calling `defend_claim` | desktop agent | no |
 | 12 | Draft again, line flagged | editor | no |
@@ -143,9 +156,12 @@ and re-shot freely.
   You have five an hour.
 - **The sweep dies with the tab.** It is a synchronous request. **Do not switch
   tabs, close the lid, or let the machine sleep during shot 7.**
-- **A confirmed row cites the wrong page.** The citation defect is open. Shots 5
-  and 9 must use rows **checked in advance**. The anachronisms are reliable; an
-  unchecked confirmation is a coin flip.
+- **A confirmed row cites the wrong page.** Measured at 6 of 34 confirmed rows
+  (18%) on the 2026-08-17 sweep, down from 21 of 42 (50%). Every one now
+  carries a caveat under the excerpt saying the page repeats no word of the
+  claim, so shot 5 can open a caveated row deliberately rather than hunt for a
+  clean one — a desk marking its own thin receipts is the thesis, not a
+  failure of it.
 - **A search comes back thin.** Live web results vary. Shot 4 holds on whatever
   arrives — the query strings are the point, not the answers.
 - **Worth doing once, not on camera:** the first build after a deploy creates
