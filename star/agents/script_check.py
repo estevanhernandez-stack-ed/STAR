@@ -49,10 +49,40 @@ claim_extractor = Agent(
         # this scene made a claim about the world". A silent lie that looks
         # like a result is worse than a loud KeyError.
         "<scene>\n{scene}\n</scene>\n\n"
+        # SETTLEABLE IS NOT THE TEST. FALSIFIABLE IS.
+        #
+        # "Something outside the script could settle it" was the definition
+        # until 2026-08-17, and `Judea` passes it — something outside the
+        # script can absolutely settle whether Judea exists. So does `The
+        # Elbe.`, `Dingle`, `G-sharp`, `Liverpudlian`. The definition was doing
+        # its job and its job was wrong.
+        #
+        # Measured on the whole-book sweep (docs/scope-citation-rate-2026-08-17
+        # .md): 15 of the 21 confirmed claims holding a receipt that repeats no
+        # word of them were nouns of this kind. They are not badly sourced, they
+        # are unsourceable — no page on the web settles whether Hamburg existed
+        # in 1958, so the desk borrows the nearest page and the writer is shown
+        # a citation for scenery.
+        #
+        # A SHAPE FILTER CANNOT DO THIS, which is why it is here and not in
+        # Python. `Hamburg` and `The Casbah` are both bare proper nouns of two
+        # words; one cannot be wrong in 1958 and the other is the best catch in
+        # the sweep. Nothing about the text separates them. Only the year does.
         "Extract every claim the scene makes about the world. A claim about "
-        "the world is one that something outside the script could settle: a "
-        "make or model, a piece of technology, a price, a distance, a travel "
-        "time, a law, a procedure, a term of slang, a song, a brand, a date. "
+        "the world is one a source could settle EITHER WAY in the year this "
+        "scene is set: one page could show it right, and a different page "
+        "could show it wrong. That shape covers a make or model, a piece of "
+        "technology, a price, a distance, a travel time, a law, a procedure, a "
+        "song, a brand, and a term of slang whose currency in that year is "
+        "genuinely in question.\n\n"
+        "BEFORE YOU EXTRACT ANYTHING, ASK WHAT A PAGE PROVING IT WRONG IN THAT "
+        "YEAR WOULD LOOK LIKE. If you cannot describe that page, the words are "
+        "scenery and not a claim. A river, a city, a district, a nationality, "
+        "a musical note, a compass direction, a language: all real, all "
+        "checkable, and not one of them can be wrong in 1958. A club that "
+        "opened in August 1959 CAN be wrong in 1958, and on the page it looks "
+        "exactly like the city it stands in. The difference is never the "
+        "words. It is whether a year can touch them.\n\n"
         "Claims about the story are not yours to extract — 'She is afraid', "
         "'He has never trusted his brother', the names of invented people and "
         "invented places are the writer declaring things, and nothing outside "
