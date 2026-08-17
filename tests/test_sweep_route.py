@@ -120,6 +120,41 @@ def test_a_whole_draft_is_read_scene_by_scene_and_asked_about_once():
     assert len(body["claims"]) == 2, "two distinct — the Impala was asked about once"
 
 
+def test_the_sweep_reports_confirmed_claims_holding_a_borrowed_receipt():
+    """Counted off the claims actually filed, not off the pre-attach payload.
+
+    This is a regression. The field existed on the check payload and was never
+    added to the sweep's, so the first live run of a whole book reported None
+    while the browser had every flag. Nothing caught it because the sweep
+    assembles its own reply rather than passing the check's through.
+    """
+    store, _ = a_store()
+    store.save(UID, ROOM, filed_room())
+    # The Impala is CONFIRMED against a page about cassettes: a real source,
+    # genuinely searched, that says nothing about the claim it is filed under.
+    verify = _FakeCheckRunner(
+        produces={
+            "verdicts": (
+                "- confirmed | a '61 Impala | https://cassette.example/history | Checked.\n"
+                "- anachronism | a cassette deck | https://cassette.example/history | 1963.\n"
+            ),
+            "search_count": 2,
+        },
+        events=[_FakeEvent(responses=[_FakeResponse([CASSETTE])])],
+    )
+
+    with sweeping(store, verify=verify):
+        body = post(TestClient(server.app)).json()
+
+    assert body["unmatched_citations"] == 1
+    impala = next(c for c in body["claims"] if "Impala" in c["text"])
+    assert impala["citations"][0]["shares_claim_wording"] is False
+    # The anachronism cites the very same page and is never counted: a receipt
+    # carrying a date routinely shares no wording with the line it contradicts.
+    cassette = next(c for c in body["claims"] if "cassette" in c["text"])
+    assert cassette["citations"][0]["shares_claim_wording"] is None
+
+
 def test_a_claim_comes_back_beside_every_scene_that_made_it():
     store, _ = a_store()
     store.save(UID, ROOM, filed_room())

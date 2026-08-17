@@ -82,7 +82,7 @@ from star.store import (  # noqa: E402
     scene_to_document,
     sweep_to_document,
 )
-from star.verdicts import annotate  # noqa: E402
+from star.verdicts import annotate, count_unmatched  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -2647,7 +2647,16 @@ async def _run_sweep(uid: str, run_id: str, scenes: list[dict]) -> dict:
         "cover_note": payload.get("cover_note") or "",
         "scope_note": payload.get("scope_note") or "",
         "unsourced_count": payload.get("unsourced_count") or 0,
+        # Recounted here rather than carried over from `payload`. The claims on
+        # this document went through `sweep.attach` after the verifier ran, so
+        # the count has to be taken from the list actually filed — a number
+        # copied off the pre-attach payload would describe a different list and
+        # be right only by luck. Found the first time this ran live: the field
+        # existed on the check payload, was never added here, and the sweep
+        # door reported None while the browser had the flags all along.
+        "unmatched_citations": 0,
     }
+    swept["unmatched_citations"] = count_unmatched(swept["claims"])
 
     # Filed, so a reload does not throw away a whole draft's answers and the
     # searches that bought them. Best-effort and named rather than hidden, the
