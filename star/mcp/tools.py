@@ -2205,6 +2205,22 @@ async def _check_scene(arguments: dict, calls: Calls, identity) -> dict:
             "below; the department will not present a source it cannot find "
             "in a ledger."
         )
+    # Said separately from `unsourced` because it is a different failure and an
+    # agent acting on this has a different move. Unsourced means the URL was not
+    # found at all; this means it was found, and reads as though it is about
+    # something else. The agent door needs the sentence spelled out — an MCP
+    # client has no renderer to turn a per-citation flag into prose the way the
+    # browser does.
+    unmatched = result.get("unmatched_citations") or 0
+    if unmatched:
+        lines.append(
+            f"{unmatched} confirmed claim{'' if unmatched == 1 else 's'} "
+            f"{'was' if unmatched == 1 else 'were'} shown a source repeating no "
+            "word of the claim. The page is real and the search returned it; "
+            "whether it bears on the claim is unread. Anachronisms are not "
+            "counted here — a receipt carrying a date routinely shares no "
+            "wording with the line it contradicts."
+        )
     # Only when there is something to describe. A scene that asserts nothing
     # about the world is a legitimate result, and a paragraph explaining what
     # each claim carries, printed over zero claims, reads as a payload the

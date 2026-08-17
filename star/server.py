@@ -1762,9 +1762,15 @@ def _chain_files(documents: list[tuple[str, dict]]) -> str:
 
     Each room's findings sit under its own name, so an answer can say WHICH
     room held the fact — a chain that cannot is a bigger room with worse
-    provenance. Nearest first, because the verifier reads top down under a size
-    ceiling and the room a writer is working in should never be the part that
-    gets cut.
+    provenance. Nearest first, so the room a writer is working in is the part
+    the verifier reads before its attention is spent.
+
+    THERE IS NO SIZE CEILING HERE, and this docstring claimed one until
+    2026-08-17. `_room_files` emits every cited finding and its full excerpt
+    with no cap, no slice and no knob; ordering is the only lever. The claim of
+    a ceiling was load-bearing in the wrong direction — it made an unbounded
+    block look bounded to anyone reading for the reason a catch-all page ends up
+    cited for twenty unrelated claims.
 
     A single-room chain produces exactly what `_room_files` produced before any
     of this existed, which is the property that makes stacking safe to add: an

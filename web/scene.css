@@ -560,6 +560,23 @@
   opacity: 0.75; /* 4.93:1 */
 }
 
+/* A caveat on the excerpt above it, and deliberately NOT the UNSOURCED stamp's
+   treatment. That stamp means nothing about the link was ever checked, which is
+   a harder fact than this one: here the page is real, the search returned it,
+   and all that is being said is that it does not repeat the claim. Quieter than
+   a stamp, louder than the excerpt it qualifies. No red — this is not an error,
+   and on the 2026-08-14 sweep it lands on 38% of confirmed rows, which as a
+   wall of alarm colour would train the reader to stop seeing it. */
+.cite-unmatched {
+  margin-top: 0.4rem;
+  padding-left: 0.7rem;
+  border-left: 2px dashed color-mix(in srgb, var(--ink) 30%, var(--manila));
+  font-family: var(--body);
+  font-size: var(--label-sm);
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--ink) 82%, var(--manila)); /* 5.1:1 */
+}
+
 /* The link colour is NOT declared here either — web/shell.css's paper-surface
    rule gives every link inside .check the same
    color-mix(--aniline 70%, --ink) it gives .intake / .docket / .drawer /

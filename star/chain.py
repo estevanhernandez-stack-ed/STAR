@@ -39,10 +39,12 @@ def order(run_id: str, rooms: dict[str, dict]) -> list[str]:
     simply ends the chain, which is the honest outcome for a room that was
     deleted out from under a link.
 
-    Nearest first, not root first, and the order is load-bearing. The verifier
-    reads its files top down under a size ceiling, so whatever comes first is
-    what survives a truncation — and the room a writer is actually working in
-    is the one whose research should never be the part that gets cut.
+    Nearest first, not root first, and the order is load-bearing — though not
+    for the reason this said until 2026-08-17. There is no size ceiling and
+    nothing truncates: `star/server.py`'s `_room_files` emits every cited
+    finding in full. What ordering buys is attention, not survival. The room a
+    writer is actually working in is read before a verifier has spent itself on
+    four ancestors, which matters more the longer the chain gets.
 
     Cycle-safe by construction: a room already seen ends the walk. A writer can
     point two rooms at each other by hand, and a check that hung on it would be

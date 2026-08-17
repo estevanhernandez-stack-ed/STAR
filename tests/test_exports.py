@@ -63,6 +63,67 @@ def parsed(text):
     return list(csv.DictReader(io.StringIO(text)))
 
 
+def test_the_receipt_column_says_yes_no_or_nothing_at_all():
+    """Three states, and the blank is the one that matters.
+
+    `no` means the comparison ran and the page repeated nothing of the claim.
+    Blank means it was never run — every anachronism, because a receipt carrying
+    a date routinely shares no wording with the line it contradicts. Collapsing
+    the two would tell a writer sorting this column that every anachronism
+    receipt passed a check none of them were given.
+    """
+    sweep = a_sweep(
+        claims=[
+            {
+                "text": "He was seventeen.",
+                "claim_type": "timing",
+                "verdict": "confirmed",
+                "scenes": [8],
+                "citations": [
+                    {
+                        "url": "https://a.example",
+                        "title": "Deported",
+                        "excerpt": "he was under 18",
+                        "shares_claim_wording": False,
+                    }
+                ],
+            },
+            {
+                "text": "the Reeperbahn",
+                "claim_type": "geography",
+                "verdict": "confirmed",
+                "scenes": [9],
+                "citations": [
+                    {
+                        "url": "https://b.example",
+                        "title": "Reeperbahn",
+                        "excerpt": "The Reeperbahn is in St Pauli",
+                        "shares_claim_wording": True,
+                    }
+                ],
+            },
+            {
+                "text": "The Casbah",
+                "claim_type": "geography",
+                "verdict": "anachronism",
+                "scenes": [5],
+                "citations": [
+                    {
+                        "url": "https://c.example",
+                        "title": "Casbah",
+                        "excerpt": "opened 29 August 1959",
+                    }
+                ],
+            },
+        ]
+    )
+    rows = {row["claim"]: row["source_repeats_claim"] for row in parsed(sweep_to_csv(sweep))}
+
+    assert rows["He was seventeen."] == "no"
+    assert rows["the Reeperbahn"] == "yes"
+    assert rows["The Casbah"] == "", "the question was never asked of an anachronism"
+
+
 def test_a_claim_with_two_sources_is_two_rows():
     """Not one row with two urls in a cell.
 

@@ -163,7 +163,8 @@ that job was held all session.
 - [ ] `chain_of(uid, run_id)` in `star/store.py`: the room and every room it follows, root
       first, cycle-safe and depth-capped.
 - [ ] `check_scene` and the sweep assemble `room_files` from the WHOLE chain, nearest room
-      first, under the existing per-check size ceiling.
+      first. There is no per-check size ceiling — this line claimed one until 2026-08-17
+      and no such cap has ever existed in `_room_files`.
 - [ ] `ask_room` searches the chain; each finding reports which room it came from.
 - [ ] The bible surface stacks the chain's bibles, each under its room's title and era, in
       chain order.

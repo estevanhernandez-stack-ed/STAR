@@ -43,9 +43,21 @@ COLUMNS = (
     "source_title",
     "source_url",
     "source_excerpt",
+    # Whether that excerpt repeats any word of the claim beside it. Blank
+    # where the question was not asked: every anachronism, and any claim
+    # too short to compare. A writer sorting on this column is sorting the
+    # receipts worth reading first, which is the whole reason it is here
+    # and not left to the browser.
+    "source_repeats_claim",
     "swept_at",
     "sweep_id",
 )
+
+# Three states, not two, and the blank is the load-bearing one. `no` says the
+# comparison ran and the page repeated nothing; blank says it was never run.
+# Collapsing them would tell a writer that every anachronism receipt passed a
+# check none of them were given.
+_REPEATS = {True: "yes", False: "no", None: ""}
 
 
 def safe_cell(value: object) -> str:
@@ -127,9 +139,19 @@ def sweep_rows(document: dict) -> list[dict]:
                 "source_title": (citation or {}).get("title") or "",
                 "source_url": (citation or {}).get("url") or "",
                 "source_excerpt": (citation or {}).get("excerpt") or "",
+                "source_repeats_claim": _REPEATS.get(
+                    (citation or {}).get("shares_claim_wording"), ""
+                ),
             }
             for citation in claim.get("citations") or []
-        ] or [{"source_title": "", "source_url": "", "source_excerpt": ""}]
+        ] or [
+            {
+                "source_title": "",
+                "source_url": "",
+                "source_excerpt": "",
+                "source_repeats_claim": "",
+            }
+        ]
 
         for number in numbers or [0]:
             for source in sources:
@@ -186,7 +208,14 @@ WRITER_COLUMNS = ("writer_note", "dismissed")
 
 # What it may never bring back, named individually so the refusal can say which
 # one was attempted rather than "some column".
-DEPARTMENT_COLUMNS = ("verdict", "note", "source_title", "source_url", "source_excerpt")
+DEPARTMENT_COLUMNS = (
+    "verdict",
+    "note",
+    "source_title",
+    "source_url",
+    "source_excerpt",
+    "source_repeats_claim",
+)
 
 _TRUE = {"1", "true", "yes", "y", "x", "dismissed"}
 
@@ -333,6 +362,11 @@ def _department_values(claim: dict, column: str) -> set[str]:
     """
     if column in ("verdict", "note"):
         return {str(claim.get(column) or "").strip()}
+    if column == "source_repeats_claim":
+        return {
+            _REPEATS.get((citation or {}).get("shares_claim_wording"), "")
+            for citation in claim.get("citations") or []
+        }
     field = {"source_title": "title", "source_url": "url", "source_excerpt": "excerpt"}[column]
     return {str((citation or {}).get(field) or "").strip() for citation in claim.get("citations") or []}
 

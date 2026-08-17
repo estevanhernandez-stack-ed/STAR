@@ -372,6 +372,26 @@ function buildCitation(citation, origin) {
         )
   );
 
+  // Under the excerpt, because it is a statement ABOUT the excerpt just quoted
+  // and reads as noise anywhere else. Only ever false on a confirmed claim —
+  // star/verdicts.py leaves it null on anachronism, where a receipt carrying a
+  // date routinely shares no wording with the line it contradicts.
+  //
+  // The copy says what was measured and stops. "Repeats no word of this claim"
+  // is checkable by the reader against the two things directly above it; "may
+  // not support this claim" is an inference the server did not make and cannot
+  // make, and putting it here would be the same overclaim in the other
+  // direction as the word "verified".
+  if (citation?.shares_claim_wording === false) {
+    item.appendChild(
+      el(
+        "p",
+        "cite-unmatched",
+        "This page repeats no word of the claim. It may still bear on it — read it before relying on it."
+      )
+    );
+  }
+
   const link = el("a", "cite-url", url.href);
   link.setAttribute("href", url.href);
   link.setAttribute("target", "_blank");
