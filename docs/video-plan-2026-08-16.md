@@ -151,6 +151,34 @@ and re-shot freely.
 - **Worth doing once, not on camera:** the first build after a deploy creates
   `/service/daily_cap`. Free to check, and it confirms the cap now survives.
 
+## Decided, 2026-08-16
+
+**Shot 7 uses the Fountain conversion in the browser**, not the agent door. The
+browser is the better shot and it is the surface a writer would actually use.
+
+The file is committed to the book repo, not left in a scratchpad — a session
+temp directory does not survive to Aug 22:
+
+    Projects\doctor-whom\02_SHORT_STORIES\The Beat That Shook The Void\
+      The_Beat_That_Shook_The_Void.fountain
+
+Regenerate it any time with `python writer-studio/to_fountain.py` from the book
+repo. It reads the markdown draft, cuts at the story's own `---` breaks, never
+splits a paragraph, and **fails loudly if any piece exceeds STAR's 8,000-char
+ceiling** rather than producing a file that dies on paste.
+
+Verified through STAR's own `web/fountain.js`, not a grep: **31 scenes, largest
+7,731.**
+
+**One rehearsal item this creates.** Pasting 133,884 characters into the draft
+box is the only thing in the shoot nobody has watched happen. Do it once during
+the Aug 17–20 window — it costs nothing, splitting is client-side — and find out
+whether it looks instant or looks like a hang. If it hangs, the shot cuts from
+"paste" to "31 scenes listed" and nobody is any the wiser.
+
+**The treatment is unchanged.** The existing Beat That Shook The Void treatment
+is what gets pasted in shot 2.
+
 ## The one thing to protect
 
 **The catch at 1:50 is the video.** Everything before it is setup and everything
