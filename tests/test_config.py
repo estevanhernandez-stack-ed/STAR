@@ -120,3 +120,54 @@ def test_validate_env_passes_with_every_phase_2_variable_present():
     }
     with mock.patch.dict(os.environ, env, clear=True):
         config.validate_env()  # must not raise
+
+
+# -- Vertex: the key stops being required and WHERE starts being required -----
+
+
+def test_validate_env_stops_demanding_an_api_key_under_vertex():
+    """Vertex authenticates with the runtime's own identity. Demanding an AI
+    Studio key alongside it would make the deploy carry a credential nothing
+    reads."""
+    env = {
+        "PARALLEL_API_KEY": "x",
+        "FIREBASE_API_KEY": "x",
+        "GOOGLE_GENAI_USE_VERTEXAI": "TRUE",
+        "GOOGLE_CLOUD_PROJECT": "star-project",
+        "GOOGLE_CLOUD_LOCATION": "global",
+    }
+    with mock.patch.dict(os.environ, env, clear=True):
+        config.validate_env()  # must not raise
+
+
+def test_validate_env_requires_a_location_under_vertex():
+    """The failure this catches is the expensive one. With no location
+    google-genai picks a default region, the pinned model is published only to
+    `global` on Vertex, and the 404 lands on the FIRST model call — minutes
+    after intake accepted the treatment and told the writer it was working."""
+    env = {
+        "PARALLEL_API_KEY": "x",
+        "FIREBASE_API_KEY": "x",
+        "GOOGLE_GENAI_USE_VERTEXAI": "TRUE",
+        "GOOGLE_CLOUD_PROJECT": "star-project",
+    }
+    with (
+        mock.patch.dict(os.environ, env, clear=True),
+        pytest.raises(RuntimeError, match="GOOGLE_CLOUD_LOCATION"),
+    ):
+        config.validate_env()
+
+
+def test_validate_env_requires_a_project_under_vertex():
+    env = {
+        "PARALLEL_API_KEY": "x",
+        "FIREBASE_API_KEY": "x",
+        "FIREBASE_PROJECT_ID": "star-project",
+        "GOOGLE_GENAI_USE_VERTEXAI": "TRUE",
+        "GOOGLE_CLOUD_LOCATION": "global",
+    }
+    with (
+        mock.patch.dict(os.environ, env, clear=True),
+        pytest.raises(RuntimeError, match="GOOGLE_CLOUD_PROJECT"),
+    ):
+        config.validate_env()

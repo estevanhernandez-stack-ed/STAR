@@ -45,11 +45,23 @@ Worth recording, because the two behave differently and it cost a detour:
   with `CONFIGURATION_NOT_FOUND` — a confusing error that looks like a
   misconfigured client rather than an uninitialized project.
 
-## Gemini is independent of all of this
+## Gemini is part of this project now
 
-`GOOGLE_GENAI_USE_VERTEXAI=FALSE`, so Gemini runs through AI Studio on
-`GOOGLE_API_KEY` and does not touch this project. Changing cloud projects does
-not disturb the working model path.
+`GOOGLE_GENAI_USE_VERTEXAI=TRUE` and `GOOGLE_CLOUD_LOCATION=global`, so Gemini
+runs on **Vertex AI in this project**, authenticated as the runtime service
+account through Application Default Credentials. There is no Gemini API key
+anywhere in the deploy.
+
+This reverses what this section said until 2026-08-17, and the consequence is
+real: the model path is no longer independent of the cloud project. Changing
+projects now means enabling `aiplatform.googleapis.com` there and granting
+`roles/aiplatform.user` to the new runtime identity, or every model call 403s.
+
+`global` is not a formality. `gemini-3.6-flash` is published to Vertex's
+global endpoint and returns 404 in `us-central1`, so a missing location sends
+the first model call of a run to a region that does not have the model —
+minutes after intake accepted the treatment. `star/config.py`'s `validate_env`
+refuses to boot without it.
 
 ## Verified end to end
 
@@ -188,19 +200,26 @@ this comment exists to prevent.
 
 | Env var | Source | Why |
 | --- | --- | --- |
-| `GOOGLE_API_KEY` | Secret Manager, secret `star-google-api-key`, mounted via `--set-secrets` | Real credential — Gemini via AI Studio |
 | `PARALLEL_API_KEY` | Secret Manager, secret `star-parallel-api-key`, mounted via `--set-secrets` | Real credential — Parallel search |
 | `FIREBASE_API_KEY` | Plain `--set-env-vars`, read from the caller's shell environment | Public browser-facing project identifier, not a secret — see above |
-| `GOOGLE_CLOUD_PROJECT`, `FIREBASE_PROJECT_ID`, `GOOGLE_GENAI_USE_VERTEXAI` | Plain `--set-env-vars`, hardcoded to `star-research-dept` / `FALSE` in the script | Non-sensitive configuration |
+| `GOOGLE_CLOUD_PROJECT`, `FIREBASE_PROJECT_ID` | Plain `--set-env-vars`, hardcoded to `star-research-dept` in the script | Non-sensitive configuration |
+| `GOOGLE_GENAI_USE_VERTEXAI`, `GOOGLE_CLOUD_LOCATION` | Plain `--set-env-vars`, `TRUE` / `global` | Gemini runs on Vertex AI. `global` is load-bearing: `gemini-3.6-flash` is published there and 404s in `us-central1` |
 
 The runtime identity (`390753828501-compute@developer.gserviceaccount.com`)
-holds `roles/secretmanager.secretAccessor` on both secrets individually
+holds `roles/aiplatform.user` for Vertex, and
+`roles/secretmanager.secretAccessor` on the search secret
 (least privilege — scoped to the two secrets it needs, not project-wide) and
 `roles/datastore.user` on the project for Firestore reads/writes through
 Application Default Credentials.
 
+**There is no Gemini API key in the deploy any more.** Vertex AI
+authenticates as the runtime service account, so the model calls carry no
+credential of their own. `star-google-api-key` still exists in Secret
+Manager unmounted, which is the rollback: flip the flag and restore one
+`--set-secrets` entry.
+
 Confirmed by inspecting `gcloud run services describe star --format=yaml`:
-`GOOGLE_API_KEY` and `PARALLEL_API_KEY` appear only as
+`PARALLEL_API_KEY` appears only as
 `valueFrom.secretKeyRef`, never as plaintext `value`. `FIREBASE_API_KEY`
 appears as plaintext `value` by design.
 

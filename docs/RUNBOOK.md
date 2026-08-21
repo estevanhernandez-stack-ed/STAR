@@ -10,7 +10,8 @@
 
 ## Run it locally — **(filled by hand)**
 
-It needs these set: `GOOGLE_API_KEY`, `GOOGLE_GENAI_USE_VERTEXAI`,
+It needs these set: `GOOGLE_GENAI_USE_VERTEXAI` (`TRUE`),
+`GOOGLE_CLOUD_LOCATION` (`global` — the pinned model 404s in `us-central1`),
 `PARALLEL_API_KEY`, `STAR_FAST_MODEL`, `STAR_SMART_MODEL`,
 `STAR_MAX_SEARCHES_PER_BUILD`, `GOOGLE_CLOUD_PROJECT`, `FIREBASE_PROJECT_ID`,
 `FIREBASE_API_KEY`, `FIREBASE_AUTH_DOMAIN`, `FIREBASE_APP_ID`,
@@ -209,9 +210,10 @@ A build takes several minutes. There is no other way to see one in progress.
 | `research_question` | searches against the writer's window |
 | `write_bible` | one model call, no searches |
 
-Two paid APIs behind those: `GOOGLE_API_KEY` (Gemini through AI Studio, **not**
-Vertex — `GOOGLE_GENAI_USE_VERTEXAI=FALSE`, so it does not touch the cloud
-project's quota) and `PARALLEL_API_KEY` for search.
+Two paid services behind those: **Gemini on Vertex AI**, which bills to this
+cloud project rather than to a separate AI Studio key, and `PARALLEL_API_KEY`
+for search. The Vertex half moved onto the project's own bill on 2026-08-17;
+anything written before then that says otherwise is stale.
 
 **Unwritten:** Is there a billing alert on either API, and at what figure?
 Nothing in this repo sets one, and the caps above bound requests rather than

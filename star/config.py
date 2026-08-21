@@ -481,6 +481,17 @@ def validate_env() -> None:
     using_vertex = os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "").upper() in ("TRUE", "1")
     if not using_vertex and not os.environ.get("GOOGLE_API_KEY"):
         missing.append("GOOGLE_API_KEY")
+    # Vertex authenticates with the runtime's own identity and reads WHERE to
+    # send the call off the environment instead. Both of these fail the way
+    # this function exists to prevent — silently and late. With no location
+    # google-genai falls back to a region the pinned model is not published in
+    # (gemini-3.6-flash is `global`-only on Vertex, 404 in us-central1), and
+    # the first model call 404s minutes after intake told the writer yes.
+    if using_vertex:
+        if not os.environ.get("GOOGLE_CLOUD_PROJECT"):
+            missing.append("GOOGLE_CLOUD_PROJECT (needed with GOOGLE_GENAI_USE_VERTEXAI)")
+        if not os.environ.get("GOOGLE_CLOUD_LOCATION"):
+            missing.append("GOOGLE_CLOUD_LOCATION (needed with GOOGLE_GENAI_USE_VERTEXAI)")
     # Either satisfies star/auth.py's _get_app and star/store.py's client
     # property, which both accept the same fallback — see those modules.
     if not (os.environ.get("FIREBASE_PROJECT_ID") or os.environ.get("GOOGLE_CLOUD_PROJECT")):

@@ -3,7 +3,8 @@
 **Every studio has a research department. Now every writer has one, and so does every agent they run.**
 
 STAR is a multi-agent research department for screenwriters, built with **Google ADK
-(`google-adk`)** and **Gemini** on Google Cloud, using **Parallel's Search API** (via the
+(`google-adk`)** and **Gemini on Vertex AI**, deployed on **Cloud Run** with **Firestore**,
+**Firebase Auth** and **Secret Manager**, and using **Parallel's Search API** (via the
 official **`parallel-web`** SDK) for live web research at runtime.
 
 Paste a treatment and STAR builds a research room: setting and atmosphere, objects and
@@ -139,7 +140,8 @@ Values live in `.env`, which is gitignored. `.env.example` documents each one.
 
 | Variable | What it is |
 | --- | --- |
-| `GOOGLE_API_KEY` | Gemini, via Google AI Studio |
+| `GOOGLE_GENAI_USE_VERTEXAI` | `TRUE`. Gemini runs on Vertex AI, authenticated as the runtime itself — there is no Gemini API key |
+| `GOOGLE_CLOUD_LOCATION` | `global`. Load-bearing: `gemini-3.6-flash` is published to Vertex's global endpoint and 404s in `us-central1` |
 | `PARALLEL_API_KEY` | Parallel Search API |
 | `GOOGLE_CLOUD_PROJECT` / `FIREBASE_PROJECT_ID` | The project Firestore and Auth live in |
 | `FIREBASE_API_KEY` | Public web key. Identifies the project to the browser; not a secret |

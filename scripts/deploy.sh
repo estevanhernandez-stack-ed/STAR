@@ -105,6 +105,18 @@ fi
 # property when it creates the build on your behalf.
 export CLOUDSDK_BUILDS_TIMEOUT="${CLOUDSDK_BUILDS_TIMEOUT:-1500}"
 
+# GEMINI RUNS ON VERTEX AI, not on AI Studio, and the env line below is the
+# whole switch. GOOGLE_CLOUD_LOCATION=global is not a default anybody can
+# drop: gemini-3.6-flash is published to Vertex's `global` endpoint and 404s
+# in us-central1, and that 404 lands on the FIRST model call, minutes after
+# intake has already told the writer their treatment was accepted.
+# star/config.py's validate_env now refuses to boot without it.
+#
+# GOOGLE_API_KEY is deliberately no longer mounted. Vertex authenticates as
+# the runtime service account (roles/aiplatform.user on the compute SA), so
+# a key here would be a live credential nothing reads. The secret still
+# exists in Secret Manager: flipping the flag back and restoring one
+# --set-secrets entry is the whole rollback.
 gcloud run deploy "$SERVICE" \
   --source . \
   --project "$PROJECT" \
@@ -116,8 +128,8 @@ gcloud run deploy "$SERVICE" \
   --no-cpu-throttling \
   --memory=2Gi \
   --timeout=900 \
-  --set-env-vars="GOOGLE_CLOUD_PROJECT=$PROJECT,FIREBASE_PROJECT_ID=$PROJECT,GOOGLE_GENAI_USE_VERTEXAI=FALSE,FIREBASE_API_KEY=${FIREBASE_API_KEY:?set FIREBASE_API_KEY in the environment before deploying}${GOOGLE_OAUTH_CLIENT_ID:+,GOOGLE_OAUTH_CLIENT_ID=$GOOGLE_OAUTH_CLIENT_ID}" \
-  --set-secrets="GOOGLE_API_KEY=star-google-api-key:latest,PARALLEL_API_KEY=star-parallel-api-key:latest"
+  --set-env-vars="GOOGLE_CLOUD_PROJECT=$PROJECT,FIREBASE_PROJECT_ID=$PROJECT,GOOGLE_GENAI_USE_VERTEXAI=TRUE,GOOGLE_CLOUD_LOCATION=global,FIREBASE_API_KEY=${FIREBASE_API_KEY:?set FIREBASE_API_KEY in the environment before deploying}${GOOGLE_OAUTH_CLIENT_ID:+,GOOGLE_OAUTH_CLIENT_ID=$GOOGLE_OAUTH_CLIENT_ID}" \
+  --set-secrets="PARALLEL_API_KEY=star-parallel-api-key:latest"
 
 gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" \
   --format='value(status.url)'

@@ -76,8 +76,10 @@ non-negotiables:
 - Search budget: per-run, stored in ADK session state via `tool_context`
   (module-global fallback only for direct script calls). Default 30/run
   (`STAR_MAX_SEARCHES_PER_BUILD`).
-- `.env` needs `GOOGLE_API_KEY` (AI Studio) + `PARALLEL_API_KEY`. Real keys
-  exist in the local `.env` — never commit it.
+- `.env` needs `PARALLEL_API_KEY` plus `GOOGLE_GENAI_USE_VERTEXAI=TRUE` and
+  `GOOGLE_CLOUD_LOCATION=global`. Gemini runs on Vertex and authenticates
+  through Application Default Credentials, so no Gemini key is required —
+  `gcloud auth application-default login` is what makes local runs work.
 
 ## Status: done / verified
 
