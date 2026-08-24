@@ -140,14 +140,20 @@ and re-shot freely.
 
 | When | What |
 |---|---|
-| **Aug 17–20** | Rehearse the browser path against the *existing* rooms. No spending. Settle wording. |
-| **Aug 21** | Delete the Beat rooms. Capture the shots that do not need the live run. |
-| **Aug 22** | **Shoot day.** One build, one sweep, both live. Nothing deployed for 24 hours either side. |
-| **Aug 23–27** | Edit. Time-lapse passes, counter overlays, voiceover. |
-| **Aug 28** | Watch it cold. One pass of notes. |
-| **Aug 29–31** | Fixes. Re-shoot any single shot if needed — the hourly window has reset many times by then. |
-| **Sep 1–4** | Buffer. Do not touch the code. |
-| **Sep 5** | Submit. Deadline is Sep 7, 2:00 PM PT; two days of slack is the point. |
+| **Aug 24** | Re-plotted from here; the original Aug 22 shoot passed unused. Free prep only: the 133,884-character paste rehearsal, pick and hand-check shot 5's finding, tidy the sweep list. |
+| **Aug 25** | Capture every shot that does not need a live run, off the existing room and sweep `92d9c15c8ef5`. No spending. |
+| **Aug 26** | **Shoot day.** One live build, one live sweep. Nothing deployed for 24 hours either side. |
+| **Aug 27–31** | Edit. Time-lapse passes, counter overlays, voiceover. |
+| **Sep 1** | Watch it cold. One pass of notes. |
+| **Sep 2–3** | Fixes. Re-shoot any single shot — the hourly window has reset many times by then. |
+| **Sep 4** | Buffer. Do not touch the code. |
+| **Sep 5** | Submit. Deadline is Sep 7, 2:00 PM PT. |
+
+**This is the second timeline.** The first ran Aug 17–22 and the shoot date went
+by while the citation defect and the Vertex move were still landing. Both were
+worth the slip: the row shot 9 was built on turned out to be a false positive,
+and it would have been filmed. Twelve days of runway remain, which is more slack
+than the original plan ever had.
 
 ## What could go wrong on camera, and what to do
 
@@ -156,12 +162,18 @@ and re-shot freely.
   You have five an hour.
 - **The sweep dies with the tab.** It is a synchronous request. **Do not switch
   tabs, close the lid, or let the machine sleep during shot 7.**
-- **A confirmed row cites the wrong page.** Measured at 6 of 34 confirmed rows
-  (18%) on the 2026-08-17 sweep, down from 21 of 42 (50%). Every one now
-  carries a caveat under the excerpt saying the page repeats no word of the
-  claim, so shot 5 can open a caveated row deliberately rather than hunt for a
-  clean one — a desk marking its own thin receipts is the thesis, not a
-  failure of it.
+- **A confirmed SWEEP row cites the wrong page.** Measured at 6 of 34 confirmed
+  rows (18%) on the 2026-08-17 sweep, down from 21 of 42 (50%). Each of those
+  now carries a caveat under the excerpt saying the page repeats no word of the
+  claim. That is a shot 9/10 asset, not a liability: a desk marking its own thin
+  receipts is the thesis rather than a failure of it.
+- **Shot 5 is a different surface and carries no caveat.** It opens a ROOM
+  FINDING drawer, and `shares_claim_wording` is set only on the script-check
+  path (`star/verdicts.py`); `cite-unmatched` renders only in
+  `web/scriptcheck.js`. Room findings were never measured and show no flag, so
+  **hand-check whichever finding gets filmed** — read the excerpt against the
+  fact. An earlier revision of this file claimed shot 5 could show a caveated
+  row. It cannot.
 - **A search comes back thin.** Live web results vary. Shot 4 holds on whatever
   arrives — the query strings are the point, not the answers.
 - **Worth doing once, not on camera:** the first build after a deploy creates
