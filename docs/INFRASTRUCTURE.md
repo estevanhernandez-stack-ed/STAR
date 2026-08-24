@@ -52,7 +52,7 @@ runs on **Vertex AI in this project**, authenticated as the runtime service
 account through Application Default Credentials. There is no Gemini API key
 anywhere in the deploy.
 
-This reverses what this section said until 2026-08-17, and the consequence is
+This reverses what this section said until 2026-08-21, and the consequence is
 real: the model path is no longer independent of the cloud project. Changing
 projects now means enabling `aiplatform.googleapis.com` there and granting
 `roles/aiplatform.user` to the new runtime identity, or every model call 403s.

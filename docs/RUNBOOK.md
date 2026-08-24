@@ -212,7 +212,7 @@ A build takes several minutes. There is no other way to see one in progress.
 
 Two paid services behind those: **Gemini on Vertex AI**, which bills to this
 cloud project rather than to a separate AI Studio key, and `PARALLEL_API_KEY`
-for search. The Vertex half moved onto the project's own bill on 2026-08-17;
+for search. The Vertex half moved onto the project's own bill on 2026-08-21;
 anything written before then that says otherwise is stale.
 
 **Unwritten:** Is there a billing alert on either API, and at what figure?
