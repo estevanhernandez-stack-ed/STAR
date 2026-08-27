@@ -52,3 +52,6 @@ web/dist/
 # OS / editor
 .DS_Store
 Thumbs.db
+
+# ElevenLabs credentials (the tiktok-video-maker skill reads this next to a manifest or in ~)
+.elevenlabs.json

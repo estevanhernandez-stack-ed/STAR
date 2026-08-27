@@ -78,15 +78,19 @@ across 22 of the 31 scenes.
    correctly. That row was the original shot 9 and it would have been filmed.
 2. **Shot 5 shows no caveat.** Room findings carry ledger citations but no
    `shares_claim_wording` flag — that lives only on the script-check path. The
-   "6 of 34 confirmed rows carry a caveat" figure is about SWEEP rows, shots
-   9/10. Do not promise a caveat on shot 5.
+   "7 of 34 confirmed rows carry a caveat" figure (re-counted 2026-08-24; an
+   earlier pass said 6) is about SWEEP rows, shots 9/10. Do not promise a
+   caveat on shot 5.
 3. **The sweep is a synchronous request and dies with the tab.** During the live
    sweep: no tab switching, no closing the lid, no sleep.
 4. **Deploying kills a build in flight** and resets the hourly counters. Nothing
    ships within 24 hours either side of the shoot.
-5. **The room holds ten sweeps and eight are throwaways** of 1–18 claims. If the
-   sweep picker appears on camera it reads badly. Deleting them is Este's call,
-   not yours — ask.
+5. **The sweep picker was tidied 2026-08-24, on Este's call.** The room now
+   holds exactly one sweep — the reference `92d9c15c8ef5` — after the nine
+   others (six scraps, two 64-claim Aug 13 passes, and the 78-claim Aug 14
+   sweep carrying the seventeen false positive) were hard-deleted. The
+   false-positive story survives only in this brief and the plan; the
+   `5b55e5c16c88` sweep itself is gone. The picker reads clean on camera.
 
 ## Spending, which is the real hazard
 

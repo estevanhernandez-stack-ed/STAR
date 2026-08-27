@@ -162,8 +162,10 @@ than the original plan ever had.
   You have five an hour.
 - **The sweep dies with the tab.** It is a synchronous request. **Do not switch
   tabs, close the lid, or let the machine sleep during shot 7.**
-- **A confirmed SWEEP row cites the wrong page.** Measured at 6 of 34 confirmed
-  rows (18%) on the 2026-08-17 sweep, down from 21 of 42 (50%). Each of those
+- **A confirmed SWEEP row cites the wrong page.** Measured at 7 of 34 confirmed
+  rows (21%) on the 2026-08-17 sweep (re-counted 2026-08-24 directly against
+  `shares_claim_wording=false` in Firestore; an earlier pass said 6), down from
+  21 of 42 (50%). Each of those
   now carries a caveat under the excerpt saying the page repeats no word of the
   claim. That is a shot 9/10 asset, not a liability: a desk marking its own thin
   receipts is the thesis rather than a failure of it.
@@ -203,6 +205,16 @@ box is the only thing in the shoot nobody has watched happen. Do it once during
 the Aug 17–20 window — it costs nothing, splitting is client-side — and find out
 whether it looks instant or looks like a hang. If it hangs, the shot cuts from
 "paste" to "31 scenes listed" and nobody is any the wiser.
+
+**REHEARSED 2026-08-24, against the live revision.** The full 133,884-character
+draft through the real `#scene` input handler: splitter + strip render 7.9ms,
+layout and paint 37.5ms with the panel visible. Under 50ms end to end — the
+paste looks instant, the strip announces "This looks like a screenplay — 31
+scenes," and picking a scene loads it in 0.5ms with the list surviving the
+pick. The shot stands as written; no cut-around needed. (Driven via Playwright
+with a programmatic value-set + `input` dispatch, which is the same handler
+path a native paste takes; worth one native confirm in Este's own session on
+capture day.)
 
 **The treatment is unchanged.** The existing Beat That Shook The Void treatment
 is what gets pasted in shot 2.
