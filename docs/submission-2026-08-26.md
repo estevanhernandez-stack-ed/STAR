@@ -59,15 +59,15 @@ python · google-adk · gemini · vertex-ai · google-cloud-run · firestore · 
 
 ---
 
-### About the project
+### Project story (paste from '## Inspiration' to the end of '## What's next')
 
-#### Inspiration
+## Inspiration
 
 Every studio has a research department. A writer working alone gets one chance to notice that the club in their scene opened a year after the scene is set. I write a Doctor Who story set in Liverpool in 1958 and Hamburg in 1960, and I kept catching my own anachronisms weeks late — the Casbah Coffee Club opened in August 1959; a line about "turning it up to eleven" is from a 1984 film. Nobody holds those dates in their head. A department does.
 
 I wanted the department, and I wanted it honest: not a chatbot that says "verified," but a desk that files what it actually found and shows the receipt.
 
-#### What it does
+## What it does
 
 **Build the Room.** Paste a treatment. An intake agent extracts a story profile; a planner turns it into a research plan; four researcher agents run in parallel — setting and atmosphere, objects and props, logistics, forces and conflicts — each issuing its own queries to the Parallel Search API. The browser watches them work over SSE: the actual query strings, the searches, the clock. A synthesis agent writes a research bible. Every finding carries its sources with the domain, the retrieval date, and the page's own excerpt.
 
@@ -75,7 +75,7 @@ I wanted the department, and I wanted it honest: not a chatbot that says "verifi
 
 **The agent door.** The same department over MCP — fifteen tools, hand-written against the Streamable HTTP transport, OAuth 2.1 with dynamic client registration — so any desktop agent can build a room, check a scene, or ask the department to defend a fact. Free reads never rate-limit; the tools that spend money say so before they spend, and browser and agent share one budget.
 
-#### How we built it
+## How we built it
 
 - **Google ADK** workflow agents, not a free-roaming chat loop: a `SequentialAgent` for intake → planner → a `ParallelAgent` of four researchers → synthesis, and a second pipeline for claim extraction → verification. Deterministic steps, schema'd outputs.
 - **Gemini on Vertex AI** (`gemini-3.6-flash`, pinned), authenticated as the Cloud Run runtime — no API key anywhere in the app.
@@ -83,7 +83,7 @@ I wanted the department, and I wanted it honest: not a chatbot that says "verifi
 - **Cloud Run** (single instance, so in-memory run state and the SSE stream stay coherent), **Firestore** via Application Default Credentials for rooms, sweeps and filed checks, **Firebase Auth** (anonymous by default, Google linking as an upgrade), **Secret Manager** for the one secret.
 - **FastAPI** + native ES modules, zero third-party browser requests — fonts and libraries are vendored so a CDN hiccup can't break a demo.
 
-#### The thing it's actually built around
+## The thing it's actually built around
 
 A model authors the verdict, because a verdict is a judgment. It never authors a title, an excerpt, or a claim about where something came from. Those are computed on the server from the ledger of what search actually returned:
 
@@ -92,7 +92,7 @@ A model authors the verdict, because a verdict is a judgment. It never authors a
 - "The room answered this, a fresh search answered that" is decided by which ledger holds the URL, never by asking the model what it did.
 - Running out of search budget is reported as *budget*, never as *not found*.
 
-#### Challenges we ran into
+## Challenges we ran into
 
 - **Citation honesty is a measurement problem, not a prompt problem.** On an early sweep, 21 of 42 confirmed rows cited a page that repeated no word of the claim. Fixing it meant measuring — a `shares_claim_wording` check on every citation — and then showing the result on screen as a caveat rather than hiding it. It's at 7 of 34 now, and every one is labelled.
 - **A false positive that would have been filmed.** One sweep flagged "He was seventeen" as an anachronism, reading "he" as George Harrison. Both scenes meant John Lennon, who was seventeen in 1958. The draft was right and the department was wrong. The fix was a better verifier; the lesson was that the product's job is to show a reader what to look at, not to rule.
@@ -100,20 +100,20 @@ A model authors the verdict, because a verdict is a judgment. It never authors a
 - **Gemini on Vertex 404s in `us-central1`.** `gemini-3.6-flash` is published to the global endpoint. `GOOGLE_CLOUD_LOCATION=global` is load-bearing and now documented in capitals.
 - **MCP inside the same process.** A second Cloud Run service would double every budget and split the SSE stream from the build that owns it. The MCP router is hand-written against the transport spec, mounted in the same FastAPI app, sharing the same function objects as the browser — so "one budget, one ceiling" is mechanical rather than asserted.
 
-#### Accomplishments that we're proud of
+## Accomplishments that we're proud of
 
 - Anti-fabrication that extends to the bible: 31 of 31 source lines carried the ledger's real title, and every URL the bible printed was one the search API actually returned.
 - A whole 31-scene draft (134,000 characters) swept in one request in about two and a half minutes, with 75 distinct claims checked against a room that cost 17 searches to build.
 - The catch in the demo is real and unrehearsed: the Casbah, Mona Best's coal cellar, the espresso machine, the spider and the rainbow — five details in one scene, all dated to August 1959, all flagged with the source that dates them, and the department declining to say the story is wrong.
 - Fifteen MCP tools whose error strings are the product: every refusal an agent can hit names what failed and what to do next.
 
-#### What we learned
+## What we learned
 
 - Two green test suites either side of a wire prove nothing about the wire. Open the artifact. Every expensive mistake on this project was a surface that said something true and unusable.
 - The honest thing and the demoable thing are the same thing. "Nothing here says verified" turned out to be the strongest line in the video.
 - Budgets and ceilings are features, not plumbing. A desk that says "budget" instead of "not found" is telling the truth about itself.
 
-#### What's next
+## What's next
 
 - Requisitions: a writer asks the room one question and the department sends one researcher to the field (`research_question` exists at the agent door today).
 - A room that continues another, so a story spanning eras reads as one chain.
@@ -121,6 +121,31 @@ A model authors the verdict, because a verdict is a judgment. It never authors a
 - Per-writer voices for the bible: the department's prose in the register of the draft it serves.
 
 ---
+
+### Elevator pitch (Devpost, under 200 characters)
+
+A research department for screenwriters: four agents on Google ADK research your world through Parallel's live search and file every fact with the page it came from.
+
+### What Google Cloud products did you use in this project?
+
+**Vertex AI** — Gemini (`gemini-3.6-flash`, pinned) runs every agent step: intake, planning, the four researchers, synthesis, claim extraction and verification. Authenticated as the Cloud Run runtime identity through the `global` endpoint; there is no Gemini API key anywhere in the app.
+**Google Agent Development Kit (ADK)** — the whole department is ADK workflow agents: a `SequentialAgent` for intake → planner → a `ParallelAgent` of four researchers → synthesis, and a second pipeline for claim extraction → verification. Deterministic steps with schema'd outputs, not a chat loop.
+**Cloud Run** — hosts the FastAPI app, the SSE stream the browser watches, and the MCP server, all in one service (single instance, so budgets and live-run state stay coherent). Custom domain at star.626labs.dev.
+**Cloud Build + Artifact Registry** — every deploy builds from source with exactly pinned dependencies; no local Docker.
+**Firestore** — persists rooms, findings, sweeps and filed checks under each user, accessed through Application Default Credentials. No client-side ruleset is deployed, so every access goes through the server.
+**Firebase Authentication** — anonymous sign-in as the silent front door, with Google account linking as an upgrade so rooms follow the writer across browsers. Also issues the identity that MCP tokens are bound to.
+**Secret Manager** — holds the Parallel API key, mounted into Cloud Run at deploy; no secret ever goes on a command line.
+**Google GenAI SDK** (`google-genai`) — the Gemini client under ADK, plus the persona harness that exercised the MCP server.
+
+### Please list all other tools or products you used in your project.
+
+**Parallel Search API** via the official `parallel-web` SDK — live web research at runtime in both pipelines. Every result is recorded in a server-side ledger before a model writes a word, so every citation, title and excerpt on screen is something the search actually returned.
+**Model Context Protocol (MCP)** — fifteen tools over Streamable HTTP, hand-written against the transport spec with no MCP SDK dependency; OAuth 2.1 with dynamic client registration, or per-user bearer tokens.
+**Python 3 / FastAPI / Uvicorn / Pydantic** — the server, the schemas the agents fill, the SSE stream.
+**Vanilla JavaScript** with native ES modules — no build step, zero third-party browser requests; fonts (Newsreader, Archivo Narrow, Sligoil), `marked` and `DOMPurify` are vendored.
+**Fountain** — the screenplay format the draft splitter reads, so a whole script can be swept in one request.
+**pytest, ruff, httpx** — 1,131 tests, lint clean.
+**Playwright + ffmpeg** — the demo video was recorded natively from the running app and assembled with ffmpeg; **ElevenLabs** voiced the narration.
 
 ### Submission checklist (from the rules)
 
