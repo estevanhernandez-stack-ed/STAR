@@ -62,6 +62,32 @@ land in 4.0s against a 5s hold — tight but clean. Everything else has room.
 Regenerate any single line by editing its slide in `vo/manifest.json` and
 rerunning; the files are per-shot so one change costs one clip.
 
+## v2 — the reframe (2026-08-26, Este's call, the cut that ships)
+
+The v1 lines above told the Doctor Who story. Este's note after hearing it:
+talk about how STAR uses Google Cloud and the Parallel API, less about the
+story. v2 is in `scripts/shoot/manifest-v2.json`; every technical claim in it
+is lifted from README.md and the code — ADK workflow agents (intake, planner,
+a ParallelAgent of four researchers, synthesis), Gemini on Vertex AI with no
+API key, `parallel-web` at runtime in both pipelines, files-first
+verification before any live search, Firestore via ADC, a hand-written MCP
+transport on Cloud Run. Doctor Who is now the evidence, not the subject.
+
+The numbers line was the one that sounded unnatural in v1 — three clipped
+fragments flatten in TTS. It became one sentence with a colon: "Seventy-five
+claims came back: thirty-four confirmed, thirty-three flagged as anachronisms."
+
+Measured v2: 130.5s voiced (the clone reads at ~3.1 words/s). Two lines
+outgrew their slots by a hair and the cut rebalanced at zero net: shot 7 to
+22s, shot 8 to 7s, the catch's dead holds down from 40s to 36s with every
+word kept. Still exactly 3:00.
+
+Gotcha for the next run: `elevenlabs_tts.py` opens the manifest with the
+Windows default codepage, so em-dashes reach the API as `â€”`. Run it with
+`PYTHONUTF8=1` set. And never patch `assemble.sh` through `re.sub` — the
+replacement string eats a backslash before a newline and silently drops bash
+line continuations; `.gitattributes` now pins `*.sh` to LF regardless.
+
 ## Title card (added 2026-08-26, Este's call)
 
 Four seconds up front, before shot 1: the app's own dark ground, the ✶ mark,

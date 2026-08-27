@@ -1,0 +1,17 @@
+{
+  "title": "star-submission-voiceover-v2",
+  "slides": [
+    { "shot": 1, "narration": "Every studio has a research department. A writer working alone doesn't. STAR is that department: a team of research agents on Google Cloud, searching the live web through Parallel, and filing what they find with the page it came from." },
+    { "shot": 2, "narration": "" },
+    { "shot": "3+4", "narration": "Hand it a treatment. An intake agent and a planner, both Gemini on Vertex AI, turn it into a research plan. Then four researcher agents run at once on Google's Agent Development Kit — setting, objects, logistics, forces — each sending its own queries to the Parallel Search API. What's on screen is real: the query strings, the searches, the clock." },
+    { "shot": 5, "narration": "Every fact is filed with its receipt: the domain, the day it was retrieved, and the excerpt Parallel returned from the page itself. Nothing here says \"verified.\" And a link the search never returned is stamped, not dropped." },
+    { "shot": 6, "narration": "" },
+    { "shot": 7, "narration": "Now the whole draft. Thirty-one scenes, one request. Gemini extracts every claim the script makes about the world. The verifier checks each one against the room's own files first, and searches Parallel only for what those files can't answer. One search budget for the draft, one ceiling, one kill switch." },
+    { "shot": 8, "narration": "Seventy-five claims came back: thirty-four confirmed, thirty-three flagged as anachronisms." },
+    { "shot": 9, "narration": "Two of them. \"Turning it up to eleven\" — a film from 1984, in a scene set in 1959. \"Got blisters on your fingers\" — Ringo, 1968. Each flagged with the source that dates it. Neither is a date anybody could be expected to hold in their head." },
+    { "shot": "10a", "narration": "And a cluster. The Casbah opened in August 1959. The script has it open in 1958, and five details in one scene fall with it — every one tracing to a source Parallel returned. It does not tell you that's wrong. It tells you a reader will notice, in twenty-two of the thirty-one scenes, and shows you why. What you do about it is the writer's business." },
+    { "shot": "10b", "narration": "Every verdict, every source, every excerpt is stored in Firestore under your account. And the department can defend any line it filed, on demand." },
+    { "shot": 11, "narration": "Fifteen tools over MCP, hand-built on Cloud Run. Same rooms, same receipts, no browser — and the ones that spend say so before they spend." },
+    { "shot": 12, "narration": "Every studio has a research department. Now every writer has one, and so does every agent they run." }
+  ]
+}
