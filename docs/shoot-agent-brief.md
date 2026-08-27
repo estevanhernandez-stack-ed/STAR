@@ -108,7 +108,7 @@ NEW room from the same treatment. **Do not delete `1fd837bdd99e`** to make room
 Read-only inspection is free and encouraged. Firestore is reachable locally with
 Application Default Credentials; load `.env` for `GOOGLE_CLOUD_PROJECT`, then
 `firestore.Client(...)`. Rooms live at `users/{uid}/rooms/{run_id}`, sweeps at
-`.../sweeps/{sweep_id}`. Este's uid starts `KTwNLjLvS7`.
+`.../sweeps/{sweep_id}`. Este's uid is the one whose rooms include `1fd837bdd99e`.
 
 **Ask before:** deleting any room or sweep, deploying, or spending a build or
 sweep. Everything else — reading, checking a citation by hand, drafting
