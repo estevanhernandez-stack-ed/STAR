@@ -55,3 +55,6 @@ Thumbs.db
 
 # ElevenLabs credentials (the tiktok-video-maker skill reads this next to a manifest or in ~)
 .elevenlabs.json
+
+# Video, voiceover, stills and cards for the Devpost submission (large binaries, kept local)
+submission/
