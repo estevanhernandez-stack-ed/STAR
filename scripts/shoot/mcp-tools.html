@@ -1,0 +1,64 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+@font-face { font-family: "Archivo Narrow"; font-weight: 700; src: url("file:///C:/Users/estev/Projects/STAR/web/vendor/fonts/archivo-narrow-700.woff2") format("woff2"); }
+@font-face { font-family: "Newsreader"; src: url("file:///C:/Users/estev/Projects/STAR/web/vendor/fonts/newsreader.woff2") format("woff2"); }
+@font-face { font-family: "Newsreader"; font-style: italic; src: url("file:///C:/Users/estev/Projects/STAR/web/vendor/fonts/newsreader-italic.woff2") format("woff2"); }
+@font-face { font-family: "Sligoil"; src: url("file:///C:/Users/estev/Projects/STAR/web/vendor/fonts/sligoil.woff2") format("woff2"); }
+html, body { margin: 0; width: 1920px; height: 1080px; background: #1B211D; overflow: hidden; color: #E9DCC0; }
+.wrap { position: absolute; inset: 0; padding: 88px 150px; box-sizing: border-box; }
+.kicker { font-family: "Sligoil", monospace; font-size: 22px; letter-spacing: 0.22em; text-transform: uppercase; color: #D2B98C; }
+h1 { font-family: "Archivo Narrow", sans-serif; font-weight: 700; font-size: 84px; letter-spacing: 0.03em; margin: 10px 0 14px; line-height: 1; }
+.lede { font-family: "Newsreader", Georgia, serif; font-style: italic; font-size: 30px; color: #D2B98C; margin: 0 0 44px; }
+.cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 40px; }
+.col { background: #D2B98C; color: #1B211D; padding: 26px 30px 22px; border-radius: 3px; box-shadow: 0 6px 0 #B99F70; }
+.col h2 { font-family: "Sligoil", monospace; font-size: 20px; letter-spacing: 0.16em; text-transform: uppercase; margin: 0 0 6px; }
+.col .cost { font-family: "Newsreader", Georgia, serif; font-style: italic; font-size: 22px; margin: 0 0 18px; color: #4a4230; }
+.col ul { list-style: none; padding: 0; margin: 0; }
+.col li { font-family: "Sligoil", monospace; font-size: 24px; line-height: 1.75; }
+.col li span { font-family: "Newsreader", Georgia, serif; font-size: 22px; color: #4a4230; margin-left: 10px; }
+.foot { position: absolute; bottom: 56px; left: 0; right: 0; text-align: center; font-family: "Sligoil", monospace; font-size: 20px; letter-spacing: 0.08em; color: #8f8a78; }
+</style></head>
+<body>
+<div class="wrap">
+  <div class="kicker">✶ STAR · MCP</div>
+  <h1>Fifteen tools. Same rooms. No browser.</h1>
+  <p class="lede">Any desktop agent gets the department: the same filed research, the same receipts — and the ones that spend say so before they spend.</p>
+  <div class="cols">
+    <div class="col">
+      <h2>Read</h2>
+      <p class="cost">Free. Never rate-limited.</p>
+      <ul>
+        <li>list_rooms<span>every room, newest first</span></li>
+        <li>get_room<span>the four drawers and the bible</span></li>
+        <li>ask_room<span>findings that bear on a question</span></li>
+        <li>defend_claim<span>one fact, its sources</span></li>
+        <li>get_sweep<span>a draft's verdicts, row by row</span></li>
+        <li>export_room<span>research or story as CSV</span></li>
+      </ul>
+    </div>
+    <div class="col">
+      <h2>Keep</h2>
+      <p class="cost">Free. Changes what the account holds.</p>
+      <ul>
+        <li>link_room<span>chain a sequel to its room</span></li>
+        <li>import_rooms<span>bring a CSV back in</span></li>
+        <li>import_notes<span>a writer's marks, two-step</span></li>
+        <li>delete_room<span>two calls, one-time token</span></li>
+      </ul>
+    </div>
+    <div class="col">
+      <h2>Spend</h2>
+      <p class="cost">Live searches, against an hourly window.</p>
+      <ul>
+        <li>build_room<span>four researchers, one treatment</span></li>
+        <li>check_scene<span>one scene, marked in place</span></li>
+        <li>sweep_draft<span>a whole draft, one request</span></li>
+        <li>research_question<span>one question, to the field</span></li>
+        <li>write_bible<span>the bible, from the drawers</span></li>
+      </ul>
+    </div>
+  </div>
+</div>
+<div class="foot">Built with Google ADK + Gemini on Google Cloud · Live cited research via Parallel Search API</div>
+</body></html>

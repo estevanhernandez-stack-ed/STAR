@@ -1,0 +1,47 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+@font-face { font-family: "Archivo Narrow"; font-weight: 700; src: url("file:///C:/Users/estev/Projects/STAR/web/vendor/fonts/archivo-narrow-700.woff2") format("woff2"); }
+@font-face { font-family: "Newsreader"; src: url("file:///C:/Users/estev/Projects/STAR/web/vendor/fonts/newsreader.woff2") format("woff2"); }
+@font-face { font-family: "Newsreader"; font-style: italic; src: url("file:///C:/Users/estev/Projects/STAR/web/vendor/fonts/newsreader-italic.woff2") format("woff2"); }
+@font-face { font-family: "Sligoil"; src: url("file:///C:/Users/estev/Projects/STAR/web/vendor/fonts/sligoil.woff2") format("woff2"); }
+html, body { margin: 0; width: 1920px; height: 1080px; background: #1B211D; overflow: hidden; color: #E9DCC0; }
+.wrap { position: absolute; inset: 0; padding: 88px 150px; box-sizing: border-box; display: grid; grid-template-columns: 640px 1fr; gap: 56px; }
+.kicker { font-family: "Sligoil", monospace; font-size: 22px; letter-spacing: 0.22em; text-transform: uppercase; color: #D2B98C; }
+.call { margin-top: 26px; background: #121613; border: 1px solid #3a4038; border-radius: 4px; padding: 26px 28px; font-family: "Sligoil", monospace; font-size: 24px; line-height: 1.7; color: #E9DCC0; }
+.call .k { color: #D2B98C; }
+.call .s { color: #b8ad92; }
+.what { font-family: "Newsreader", Georgia, serif; font-style: italic; font-size: 28px; color: #D2B98C; margin-top: 30px; line-height: 1.45; }
+.card { background: #D2B98C; color: #1B211D; border-radius: 3px; box-shadow: 0 6px 0 #B99F70; padding: 30px 34px; }
+.card .h { font-family: "Sligoil", monospace; font-size: 19px; letter-spacing: 0.16em; text-transform: uppercase; margin: 0 0 12px; color: #4a4230; }
+.fact { font-family: "Newsreader", Georgia, serif; font-size: 27px; line-height: 1.4; margin: 0 0 22px; }
+.n { font-family: "Sligoil", monospace; font-size: 19px; letter-spacing: 0.06em; margin: 0 0 14px; color: #4a4230; }
+.src { border-left: 3px solid #1B211D; padding: 8px 16px; margin: 0 0 12px; }
+.src .d { font-family: "Sligoil", monospace; font-size: 19px; letter-spacing: 0.04em; }
+.src .t { font-family: "Newsreader", Georgia, serif; font-size: 22px; margin: 2px 0 4px; }
+.src .x { font-family: "Newsreader", Georgia, serif; font-style: italic; font-size: 20px; color: #4a4230; line-height: 1.35; }
+.foot { position: absolute; bottom: 56px; left: 0; right: 0; text-align: center; font-family: "Sligoil", monospace; font-size: 20px; letter-spacing: 0.08em; color: #8f8a78; }
+</style></head>
+<body>
+<div class="wrap">
+  <div>
+    <div class="kicker">✶ STAR · MCP · defend_claim</div>
+    <div class="call">
+      <span class="k">tool</span>&nbsp; defend_claim<br>
+      <span class="k">run_id</span>&nbsp; <span class="s">"1fd837bdd99e"</span><br>
+      <span class="k">fact</span>&nbsp; <span class="s">"A British band traveling from<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Liverpool to Hamburg in August 1960…"</span>
+    </div>
+    <p class="what">What the agent gets back: the fact as filed, the drawer it lives in, the day it was retrieved, and every source with the page's own title and excerpt. No search spent. Whether a source supports the claim is left to the reader — the excerpts are there so they can decide.</p>
+  </div>
+  <div class="card">
+    <p class="h">Logistics · filed by build · retrieved 13 Aug 2026</p>
+    <p class="fact">A British band traveling from Liverpool to Hamburg in August 1960 traveled in a cramped commercial minibus — such as an Austin J4 or Morris J2 — driven from Liverpool through London to Harwich, loaded onto a cross-Channel ferry by quay crane to the Hook of Holland, and driven across the Netherlands and West Germany in a journey lasting 30 to 36 hours.</p>
+    <p class="n">4 sources behind it · 4 carrying the page's own words</p>
+    <div class="src"><div class="d">beatlesbible.com</div><div class="t">16 August 1960: Travel: Liverpool to Hamburg</div><div class="x">"It was cramped. The van didn't even have seats; we had to sit on our amplifiers." — Allan Williams</div></div>
+    <div class="src"><div class="d">beatlesstory.com</div><div class="t">The man who drove The Beatles to Hamburg</div><div class="x">"Early on the morning of the 16th the van was loaded up from the quay at Harwich by crane and dropped onto the ship…" — Barry Chang</div></div>
+    <div class="src"><div class="d">en.wikipedia.org</div><div class="t">The Beatles in Hamburg</div><div class="x">"…his Austin J4 minibus which was loaded by crane onto a ferry at Harwich on 16 August 1960, and landed at Hook of Holland."</div></div>
+    <div class="src"><div class="d">en.wikipedia.org</div><div class="t">Allan Williams</div><div class="x">"On 15 August, Williams commenced a road and ferry journey in his Morris J2 van … to Hamburg by the early morning hours of 17 August."</div></div>
+  </div>
+</div>
+<div class="foot">Built with Google ADK + Gemini on Google Cloud · Live cited research via Parallel Search API</div>
+</body></html>

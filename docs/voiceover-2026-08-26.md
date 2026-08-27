@@ -79,6 +79,16 @@ does every agent they run." — the live URL and the GitHub path under it. Paid
 for by trimming shot 1 from 20s to 16s (its line ends at 9.4s). Still 3:00.
 `scripts/shoot/end.html`, rendered by `render_card.py end`.
 
+## Shot 11 is two cards, not a chat snip
+
+The agent door is presented as designed cards in the app's own style, 5s
+each, with the shot-11 line running across both: `mcp-tools` — the fifteen
+tools in three columns (Read, free; Keep, free but changes the account; Spend,
+live searches) each with a one-line "what you get back" — then `mcp-defend`,
+the real `defend_claim` call on the minibus fact and the card it returns: four
+sources, domains, the pages' own excerpts, "no search spent." A screenshot of
+a chat pane read as a chat pane; the cards read as the product.
+
 ## Notes for the read
 
 - "verified" in shot 5 wants audible quote marks — a half-beat either side.

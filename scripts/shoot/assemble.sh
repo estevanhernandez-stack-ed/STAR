@@ -61,9 +61,9 @@ ffmpeg -v error -y -ss 62.3 -t 10 -i "$REEL" -ss 168 -t 13 -i "$CHECK" -i "$VO/v
   -filter_complex "[0:v]tpad=stop_mode=clone:stop_duration=13,setsar=1[v0];[1:v]tpad=stop_mode=clone:stop_duration=4,setsar=1[v1];[v0][v1]concat=n=2:v=1:a=0[v];[2:a]adelay=500|500[a0];[3:a]adelay=24500|24500[a1];[a0][a1]amix=inputs=2:normalize=0,apad=whole_dur=40[a]" \
   -map "[v]" -map "[a]" -t 40 $VENC $AENC "$SEG/10.mp4"
 
-# 11. agent door — 10s slate (Clipchamp drops the snip here), vo-11 from 0.5s
-ffmpeg -v error -y -f lavfi -i "color=c=#1b1f1c:s=1920x1080:r=25" -i "$VO/vo-11-agent.mp3" \
-  -filter_complex "[0:v]drawtext=fontfile='${FONT}':text='SHOT 11 — drop the defend_claim snip here':fontcolor=#e9dcc0:fontsize=40:x=(w-tw)/2:y=(h-th)/2,setsar=1[v];[1:a]adelay=500|500,apad=whole_dur=10[a]" \
+# 11. agent door — two cards, 5s each (mcp-tools.png, mcp-defend.png via render_card.py), vo-11 from 0.5s
+ffmpeg -v error -y -loop 1 -framerate 25 -t 5 -i "$S/title/mcp-tools.png" -loop 1 -framerate 25 -t 5 -i "$S/title/mcp-defend.png" -i "$VO/vo-11-agent.mp3" \
+  -filter_complex "[0:v]fade=t=in:st=0:d=0.5,setsar=1[a0];[1:v]fade=t=out:st=4.5:d=0.5,setsar=1[a1];[a0][a1]concat=n=2:v=1:a=0[v];[2:a]adelay=500|500,apad=whole_dur=10[a]" \
   -map "[v]" -map "[a]" -t 10 $VENC $AENC "$SEG/11.mp4"
 
 # 12. close — check 176..181 (5s) + 5s hold on the flagged page, vo-12 from 0.8s
